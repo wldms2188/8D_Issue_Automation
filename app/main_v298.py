@@ -1,5 +1,5 @@
 # 8D Issue Automation v2.9.8
-# Stable weekly-update path: keep the known-good v2.9.3 weekly logic from v2.9.5.
+# Stable weekly-update path: keep the known-good v2.9.5/v2.9.3 logic.
 # Representative image: original 8D PPT, page 1 only, restricted to 2D/4D labeled regions.
 # No temporary PPT copy is created.
 import sys, io
@@ -9,7 +9,7 @@ APP_DIR=Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0,str(APP_DIR))
 
-# v2.9.5 contains the known-good weekly/Excel implementation.
+# v2.9.5 contains the stable extraction/Excel/weekly implementation.
 import main_v295 as impl
 base=impl.base
 v29=impl.v29
@@ -19,6 +19,11 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 from PIL import Image as PILImage
 
 EMU=914400
+
+# IMPORTANT: save the already-patched stable extractor BEFORE replacing base.extract.
+# base and impl.base are the same object, so calling impl.base.extract after
+# assigning base.extract would call extract_v298 recursively forever.
+_stable_extract = base.extract
 
 def _pics(sh):
     out=[]
@@ -107,8 +112,8 @@ def _page1_region_image(path):
     return scored[0][5]
 
 def extract_v298(path):
-    # Use the existing stable extraction directly. Never create a copied PPT.
-    d=impl.base.extract(path)
+    # Use the saved stable extractor. Never call base.extract here after patching.
+    d=_stable_extract(path)
     try:
         blob=_page1_region_image(path)
         d['_images']=[(1,1,1,blob)] if blob else []
