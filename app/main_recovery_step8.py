@@ -1,8 +1,10 @@
 import os
+import copy
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 from openpyxl import load_workbook
+from pptx.util import Pt
 
 import main_recovery_step7 as step7
 import main_v310 as v310
@@ -100,15 +102,78 @@ class OriginDialog(tk.Toplevel):
 _old_weekly=base.weekly
 
 
-def _set_cell_text_preserve(cell,text):
+def _first_run(cell):
+    try:
+        for p in cell.text_frame.paragraphs:
+            if p.runs:
+                return p.runs[0]
+    except Exception:
+        pass
+    return None
+
+
+def _reference_value_cell(tb,origin_row,origin_col):
+    # Use the value cell from '발생단계' first because it is the closest normal
+    # metadata value style. Avoid Signal because its bullet/color is special.
+    for r in range(len(tb.rows)):
+        for c in range(len(tb.columns)):
+            if base.compact(tb.cell(r,c).text)=='발생단계' and c+1<len(tb.columns):
+                ref=tb.cell(r,c+1)
+                if _first_run(ref) is not None:
+                    return ref
+    # Fallback: another non-empty value cell in the same metadata table.
+    for r in range(len(tb.rows)):
+        for c in range(1,len(tb.columns)):
+            if r==origin_row and c==origin_col:
+                continue
+            ref=tb.cell(r,c)
+            if N(ref.text) and _first_run(ref) is not None and base.compact(ref.text)!='●':
+                return ref
+    return None
+
+
+def _set_cell_like_reference(cell,text,reference=None,size=9):
+    # Keep the target cell itself (fill/border/margins). Only replace text and
+    # copy the surrounding metadata text style, then force the requested 9 pt.
     tf=cell.text_frame
-    runs=[r for p in tf.paragraphs for r in p.runs]
-    if runs:
-        runs[0].text=N(text)
-        for r in runs[1:]:
-            r.text=''
-    else:
-        cell.text=N(text)
+    old_run=_first_run(cell)
+    old_rpr=copy.deepcopy(old_run._r.get_or_add_rPr()) if old_run is not None else None
+
+    ref_run=_first_run(reference) if reference is not None else None
+    ref_rpr=copy.deepcopy(ref_run._r.get_or_add_rPr()) if ref_run is not None else None
+    ref_p=reference.text_frame.paragraphs[0] if reference is not None and reference.text_frame.paragraphs else None
+
+    cell.text=N(text)
+    p=tf.paragraphs[0]
+    run=p.runs[0] if p.runs else p.add_run()
+    if not run.text:
+        run.text=N(text)
+
+    # Prefer the normal surrounding value-cell style; otherwise retain target style.
+    source_rpr=ref_rpr if ref_rpr is not None else old_rpr
+    if source_rpr is not None:
+        try:
+            current=run._r.rPr
+            if current is not None:
+                run._r.remove(current)
+            run._r.insert(0,copy.deepcopy(source_rpr))
+        except Exception:
+            pass
+
+    if ref_p is not None:
+        try:
+            p.alignment=ref_p.alignment
+        except Exception:
+            pass
+        try:
+            tf.vertical_anchor=reference.text_frame.vertical_anchor
+        except Exception:
+            pass
+
+    # User-requested fixed size.
+    for para in tf.paragraphs:
+        for r in para.runs:
+            r.font.size=Pt(size)
 
 
 def _set_origin_in_ppt(path,origin):
@@ -125,7 +190,9 @@ def _set_origin_in_ppt(path,origin):
         for r in range(len(tb.rows)):
             for c in range(len(tb.columns)):
                 if base.compact(tb.cell(r,c).text)=='이슈기인' and c+1<len(tb.columns):
-                    _set_cell_text_preserve(tb.cell(r,c+1),origin)
+                    target=tb.cell(r,c+1)
+                    reference=_reference_value_cell(tb,r,c+1)
+                    _set_cell_like_reference(target,origin,reference,9)
                     prs.save(path)
                     return True
     return False
@@ -145,7 +212,7 @@ base.weekly=weekly_step8
 class RecoveryStep8App(step7.RecoveryStep7App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP8 FIX1')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP8 FIX2')
 
     def run(self):
         g=self.gui()
@@ -156,7 +223,6 @@ class RecoveryStep8App(step7.RecoveryStep7App):
             d=base.extract(g['ppt8d'])
             mode=self.mode.get()
 
-            # 1) Decide issue origin first and store it in the SAME g dict used for saving.
             od=OriginDialog(self,d)
             if od.result is None:
                 self.log.delete('1.0','end')
@@ -164,7 +230,6 @@ class RecoveryStep8App(step7.RecoveryStep7App):
                 return
             g['_issue_origin_selected']=od.result
 
-            # 2) Keep STEP7 Issue-DB phenomenon choice exactly as validated.
             summary=step7._db_summary(d)
             pd=step7.ProblemChoiceDialog(self,summary)
             if pd.result is None:
@@ -173,7 +238,6 @@ class RecoveryStep8App(step7.RecoveryStep7App):
                 return
             g['_db_problem_selected']=summary if pd.result=='summary' else N(d.get('problem'))
 
-            # 3) Normal update flow using the same g with both selections included.
             out=Path(g['xlsx']).parent/'자동화_결과'
             out.mkdir(exist_ok=True)
             xo=out/(Path(g['xlsx']).stem+'_업데이트.xlsx')
