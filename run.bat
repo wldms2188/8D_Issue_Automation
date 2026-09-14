@@ -1,5 +1,11 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
-py app\main_v300.py
-if errorlevel 1 python app\main_v300.py
-pause
+echo [8D Issue Automation v3.2.0 - STABLE ROLLBACK]
+py -3 app\main_v320.py
+if errorlevel 1 py app\main_v320.py
+if errorlevel 1 (
+  echo.
+  echo Program ended with an error.
+  pause
+)
