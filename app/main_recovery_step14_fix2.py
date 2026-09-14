@@ -33,7 +33,6 @@ def _project_score(sl,d):
         return 160
     if task and customer and task in q and customer in q:
         return 145
-    # The user requested that the detail section be found primarily by 과제명.
     if task and task in q:
         return 120
     return 0
@@ -44,7 +43,6 @@ def _summary_indices(prs):
 
 
 def _is_detail_like(sl):
-    # Do not require an exact old template. Existing pages may have been rearranged.
     text=s13._slide_text(sl)
     q=s13._k(text)
     d_hits=sum(1 for token in ('2d','3d','4d','5d','6d') if token in q)
@@ -52,8 +50,132 @@ def _is_detail_like(sl):
     return d_hits>=3 or (d_hits>=2 and meta_hits>=1)
 
 
+# -----------------------------------------------------------------------------
+# PowerPoint native section handling
+# The real weekly file uses PowerPoint "구역(Section)" names such as 과제명.
+# We therefore use the section metadata first, instead of guessing only from
+# visible slide text. This is the source of truth for where a detail slide belongs.
+# -----------------------------------------------------------------------------
+def _slide_id_pairs(prs):
+    out=[]
+    for i,sldId in enumerate(prs.slides._sldIdLst):
+        try:
+            sid=int(sldId.get('id'))
+        except Exception:
+            try: sid=int(sldId.id)
+            except Exception: continue
+        out.append((i,sid))
+    return out
+
+
+def _native_sections(prs):
+    """Return native PowerPoint sections as [{name, element, slide_ids, indices}].
+
+    Office stores sections in an extension list. We intentionally locate by
+    local-name so this works regardless of the p14/p15 namespace prefix used.
+    """
+    root=prs._element
+    id_to_index={sid:i for i,sid in _slide_id_pairs(prs)}
+    sections=[]
+    try:
+        sec_nodes=root.xpath('.//*[local-name()="sectionLst"]/*[local-name()="section"]')
+    except Exception:
+        sec_nodes=[]
+    for sec in sec_nodes:
+        name=N(sec.get('name'))
+        ids=[]
+        try:
+            id_nodes=sec.xpath('.//*[local-name()="sldId"]')
+        except Exception:
+            id_nodes=[]
+        for n in id_nodes:
+            raw=n.get('id')
+            try:
+                sid=int(raw)
+            except Exception:
+                continue
+            ids.append(sid)
+        indices=sorted(id_to_index[sid] for sid in ids if sid in id_to_index)
+        sections.append({'name':name,'element':sec,'slide_ids':ids,'indices':indices})
+    return sections
+
+
+def _section_match_score(name,d):
+    q=s13._k(name)
+    full,task,customer=_project_parts(d)
+    if not q:
+        return 0
+    if full and q==full:
+        return 300
+    if task and q==task:
+        return 280
+    if full and full in q:
+        return 260
+    if task and customer and task in q and customer in q:
+        return 250
+    if task and task in q:
+        return 220
+    return 0
+
+
+def _matching_native_section(prs,d):
+    scored=[]
+    for sec in _native_sections(prs):
+        sc=_section_match_score(sec['name'],d)
+        if sc:
+            scored.append((sc,sec))
+    if not scored:
+        return None
+    scored.sort(key=lambda x:(x[0],len(x[1]['indices'])),reverse=True)
+    return scored[0][1]
+
+
+def _slide_id_at(prs,index):
+    sldId=prs.slides._sldIdLst[index]
+    try: return int(sldId.get('id'))
+    except Exception:
+        try: return int(sldId.id)
+        except Exception: return None
+
+
+def _add_slide_to_native_section(prs,section,slide_index):
+    """Register a newly cloned slide in the matched native PowerPoint section."""
+    if not section:
+        return False
+    sid=_slide_id_at(prs,slide_index)
+    if sid is None:
+        return False
+    sec=section['element']
+    try:
+        # Avoid duplicates.
+        for n in sec.xpath('.//*[local-name()="sldId"]'):
+            if str(n.get('id'))==str(sid):
+                return True
+        lists=sec.xpath('./*[local-name()="sldIdLst"]')
+        if not lists:
+            return False
+        lst=lists[0]
+        # Clone an existing section sldId node to preserve namespace exactly.
+        existing=lst.xpath('./*[local-name()="sldId"]')
+        if not existing:
+            return False
+        import copy
+        node=copy.deepcopy(existing[-1])
+        node.set('id',str(sid))
+        lst.append(node)
+        return True
+    except Exception:
+        return False
+
+
 def _project_detail_indices(prs,d):
+    # Highest priority: actual PowerPoint section named by 과제명.
+    sec=_matching_native_section(prs,d)
     summaries=_summary_indices(prs)
+    if sec and sec['indices']:
+        return [i for i in sec['indices'] if i not in summaries and _is_detail_like(prs.slides[i])]
+
+    # Fallback for decks without native sections: visible 과제명 text.
     return [i for i,sl in enumerate(prs.slides)
             if i not in summaries and _is_detail_like(sl) and _project_score(sl,d)>=120]
 
@@ -67,7 +189,7 @@ def _find_existing_detail(prs,d):
     for i in pages:
         text=s13._slide_text(prs.slides[i])
         q=s13._k(text)
-        score=_project_score(prs.slides[i],d)
+        score=200  # already proven to be inside the correct project section
         score+=s13._detail_structure_score(prs.slides[i])*4
         if issue and issue in q:
             score+=150
@@ -79,24 +201,26 @@ def _find_existing_detail(prs,d):
                 score+=int(70*max(ratios))
         if best is None or score>best[0]:
             best=(score,i)
-    return best[1] if best and best[0]>=245 else None
+    return best[1] if best and best[0]>=285 else None
 
 
 def _new_detail_position(prs,d):
+    # Native section boundary is authoritative. Insert at the END of the matched
+    # 과제명 section, not merely after whichever slide happens to contain its text.
+    sec=_matching_native_section(prs,d)
+    if sec and sec['indices']:
+        return max(sec['indices'])+1
     pages=_project_detail_indices(prs,d)
     return max(pages)+1 if pages else len(prs.slides)
 
 
 # -----------------------------------------------------------------------------
 # Clone another real detail page ONLY as a layout shell.
-# All old issue-specific text/images in the 2D~6D work area are cleared before
-# current 8D data is rendered, so another project's content cannot be duplicated.
 # -----------------------------------------------------------------------------
 def _template_detail_index(prs,d):
     summaries=_summary_indices(prs)
     same=_project_detail_indices(prs,d)
     if same:
-        # Best visual match is normally the latest page in the same project section.
         return same[-1]
 
     candidates=[]
@@ -104,7 +228,6 @@ def _template_detail_index(prs,d):
         if i in summaries or not _is_detail_like(sl):
             continue
         structure=s13._detail_structure_score(sl)
-        # Prefer pages containing the standard metadata labels and the most D blocks.
         q=s13._k(s13._slide_text(sl))
         meta=sum(1 for x in ('signal','이슈기인','발생단계') if x in q)
         candidates.append((structure*10+meta*8,i))
@@ -129,7 +252,6 @@ def _overlap_ratio(sh,zone):
 
 
 def _content_zones():
-    # Slightly expanded compared with the render boxes to catch old text and photos.
     return [
         (.38,2.35,5.05,1.30),
         (.38,3.72,5.05,1.50),
@@ -151,12 +273,10 @@ def _static_detail_label(text):
 
 
 def _clear_cloned_issue_content(sl):
-    # First remove anything generated by a prior automation run.
     v310.remove_previous_auto(sl)
     zones=_content_zones()
 
     for sh in list(sl.shapes):
-        # Preserve native marker/title groups. Their inner old content is structural.
         if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:
             continue
 
@@ -164,7 +284,6 @@ def _clear_cloned_issue_content(sl):
         if not in_work_area:
             continue
 
-        # Old issue photos in 2D~6D must not survive the clone.
         if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.PICTURE:
             try:
                 sh._element.getparent().remove(sh._element)
@@ -172,8 +291,6 @@ def _clear_cloned_issue_content(sl):
                 pass
             continue
 
-        # Keep the real shape/border/layout, but erase the other project's text.
-        # Exact D labels/titles are retained when they are ungrouped in the source.
         if hasattr(sh,'text_frame'):
             old=N(getattr(sh,'text',''))
             if old and not _static_detail_label(old):
@@ -186,30 +303,36 @@ def _clear_cloned_issue_content(sl):
 
 def _clone_detail_shell(prs,d,insert_at):
     template_index=_template_detail_index(prs,d)
+    matched_section=_matching_native_section(prs,d)
     s13._clone_slide_with_rels(prs,template_index)
     s13._move_last_slide_to(prs,insert_at)
     sl=prs.slides[insert_at]
     _clear_cloned_issue_content(sl)
-    return sl,template_index
+    # Moving the slide visually is not enough when the deck uses native Sections.
+    # Explicitly add the new slide ID to the 과제명 section metadata as well.
+    _add_slide_to_native_section(prs,matched_section,insert_at)
+    return sl,template_index,matched_section
 
 
 # -----------------------------------------------------------------------------
 # Weekly update
 # -----------------------------------------------------------------------------
-def weekly_fix3(src,out,d,g,mode):
+def weekly_fix4(src,out,d,g,mode):
     prs=Presentation(src)
     _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
 
+    matched_section=_matching_native_section(prs,d)
     target=_find_existing_detail(prs,d) if mode=='existing' else None
     detail_action='업데이트'
 
     if target is None:
         insert_at=_new_detail_position(prs,d)
-        _,template_index=_clone_detail_shell(prs,d,insert_at)
+        _,template_index,matched_section=_clone_detail_shell(prs,d,insert_at)
         target=insert_at
-        detail_action=f'기존 상세 양식 복제 후 내용 초기화/신규 작성 (원본 slide {template_index+1})'
+        sec_name=N(matched_section.get('name')) if matched_section else '(텍스트 기반 구역)'
+        detail_action=(f'과제 구역 [{sec_name}] 끝에 상세 페이지 추가 '
+                       f'(양식 원본 slide {template_index+1}, 기존 내용 초기화)')
 
-    # Reuse all currently validated rendering/header/signal/origin behavior.
     s13._update_detail_slide(prs.slides[target],d,g,mode)
 
     Path(out).parent.mkdir(parents=True,exist_ok=True)
@@ -220,18 +343,19 @@ def weekly_fix3(src,out,d,g,mode):
         saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix))
         prs.save(saved)
 
+    sec_name=N(matched_section.get('name')) if matched_section else '텍스트 기반 탐색'
     return ('주간회의 PPT: 요약 '+summary_action+' / 상세 '+detail_action+
-            f' (과제명={N(d.get("task_name"))})',saved)
+            f' / 배치 구역={sec_name} / 과제명={N(d.get("task_name"))}',saved)
 
 
-base.weekly=weekly_fix3
+base.weekly=weekly_fix4
 
 
-class RecoveryStep14Fix3App(s10.RecoveryStep10App):
+class RecoveryStep14Fix4App(s10.RecoveryStep10App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14 FIX3')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14 FIX4')
 
 
 if __name__=='__main__':
-    RecoveryStep14Fix3App().mainloop()
+    RecoveryStep14Fix4App().mainloop()
