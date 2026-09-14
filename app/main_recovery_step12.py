@@ -27,13 +27,33 @@ def _signal_status_from_g(d,g):
 
 
 def _sync_signals(prs,d,g):
-    """Force every weekly Signal cell to the exact same status/color."""
+    """Synchronize page1/page2 Signal without touching the adjacent remark/attachment cell.
+
+    Page 1 uses Signal as a COLUMN HEADER, so the colored circle belongs in the
+    cell directly BELOW that header. Page 2 uses Signal as a ROW LABEL, so the
+    colored circle belongs in the cell directly to the RIGHT.
+    """
     st=_signal_status_from_g(d,g)
-    for sl in prs.slides:
+
+    for slide_index,sl in enumerate(prs.slides):
         for sh in v310.walk(sl):
             if not getattr(sh,'has_table',False):
                 continue
             tb=sh.table
+
+            # Page 1 summary table: Signal is a column header.
+            if slide_index==0:
+                for r in range(min(3,len(tb.rows))):
+                    for c in range(len(tb.columns)):
+                        if C(tb.cell(r,c).text)!='signal':
+                            continue
+                        target_row=r+1
+                        if target_row<len(tb.rows):
+                            base.signal(tb.cell(target_row,c),st)
+                        break
+                continue
+
+            # Page 2 metadata table: Signal is a row label.
             for r in range(len(tb.rows)):
                 for c in range(len(tb.columns)):
                     if C(tb.cell(r,c).text)=='signal' and c+1<len(tb.columns):
@@ -83,8 +103,7 @@ def weekly_step12(src,out,d,g,mode):
         _update_page2_step12(prs.slides[1],dd,g,mode)
         step4._force_page2_header(prs.slides[1],d,g)
 
-    # Do this LAST, after page1/page2 metadata updates, so page2 can never retain
-    # the template's old Signal color. Both pages receive one identical status/color.
+    # Do this LAST so both pages end with one identical Signal status/color.
     _sync_signals(prs,d,g)
 
     Path(out).parent.mkdir(parents=True,exist_ok=True)
@@ -108,7 +127,7 @@ base.weekly=weekly_step12
 class RecoveryStep12App(step10.RecoveryStep10App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP12')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP12 FIX1')
 
 
 if __name__=='__main__':
