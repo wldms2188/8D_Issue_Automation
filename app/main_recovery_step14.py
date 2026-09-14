@@ -72,10 +72,12 @@ def _clear_summary_data(tb,hr):
         tr=copy.deepcopy(tb.rows[hr]._tr)
         tb.rows[hr]._tr.addnext(tr)
 
-    # Remove rows after the first data row from bottom to top.
+    # python-pptx row collections do NOT support negative indexing.
+    # Keep the first styled data row and remove all later rows from bottom to top.
     keep=hr+1
     while len(tb.rows)>keep+1:
-        tr=tb.rows[-1]._tr
+        last_index=len(tb.rows)-1
+        tr=tb.rows[last_index]._tr
         tr.getparent().remove(tr)
 
     for c in range(len(tb.columns)):
@@ -249,7 +251,7 @@ base.weekly=weekly_step14
 class RecoveryStep14App(step10.RecoveryStep10App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14 FIX1')
 
 
 if __name__=='__main__':
