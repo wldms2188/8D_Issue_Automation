@@ -1,21 +1,20 @@
 # 8D Issue Automation v2.9.6 - stable integration build
-# IMPORTANT: source 8D extraction is page-1-only; representative image is page-1-only.
-# Weekly detail uses the supplied example geometry as a starting point and flows each
-# column downward when preceding content grows. Text is never truncated.
-import sys, io, os, math, tempfile, datetime
+# IMPORTANT: source 8D extraction uses the ORIGINAL PPT directly.
+# Representative image selection is restricted to PAGE 1 and the 2D/4D regions.
+# No temporary/copy PPT is created for image extraction.
+import io, datetime, math, os
 from pathlib import Path
-APP_DIR=Path(__file__).resolve().parent
-if str(APP_DIR) not in sys.path: sys.path.insert(0,str(APP_DIR))
-
-# Private alias: there is deliberately no variable named `v293`.
-import main_v293 as _impl
-base=_impl.base
-v29=_impl.v29
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR
 from pptx.util import Inches, Pt
 from PIL import Image as PILImage
+
+APP_DIR=Path(__file__).resolve().parent
+if str(APP_DIR) not in __import__('sys').path: __import__('sys').path.insert(0,str(APP_DIR))
+import main_v293 as _impl
+base=_impl.base
+v29=_impl.v29
 EMU=914400
 
 BOXES={'1':[.53,2.53,4.76,.98,'problem'],'2':[.53,3.91,4.76,1.14,'temporary_action'],'3-1':[.53,5.38,4.76,1.79,'cause_4d'],'3-2':[5.77,2.47,4.76,.87,'leak_cause'],'4':[5.77,3.74,4.76,1.77,'action_5d'],'5':[5.77,5.91,4.78,.94,'verification_6d']}
@@ -64,52 +63,84 @@ def composite(g):
         except Exception:pass
     b=io.BytesIO();imout.save(b,'PNG');return b.getvalue()
 
-def rep_page1(path):
-    prs=Presentation(path)
-    if not prs.slides:return None
-    sl=prs.slides[0]; anchors=[];cand=[]
-    for sh in sl.shapes:
+# ---------- representative image: PAGE 1 / 2D or 4D only ----------
+def walk_shapes(shapes):
+    for sh in shapes:
+        yield sh
+        if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:
+            yield from walk_shapes(sh.shapes)
+
+def region_labels(slide):
+    """Find the actual 2D/4D labeled regions on page 1."""
+    regs=[]
+    for sh in walk_shapes(slide.shapes):
         q=base.compact(getattr(sh,'text',''))
-        if any(k in q for k in ('2d','문제현황','문제현상','불량현상')):anchors.append(box(sh))
+        if not q: continue
+        if ('2d' in q or '문제현상' in q or '문제현황' in q or '불량현상' in q):
+            regs.append(('2D',box(sh)))
+        elif ('4d' in q or '원인분석' in q or '발생원인' in q or '유출원인' in q):
+            regs.append(('4D',box(sh)))
+    return regs
+
+def page1_visuals(slide):
+    out=[]
+    for sh in slide.shapes:
         if sh.shape_type==MSO_SHAPE_TYPE.GROUP:
             ps=pics(sh)
             if len(ps)>=2:
                 b=composite(sh)
-                if b:cand.append((box(sh),b,True,len(ps)))
+                if b:
+                    x,y,w,h=box(sh);out.append(('group',len(ps),(x,y,w,h),b))
+            elif len(ps)==1:
+                p=ps[0]
+                try:
+                    with PILImage.open(io.BytesIO(p.image.blob)) as im:
+                        if im.width*im.height>=10000:out.append(('picture',1,box(sh),p.image.blob))
+                except Exception:pass
         elif sh.shape_type==MSO_SHAPE_TYPE.PICTURE:
             try:
                 with PILImage.open(io.BytesIO(sh.image.blob)) as im:
-                    if im.width*im.height>=10000:cand.append((box(sh),sh.image.blob,False,1))
+                    if im.width*im.height>=10000:out.append(('picture',1,box(sh),sh.image.blob))
             except Exception:pass
-    if not cand:return None
-    hits=[]
-    for a,b,g,n in cand:
-        ov=max((overlap(a,r) for r in anchors),default=0)
-        if ov>0:hits.append((g,n,ov,b))
-    if hits:
-        hits.sort(key=lambda z:(z[0],z[1],z[2]),reverse=True);return hits[0][3]
-    groups=[z for z in cand if z[2]]
-    return max(groups,key=lambda z:z[3])[1] if groups else None
+    return out
 
-def first_page_copy(path):
-    src=Presentation(path);out=Presentation();out.slide_width=src.slide_width;out.slide_height=src.slide_height
-    dst=out.slides.add_slide(out.slide_layouts[6])
-    for sh in src.slides[0].shapes:
-        try:dst.shapes._spTree.insert_element_before(sh._element,'p:extLst')
-        except Exception:pass
-    f=tempfile.NamedTemporaryFile(delete=False,suffix='.pptx');f.close();out.save(f.name);return f.name
+def pick_page1_2d4d(prs):
+    """Choose only a visual that overlaps the labeled 2D/4D area on page 1.
+    Priority: 2D > 4D, grouped visual > single picture, larger overlap > area.
+    """
+    if not prs.slides:return None
+    sl=prs.slides[0]
+    regs=region_labels(sl)
+    visuals=page1_visuals(sl)
+    if not regs or not visuals:return None
+    scored=[]
+    for kind,n,vbox,blob in visuals:
+        for label,rbox in regs:
+            ov=overlap(vbox,rbox)
+            if ov<=0:continue
+            vx,vy,vw,vh=vbox;rx,ry,rw,rh=rbox
+            # Overlap ratio is more reliable than raw area when the image is large.
+            vr=max(vw*vh,1.0);rr=max(rw*rh,1.0)
+            ratio=ov/min(vr,rr)
+            priority=2 if label=='2D' else 1
+            grouped=1 if kind=='group' else 0
+            scored.append((priority,grouped,ratio,ov,vw*vh,blob,label))
+    if not scored:return None
+    scored.sort(key=lambda z:(z[0],z[1],z[2],z[3],z[4]),reverse=True)
+    return scored[0][5]
 
 def extract_v296(path):
-    tmp=None
+    # DO NOT clone/copy the source PPT. Read the original package directly.
+    d=_impl.extract_v293(path)
     try:
-        tmp=first_page_copy(path)
-        d=_impl.extract_v293(tmp)
-        b=rep_page1(path);d['_images']=[(1,1,1,b)] if b else []
-        return d
-    finally:
-        if tmp:
-            try:os.unlink(tmp)
-            except Exception:pass
+        b=pick_page1_2d4d(Presentation(path))
+        d['_images']=[(1,1,1,b)] if b else []
+    except Exception:
+        # Text/Excel automation must not fail just because a representative image
+        # cannot be found. The image is optional; the extracted 8D data remains valid.
+        d['_images']=[]
+    return d
+
 base.extract=extract_v296
 
 def walk(shapes):
@@ -121,14 +152,12 @@ def remove(sh):
     except Exception:pass
 
 def make_detail(sl,d):
-    # Remove only our generated objects from a prior run.
     for sh in list(walk(sl.shapes)):
         try:
             if str(sh.name).startswith('AUTO_8D296_'):remove(sh)
         except Exception:pass
     def one(k):return v29.v29_one(d.get(k)) or '검토 중'
     txt={'1':one('problem'),'2':one('temporary_action'),'3-1':'- 발생원인\n'+one('cause_4d'),'3-2':'- 유출원인\n'+one('leak_cause'),'4':one('action_5d'),'5':one('verification_6d')}
-    # Each column is an independent flow. When a block grows, the next block moves.
     for col,mx in ((LEFT,.25),(RIGHT,5.49)):
         pos={k:list(BOXES[k][:4]) for k in col}
         for i,k in enumerate(col):
@@ -143,8 +172,6 @@ def make_detail(sl,d):
                 p.alignment=1
                 for r in p.runs:font(r,6.5)
             hd=sl.shapes.add_textbox(Inches(mx+.38),Inches(y-.39),Inches(2.5),Inches(.34));hd.name='AUTO_8D296_HEADING_'+dl;put(hd,NAMES[k],8)
-            # If the calculated natural height fits, use 8pt. Otherwise use 7pt;
-            # never shorten the text.
             size=8 if need(txt[k],w,8)<=h+.02 else 7
             b=sl.shapes.add_textbox(Inches(x),Inches(y),Inches(w),Inches(h));b.name='AUTO_8D296_DETAIL_'+k.replace('-','_');put(b,txt[k],size)
     for sh in walk(sl.shapes):
@@ -174,5 +201,6 @@ def weekly_v296(src,out,d,g,mode):
     except PermissionError:
         p=Path(out);saved=p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix);prs.save(saved)
     return '주간회의 PPT 업데이트: '+st,saved
+
 base.extract=extract_v296;base.weekly=weekly_v296
 if __name__=='__main__':base.App().mainloop()
