@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo [8D Issue Automation STEP14 FIX5]
-py -3 app\main_recovery_step14_fix2.py
-if errorlevel 1 py app\main_recovery_step14_fix2.py
+echo [8D Issue Automation 1.0 FINAL]
+py -3 app\main_final.py
+if errorlevel 1 py app\main_final.py
 if errorlevel 1 pause
