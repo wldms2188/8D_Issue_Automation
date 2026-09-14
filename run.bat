@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo [8D Issue Automation v3.2.0 RECOVERY STEP4]
-py -3 app\main_recovery_step4.py
-if errorlevel 1 py app\main_recovery_step4.py
+echo [8D Issue Automation v3.2.0 RECOVERY STEP5]
+py -3 app\main_recovery_step5.py
+if errorlevel 1 py app\main_recovery_step5.py
 if errorlevel 1 (
   echo.
   echo Program ended with an error.
