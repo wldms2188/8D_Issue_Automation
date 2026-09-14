@@ -3,6 +3,8 @@ name: v308 synthetic test
 on:
   push:
     branches: ['test/v308-synthetic']
+  pull_request:
+    branches: ['main']
 
 jobs:
   synthetic:
