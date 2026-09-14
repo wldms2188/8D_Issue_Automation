@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from openpyxl import load_workbook
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 from openpyxl.utils.units import pixels_to_EMU
@@ -19,33 +19,26 @@ _old_write_row=base.write_row
 
 
 def _judge_issue_status(d):
-    """Issue DB status rule requested by user. Returns (status, 6D text)."""
     text=N(d.get('verification_6d'))
     if not text:
         return 'open',''
     q=text.replace(' ','').lower()
-    # Ongoing/future wording has priority over any other wording.
     if '중' in q or '예정' in q:
         return 'open',text
-    # Any meaningful completed 6D content is treated as close when it is not ongoing/future.
     return 'close',text
 
 
 def _set_two_cell_anchor(ws,row):
-    """Make representative photo behave as Excel 'Move and size with cells'."""
     for img in list(getattr(ws,'_images',[])):
         try:
             anchor=getattr(img,'anchor',None)
             from_marker=getattr(anchor,'_from',None)
-            # Representative image is column O (zero-based 14) on this row.
             if from_marker is not None:
                 if from_marker.row != row-1 or from_marker.col != 14:
                     continue
             else:
-                # String anchor fallback from older writer.
                 if str(anchor).upper() != f'O{row}'.upper():
                     continue
-
             w=max(1,int(getattr(img,'width',120) or 120))
             h=max(1,int(getattr(img,'height',80) or 80))
             fr=AnchorMarker(col=14,row=row-1,colOff=pixels_to_EMU(4),rowOff=pixels_to_EMU(4))
@@ -57,12 +50,12 @@ def _set_two_cell_anchor(ws,row):
 
 def write_row_step9(ws,r,d,g):
     result=_old_write_row(ws,r,d,g)
-    # 1) 발생처 is always the GUI-selected value, never the source 8D text.
-    ws.cell(r,13).value=N(g.get('occurrence_site'))
-    # 2) Issue DB status is strictly open/close from the confirmed STEP9 decision.
+    # 발생처는 반드시 GUI 선택값을 DB 13열에 기록한다.
+    selected_site=N(g.get('occurrence_site'))
+    if selected_site in OCCURRENCE_SITES:
+        ws.cell(r,13).value=selected_site
     status=N(g.get('_issue_status_selected')) or _judge_issue_status(d)[0]
     ws.cell(r,18).value=status
-    # 3) Representative photo = Move and size with cells.
     _set_two_cell_anchor(ws,r)
     return status
 
@@ -72,50 +65,70 @@ base.write_row=write_row_step9
 class RecoveryStep9App(step8.RecoveryStep8App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP9')
-        # STEP6 already converted occurrence_site to readonly combobox.
-        # Re-assert the exact requested option order in case an inherited widget changed it.
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP9 FIX1')
+        self._ensure_occurrence_site_dropdown()
+
+    def _ensure_occurrence_site_dropdown(self):
+        # Legacy base GUI did not contain occurrence_site at all. Create the field
+        # explicitly, and insert it before the Preview/Run buttons so gui() includes it.
         var=getattr(self,'vars',{}).get('occurrence_site')
-        if var is not None:
-            def walk(w):
-                for ch in w.winfo_children():
-                    yield ch
-                    yield from walk(ch)
-            from tkinter import ttk
-            for widget in walk(self):
-                if isinstance(widget,ttk.Combobox):
-                    try:
-                        if str(widget.cget('textvariable'))==str(var):
-                            widget.configure(values=OCCURRENCE_SITES,state='readonly')
-                            if var.get() not in OCCURRENCE_SITES:
-                                var.set(OCCURRENCE_SITES[0])
-                            break
-                    except Exception:
-                        pass
+        if var is None:
+            var=tk.StringVar(value=OCCURRENCE_SITES[0])
+            self.vars['occurrence_site']=var
+
+            before_widget=None
+            for child in self.winfo_children():
+                if isinstance(child,ttk.Button):
+                    before_widget=child
+                    break
+
+            row=ttk.Frame(self)
+            pack_opts={'fill':'x','padx':18,'pady':4}
+            if before_widget is not None:
+                pack_opts['before']=before_widget
+            row.pack(**pack_opts)
+            ttk.Label(row,text='발생처',width=31).pack(side='left')
+            ttk.Combobox(row,textvariable=var,values=OCCURRENCE_SITES,state='readonly',width=66).pack(side='left')
+            return
+
+        # If a field exists, force it to the requested readonly choices.
+        if var.get() not in OCCURRENCE_SITES:
+            var.set(OCCURRENCE_SITES[0])
+        def walk(w):
+            for ch in w.winfo_children():
+                yield ch
+                yield from walk(ch)
+        for widget in walk(self):
+            if isinstance(widget,ttk.Combobox):
+                try:
+                    if str(widget.cget('textvariable'))==str(var):
+                        widget.configure(values=OCCURRENCE_SITES,state='readonly')
+                        return
+                except Exception:
+                    pass
 
     def run(self):
         g=self.gui()
         if any(not g[k] or not os.path.exists(g[k]) for k in ['ppt8d','pptweekly','xlsx']):
             return messagebox.showwarning('확인','8D PPT, 주간회의 PPT, 이슈 DB Excel을 모두 선택하세요.')
+        if g.get('occurrence_site') not in OCCURRENCE_SITES:
+            return messagebox.showwarning('확인','발생처를 선택하세요.')
 
         try:
             d=base.extract(g['ppt8d'])
             mode=self.mode.get()
 
-            # STEP8 issue-origin recommendation/selection.
             od=step8.OriginDialog(self,d)
             if od.result is None:
                 self.log.delete('1.0','end'); self.log.insert('end','업데이트가 취소되었습니다.'); return
             g['_issue_origin_selected']=od.result
 
-            # STEP7 Issue DB phenomenon full/summary choice.
             summary=step7._db_summary(d)
             pd=step7.ProblemChoiceDialog(self,summary)
             if pd.result is None:
                 self.log.delete('1.0','end'); self.log.insert('end','업데이트가 취소되었습니다.'); return
             g['_db_problem_selected']=summary if pd.result=='summary' else N(d.get('problem'))
 
-            # STEP9 status decision uses 6D only.
             judged,reason=_judge_issue_status(d)
             final_status=judged
             if judged=='close':
