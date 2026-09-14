@@ -1,0 +1,23 @@
+name: v308 synthetic test
+
+on:
+  push:
+    branches: ['test/v308-synthetic']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install python-pptx pillow openpyxl
+      - name: Run synthetic integration test
+        run: python tests/test_v308_synthetic.py
+      - name: Show output files
+        if: always()
+        run: find test_output -maxdepth 1 -type f -printf '%f\n' 2>/dev/null || true
