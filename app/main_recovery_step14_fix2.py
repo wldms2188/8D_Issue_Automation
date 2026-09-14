@@ -1,4 +1,6 @@
 import datetime
+import hashlib
+import subprocess
 from pathlib import Path
 
 from pptx import Presentation
@@ -52,9 +54,6 @@ def _is_detail_like(sl):
 
 # -----------------------------------------------------------------------------
 # PowerPoint native section handling
-# The real weekly file uses PowerPoint "구역(Section)" names such as 과제명.
-# We therefore use the section metadata first, instead of guessing only from
-# visible slide text. This is the source of truth for where a detail slide belongs.
 # -----------------------------------------------------------------------------
 def _slide_id_pairs(prs):
     out=[]
@@ -69,11 +68,6 @@ def _slide_id_pairs(prs):
 
 
 def _native_sections(prs):
-    """Return native PowerPoint sections as [{name, element, slide_ids, indices}].
-
-    Office stores sections in an extension list. We intentionally locate by
-    local-name so this works regardless of the p14/p15 namespace prefix used.
-    """
     root=prs._element
     id_to_index={sid:i for i,sid in _slide_id_pairs(prs)}
     sections=[]
@@ -139,7 +133,6 @@ def _slide_id_at(prs,index):
 
 
 def _add_slide_to_native_section(prs,section,slide_index):
-    """Register a newly cloned slide in the matched native PowerPoint section."""
     if not section:
         return False
     sid=_slide_id_at(prs,slide_index)
@@ -147,7 +140,6 @@ def _add_slide_to_native_section(prs,section,slide_index):
         return False
     sec=section['element']
     try:
-        # Avoid duplicates.
         for n in sec.xpath('.//*[local-name()="sldId"]'):
             if str(n.get('id'))==str(sid):
                 return True
@@ -155,7 +147,6 @@ def _add_slide_to_native_section(prs,section,slide_index):
         if not lists:
             return False
         lst=lists[0]
-        # Clone an existing section sldId node to preserve namespace exactly.
         existing=lst.xpath('./*[local-name()="sldId"]')
         if not existing:
             return False
@@ -169,13 +160,10 @@ def _add_slide_to_native_section(prs,section,slide_index):
 
 
 def _project_detail_indices(prs,d):
-    # Highest priority: actual PowerPoint section named by 과제명.
     sec=_matching_native_section(prs,d)
     summaries=_summary_indices(prs)
     if sec and sec['indices']:
         return [i for i in sec['indices'] if i not in summaries and _is_detail_like(prs.slides[i])]
-
-    # Fallback for decks without native sections: visible 과제명 text.
     return [i for i,sl in enumerate(prs.slides)
             if i not in summaries and _is_detail_like(sl) and _project_score(sl,d)>=120]
 
@@ -189,7 +177,7 @@ def _find_existing_detail(prs,d):
     for i in pages:
         text=s13._slide_text(prs.slides[i])
         q=s13._k(text)
-        score=200  # already proven to be inside the correct project section
+        score=200
         score+=s13._detail_structure_score(prs.slides[i])*4
         if issue and issue in q:
             score+=150
@@ -205,8 +193,6 @@ def _find_existing_detail(prs,d):
 
 
 def _new_detail_position(prs,d):
-    # Native section boundary is authoritative. Insert at the END of the matched
-    # 과제명 section, not merely after whichever slide happens to contain its text.
     sec=_matching_native_section(prs,d)
     if sec and sec['indices']:
         return max(sec['indices'])+1
@@ -308,16 +294,102 @@ def _clone_detail_shell(prs,d,insert_at):
     s13._move_last_slide_to(prs,insert_at)
     sl=prs.slides[insert_at]
     _clear_cloned_issue_content(sl)
-    # Moving the slide visually is not enough when the deck uses native Sections.
-    # Explicitly add the new slide ID to the 과제명 section metadata as well.
     _add_slide_to_native_section(prs,matched_section,insert_at)
     return sl,template_index,matched_section
 
 
 # -----------------------------------------------------------------------------
+# Append source 8D pages 2..end as native PowerPoint slides.
+# This uses PowerPoint itself (via Windows PowerShell COM) so pictures, groups,
+# charts, fonts and the source slide appearance are preserved exactly.  The pages
+# are inserted immediately AFTER the issue detail page, therefore they also sit in
+# the same project section in normal PowerPoint section order.
+# -----------------------------------------------------------------------------
+def _attachment_key(d):
+    raw=(s13._customer_task(d)+'|'+s13._issue_display(d)).encode('utf-8','ignore')
+    return hashlib.sha1(raw).hexdigest()[:12]
+
+
+def _ps_quote(path):
+    return str(path).replace("'","''")
+
+
+def _append_8d_attachments(out_path,src8d_path,detail_index,d):
+    try:
+        source_count=len(Presentation(src8d_path).slides)
+    except Exception as e:
+        raise RuntimeError('8D 원본의 유첨 페이지 수를 확인하지 못했습니다: '+repr(e))
+    if source_count<=1:
+        return 0
+
+    # PowerPoint COM is used instead of python-pptx cross-file XML copying because
+    # the latter can lose source relationships/theme parts and corrupt the layout.
+    # detail_index is zero-based here; PowerPoint COM is one-based.
+    insert_after=detail_index+1
+    key=_attachment_key(d)
+    prefix='AUTO_8D_ATTACH_'+key+'_'
+
+    out_q=_ps_quote(Path(out_path).resolve())
+    src_q=_ps_quote(Path(src8d_path).resolve())
+    prefix_q=prefix.replace("'","''")
+
+    script=f"""
+$ErrorActionPreference = 'Stop'
+$ppt = $null
+$pres = $null
+try {{
+    $ppt = New-Object -ComObject PowerPoint.Application
+    $ppt.Visible = -1
+    $pres = $ppt.Presentations.Open('{out_q}', 0, 0, 0)
+
+    # Remove only attachment slides previously generated for this same issue.
+    for ($i = $pres.Slides.Count; $i -ge 1; $i--) {{
+        $nm = [string]$pres.Slides.Item($i).Name
+        if ($nm.StartsWith('{prefix_q}')) {{
+            $pres.Slides.Item($i).Delete()
+        }}
+    }}
+
+    $added = $pres.Slides.InsertFromFile('{src_q}', {insert_after}, 2, {source_count})
+    for ($j = 1; $j -le $added; $j++) {{
+        $pres.Slides.Item({insert_after} + $j).Name = '{prefix_q}' + $j
+    }}
+    $pres.Save()
+    Write-Output $added
+}}
+finally {{
+    if ($pres -ne $null) {{ $pres.Close() }}
+    if ($ppt -ne $null) {{ $ppt.Quit() }}
+}}
+"""
+
+    try:
+        p=subprocess.run(
+            ['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-Command',script],
+            capture_output=True,text=True,timeout=120
+        )
+    except FileNotFoundError:
+        raise RuntimeError('Windows PowerShell을 찾지 못해 8D 유첨 페이지를 붙이지 못했습니다.')
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('PowerPoint 유첨 페이지 복사 작업이 120초를 초과했습니다.')
+
+    if p.returncode!=0:
+        detail=(p.stderr or p.stdout or '').strip()
+        raise RuntimeError('8D 유첨 페이지 자동 복사 실패: '+detail[-800:])
+
+    # InsertFromFile returns the number of inserted slides; parse it if possible.
+    nums=[]
+    for line in (p.stdout or '').splitlines():
+        q=line.strip()
+        if q.isdigit():
+            nums.append(int(q))
+    return nums[-1] if nums else source_count-1
+
+
+# -----------------------------------------------------------------------------
 # Weekly update
 # -----------------------------------------------------------------------------
-def weekly_fix4(src,out,d,g,mode):
+def weekly_fix5(src,out,d,g,mode):
     prs=Presentation(src)
     _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
 
@@ -343,19 +415,24 @@ def weekly_fix4(src,out,d,g,mode):
         saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix))
         prs.save(saved)
 
+    # After the weekly file is safely saved, append every source 8D slide from
+    # page 2 onward directly behind this issue's detail page.
+    attached=_append_8d_attachments(saved,g.get('ppt8d',''),target,d)
+
     sec_name=N(matched_section.get('name')) if matched_section else '텍스트 기반 탐색'
+    attach_msg=f' / 8D 유첨 {attached}페이지 추가' if attached else ' / 8D 유첨 없음'
     return ('주간회의 PPT: 요약 '+summary_action+' / 상세 '+detail_action+
-            f' / 배치 구역={sec_name} / 과제명={N(d.get("task_name"))}',saved)
+            f' / 배치 구역={sec_name} / 과제명={N(d.get("task_name"))}'+attach_msg,saved)
 
 
-base.weekly=weekly_fix4
+base.weekly=weekly_fix5
 
 
-class RecoveryStep14Fix4App(s10.RecoveryStep10App):
+class RecoveryStep14Fix5App(s10.RecoveryStep10App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14 FIX4')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP14 FIX5')
 
 
 if __name__=='__main__':
-    RecoveryStep14Fix4App().mainloop()
+    RecoveryStep14Fix5App().mainloop()
