@@ -21,43 +21,31 @@ def _signal_status_from_g(d,g):
     if selected=='close':
         return '개선 완료'
     if selected=='open':
-        # open means improvement/verification is not complete.
         return '개선 검증중' if N(d.get('action_5d')) or N(d.get('verification_6d')) else '원인/개선 미확인'
     return base.status(d)
 
 
-def _sync_signals(prs,d,g):
-    """Synchronize page1/page2 Signal without touching the adjacent remark/attachment cell.
+def _sync_page2_signal_only(prs,d,g):
+    """Update ONLY page-2 Signal.
 
-    Page 1 uses Signal as a COLUMN HEADER, so the colored circle belongs in the
-    cell directly BELOW that header. Page 2 uses Signal as a ROW LABEL, so the
-    colored circle belongs in the cell directly to the RIGHT.
+    Page 1 is already updated by v319._update_page1(), which knows the correct
+    issue row. Rewriting page 1 here is unsafe for existing issues because the
+    active issue may not be the row immediately below the header; doing so can
+    overwrite the 유첨/비고 cell. Page 2 must simply mirror the same status.
     """
     st=_signal_status_from_g(d,g)
+    if len(prs.slides)<2:
+        return st
 
-    for slide_index,sl in enumerate(prs.slides):
-        for sh in v310.walk(sl):
-            if not getattr(sh,'has_table',False):
-                continue
-            tb=sh.table
-
-            # Page 1 summary table: Signal is a column header.
-            if slide_index==0:
-                for r in range(min(3,len(tb.rows))):
-                    for c in range(len(tb.columns)):
-                        if C(tb.cell(r,c).text)!='signal':
-                            continue
-                        target_row=r+1
-                        if target_row<len(tb.rows):
-                            base.signal(tb.cell(target_row,c),st)
-                        break
-                continue
-
-            # Page 2 metadata table: Signal is a row label.
-            for r in range(len(tb.rows)):
-                for c in range(len(tb.columns)):
-                    if C(tb.cell(r,c).text)=='signal' and c+1<len(tb.columns):
-                        base.signal(tb.cell(r,c+1),st)
+    sl=prs.slides[1]
+    for sh in v310.walk(sl):
+        if not getattr(sh,'has_table',False):
+            continue
+        tb=sh.table
+        for r in range(len(tb.rows)):
+            for c in range(len(tb.columns)):
+                if C(tb.cell(r,c).text)=='signal' and c+1<len(tb.columns):
+                    base.signal(tb.cell(r,c+1),st)
     return st
 
 
@@ -74,8 +62,6 @@ def _update_page2_step12(sl,d,g,mode):
     imgs=d.get('_section_images',{}) or {}
     zones,texts,fonts=step11._layout_with_4d_placeholders(d,imgs)
 
-    # The 4D circle/title remains "4D 원인분석". The content directly below it
-    # explicitly identifies which side is occurrence cause vs escape cause.
     texts['4D_CAUSE']=_labeled_4d_text(d,'4D_CAUSE')
     texts['4D_LEAK']=_labeled_4d_text(d,'4D_LEAK')
 
@@ -98,13 +84,16 @@ def weekly_step12(src,out,d,g,mode):
     p1['problem']=step4._full_problem(d)
 
     prs=Presentation(src)
+
+    # Page 1 owns its own correct row-selection logic. Do not touch it again later.
     v319._update_page1(prs,p1,g)
+
     if len(prs.slides)>1:
         _update_page2_step12(prs.slides[1],dd,g,mode)
         step4._force_page2_header(prs.slides[1],d,g)
 
-    # Do this LAST so both pages end with one identical Signal status/color.
-    _sync_signals(prs,d,g)
+    # Synchronize page 2 only. This keeps page 1 유첨/비고 completely untouched.
+    _sync_page2_signal_only(prs,d,g)
 
     Path(out).parent.mkdir(parents=True,exist_ok=True)
     try:
@@ -127,7 +116,7 @@ base.weekly=weekly_step12
 class RecoveryStep12App(step10.RecoveryStep10App):
     def __init__(self):
         super().__init__()
-        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP12 FIX1')
+        self.title('8D 이슈 자동화 v3.2.0 RECOVERY STEP12 FIX2')
 
 
 if __name__=='__main__':
