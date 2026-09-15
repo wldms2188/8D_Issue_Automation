@@ -1,12 +1,10 @@
 """Final enterprise launcher for internal distribution.
 
 UI: main_enterprise_v3
-Weekly PPT polish: centered Signal + change-aware dark-navy update text
-Progress polish: one percentage display only
+Weekly PPT polish: centered Signal + change-aware #0033FF update text
+Progress: owned directly by main_enterprise_v3 (single visible percentage)
 """
-# Import hooks before the app starts.
 import weekly_style_final  # noqa: F401
-import progress_display_final  # noqa: F401
 from main_enterprise_v3 import EnterpriseAppV3
 
 
