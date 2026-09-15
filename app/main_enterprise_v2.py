@@ -18,23 +18,30 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         self._compact_layout()
 
     def _compact_layout(self):
-        """Recover vertical space without adding a floating status bar."""
-        self.geometry('1180x850')
-        # Compact only the high-frequency input rows/cards. Keep result/status area intact.
+        """Fit the complete UI, result box and footer inside common corporate laptop screens."""
+        self.update_idletasks()
+        sw=self.winfo_screenwidth(); sh=self.winfo_screenheight()
+        w=min(1180,max(1040,sw-80)); h=min(800,max(720,sh-90))
+        self.minsize(1040,700)
+        self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
+        # Header: recover vertical space without changing visual hierarchy.
+        for child in self.winfo_children():
+            try:
+                if isinstance(child,tk.Frame) and child.cget('bg')==ui.NAVY:
+                    child.configure(height=78); break
+            except Exception: pass
+        # Compact the three file cards.
         for z in getattr(self,'dropzones',{}).values():
             try:
-                z.pack_configure(pady=3)
-                # Tighten the internal drop-zone vertical spacing while keeping controls usable.
-                kids=z.winfo_children()
-                for child in kids:
+                z.pack_configure(pady=2)
+                for child in z.winfo_children():
                     try:
-                        info=child.pack_info()
-                        py=info.get('pady',0)
+                        info=child.pack_info(); py=info.get('pady',0)
                         if isinstance(py,tuple): child.pack_configure(pady=(max(1,int(py[0])-2),max(1,int(py[1])-2)))
                     except Exception: pass
             except Exception: pass
-        # Reduce the large blank/result allocation: status remains in the original result header.
-        try: self.log.configure(height=4)
+        # Keep the result box useful but not tall enough to push the footer off-screen.
+        try: self.log.configure(height=3)
         except Exception: pass
 
     def _replace_label_text(self, old, new):
@@ -66,14 +73,14 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         for label,key in [('담당팀','team'),('담당자','owner'),('발생 샘플','sample'),('PMS/PLM 이슈번호','plm_no')]:
             row=self._find_labeled_row(label)
             if not row: continue
-            row.pack_configure(pady=2)
+            row.pack_configure(pady=1)
             mark=self._status_mark(row); self._field_marks[key]=mark
             self.vars[key].trace_add('write',lambda *_args,k=key:self._refresh_field_mark(k)); self._refresh_field_mark(key)
         first_dropdown_row=None
         for label,key in [('폼팩터','form_factor'),('제품 타입','product_type'),('발생처','occurrence_site'),('개발 단계','stage')]:
             row=self._find_labeled_row(label)
             if not row: continue
-            row.pack_configure(pady=3)
+            row.pack_configure(pady=2)
             if first_dropdown_row is None: first_dropdown_row=row
             var=tk.BooleanVar(value=False); self._confirm_vars[key]=var
             btn=tk.Button(row,text='○',command=lambda k=key:self._toggle_confirm(k),bg='white',fg='#8A98A5',activebackground='white',activeforeground=ui.GREEN,bd=0,font=('Malgun Gothic',11,'bold'),width=2,cursor='hand2')
@@ -84,13 +91,12 @@ class EnterpriseAppV2(ent.EnterpriseApp):
             if combo is not None: combo.bind('<<ComboboxSelected>>',lambda e,k=key:self._confirm_dropdown(k),add='+')
         if first_dropdown_row is not None:
             parent=first_dropdown_row.master
-            # Divider above classification block is also tightened.
             for child in parent.winfo_children():
                 try:
-                    if isinstance(child,tk.Frame) and int(child.cget('height'))==1: child.pack_configure(pady=6)
+                    if isinstance(child,tk.Frame) and int(child.cget('height'))==1: child.pack_configure(pady=4)
                 except Exception: pass
             guide=tk.Label(parent,text='※ 분류값 확인: 값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right')
-            guide.pack(fill='x',pady=(0,3),before=first_dropdown_row)
+            guide.pack(fill='x',pady=(0,2),before=first_dropdown_row)
         self.vars['xlsx'].trace_add('write',lambda *_:self._refresh_field_mark('plm_no'))
 
     def _refresh_field_mark(self,key):
