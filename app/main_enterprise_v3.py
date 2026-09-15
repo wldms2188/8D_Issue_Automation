@@ -51,12 +51,25 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         self.bind_all('<ButtonPress-1>',self._route_card_click_v3,add='+')
         self.bind_all('<FocusIn>',self._route_card_focus_v3,add='+')
         self.bind_all('<MouseWheel>',self._route_card_wheel_v3,add='+')
-        for zone in getattr(self,'dropzones',{}).values():
-            try:
-                old_drop=zone._drop
-                def active_drop(paths,_old=old_drop): self._set_card_ratio(1); return _old(paths)
-                zone._drop=active_drop
-            except Exception: pass
+
+        # tkinterdnd2 stores the callback registered at DropZone construction time.
+        # Replacing zone._drop afterwards does NOT replace that registered Tcl callback.
+        # Register an additional Drop event on both the zone and its filename label so
+        # a real drag/drop always activates card 01 before the existing DropZone handler runs.
+        if ui.DND_AVAILABLE:
+            for zone in getattr(self,'dropzones',{}).values():
+                for target in (zone, getattr(zone,'name',None)):
+                    if target is None: continue
+                    try:
+                        target.dnd_bind('<<Drop>>', lambda _e:self._set_card_ratio(1), add='+')
+                    except Exception:
+                        pass
+                # var change is the final fallback: after a successful drop the selected
+                # file variable changes, so card 01 is activated even if Tcl event ordering differs.
+                try:
+                    zone.var.trace_add('write', lambda *_:self._set_card_ratio(1))
+                except Exception:
+                    pass
         self._set_card_ratio(0)
 
     def _route_card_click_v3(self,event):
