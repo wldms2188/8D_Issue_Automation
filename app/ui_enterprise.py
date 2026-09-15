@@ -24,23 +24,33 @@ def center_window(win, parent=None, width=500, height=250):
     win.geometry(f'{width}x{height}+{x}+{y}')
 
 
+def _dialog_height(message, requested=250):
+    """Keep the footer/buttons visible even for multiline confirmation text."""
+    lines=0
+    for raw in str(message).splitlines() or ['']:
+        # Approximate wrapped lines at the current 390px text width.
+        lines += max(1, (len(raw)+43)//44)
+    return max(requested, min(620, 185 + lines*24))
+
+
 def dialog(parent, title, message, kind='info', buttons=(('확인', True),), width=500, height=250):
+    height=_dialog_height(message,height)
     win=tk.Toplevel(parent); win.withdraw(); win.title(title); win.configure(bg=WHITE); win.resizable(False,False); win.transient(parent)
     result={'value':None}
-    head=tk.Frame(win,bg=NAVY,height=56); head.pack(fill='x'); head.pack_propagate(False)
+    head=tk.Frame(win,bg=NAVY,height=56); head.pack(fill='x',side='top'); head.pack_propagate(False)
     tk.Label(head,text=title,bg=NAVY,fg=WHITE,font=('Malgun Gothic',12,'bold')).pack(side='left',padx=22)
+    foot=tk.Frame(win,bg='#F6F8FA',height=62); foot.pack(fill='x',side='bottom'); foot.pack_propagate(False)
+    box=tk.Frame(foot,bg='#F6F8FA'); box.pack(side='right',padx=20,pady=12)
+    def choose(v): result['value']=v; win.destroy()
+    for i,(label,value) in enumerate(buttons):
+        primary=(i==len(buttons)-1)
+        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=11,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,pady=7)
+        b.pack(side='left',padx=(6,0))
     icon={'info':'i','warning':'!','error':'×','question':'?'}.get(kind,'i')
     col={'info':BLUE,'warning':'#C98424','error':RED,'question':BLUE}.get(kind,BLUE)
     body=tk.Frame(win,bg=WHITE); body.pack(fill='both',expand=True,padx=24,pady=18)
     tk.Label(body,text=icon,bg=col,fg=WHITE,font=('Malgun Gothic',14,'bold'),width=2,height=1).pack(side='left',anchor='n',padx=(0,15))
-    tk.Label(body,text=message,bg=WHITE,fg=TEXT,font=('Malgun Gothic',10),justify='left',anchor='nw',wraplength=390).pack(side='left',fill='both',expand=True)
-    foot=tk.Frame(win,bg='#F6F8FA',height=58); foot.pack(fill='x',side='bottom'); foot.pack_propagate(False)
-    box=tk.Frame(foot,bg='#F6F8FA'); box.pack(side='right',padx=20,pady=11)
-    def choose(v): result['value']=v; win.destroy()
-    for i,(label,value) in enumerate(buttons):
-        primary=(i==len(buttons)-1)
-        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=11,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,pady=6)
-        b.pack(side='left',padx=(6,0))
+    tk.Label(body,text=message,bg=WHITE,fg=TEXT,font=('Malgun Gothic',10),justify='left',anchor='nw',wraplength=max(300,width-110)).pack(side='left',fill='both',expand=True)
     win.protocol('WM_DELETE_WINDOW',lambda:choose(None)); center_window(win,parent,width,height); win.deiconify(); win.grab_set(); win.focus_force(); parent.wait_window(win)
     return result['value']
 
@@ -48,7 +58,7 @@ def dialog(parent, title, message, kind='info', buttons=(('확인', True),), wid
 def info(parent,title,message): return dialog(parent,title,message,'info')
 def warning(parent,title,message): return dialog(parent,title,message,'warning')
 def error(parent,title,message): return dialog(parent,title,message,'error')
-def ask_yes_no(parent,title,message): return dialog(parent,title,message,'question',(('아니오',False),('예',True))) is True
+def ask_yes_no(parent,title,message): return dialog(parent,title,message,'question',(('아니오',False),('확인',True))) is True
 
 
 def parse_drop_files(widget, data):
