@@ -2,9 +2,11 @@
 Windows/Tk production layout:
 - fixed 50/50 and 65/35 cards independent of long filenames;
 - always-visible progress strip;
-- explicit active-card border state for click, browse, focus, wheel and drag/drop interaction.
+- explicit active-card border state for click, browse, focus, wheel and drag/drop interaction;
+- exactly one visible progress percentage.
 Business logic remains inherited unchanged from main_enterprise_v2.
 """
+import re
 import tkinter as tk
 
 import main_enterprise_v2 as v2
@@ -40,6 +42,7 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         try: self.card01.grid_forget(); self.card02.grid_forget()
         except Exception: pass
         p.configure(height=natural_h); p.pack_propagate(False); p.grid_propagate(False)
+
         def bind_tree(widget, side):
             widget.bind('<ButtonPress-1>', lambda _e,s=side:self._set_card_ratio(s), add='+')
             widget.bind('<FocusIn>', lambda _e,s=side:self._set_card_ratio(s), add='+')
@@ -52,24 +55,17 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         self.bind_all('<FocusIn>',self._route_card_focus_v3,add='+')
         self.bind_all('<MouseWheel>',self._route_card_wheel_v3,add='+')
 
-        # tkinterdnd2 stores the callback registered at DropZone construction time.
-        # Replacing zone._drop afterwards does NOT replace that registered Tcl callback.
-        # Register an additional Drop event on both the zone and its filename label so
-        # a real drag/drop always activates card 01 before the existing DropZone handler runs.
-        if ui.DND_AVAILABLE:
-            for zone in getattr(self,'dropzones',{}).values():
+        # Real tkinterdnd2 callbacks are registered at DropZone construction time.
+        # Bind directly to the Tcl <<Drop>> event AND to the selected-file variable.
+        # Either path activates input card 01; this is deliberately redundant for Windows DnD.
+        for zone in getattr(self,'dropzones',{}).values():
+            if ui.DND_AVAILABLE:
                 for target in (zone, getattr(zone,'name',None)):
                     if target is None: continue
-                    try:
-                        target.dnd_bind('<<Drop>>', lambda _e:self._set_card_ratio(1), add='+')
-                    except Exception:
-                        pass
-                # var change is the final fallback: after a successful drop the selected
-                # file variable changes, so card 01 is activated even if Tcl event ordering differs.
-                try:
-                    zone.var.trace_add('write', lambda *_:self._set_card_ratio(1))
-                except Exception:
-                    pass
+                    try: target.dnd_bind('<<Drop>>', lambda _e:self._set_card_ratio(1), add='+')
+                    except Exception: pass
+            try: zone.var.trace_add('write', lambda *_:self._set_card_ratio(1))
+            except Exception: pass
         self._set_card_ratio(0)
 
     def _route_card_click_v3(self,event):
@@ -113,11 +109,32 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
                 walk(child)
         walk(self); return found[0] if found else None
 
+    @staticmethod
+    def _clean_status_for_display(text):
+        """Never show a second numeric progress value next to the dedicated percent label."""
+        s=str(text or '').strip()
+        # Handles '85 RUNNING', '85% RUNNING', '85% · RUNNING', and repeated variants.
+        s=re.sub(r'^\s*(?:\d{1,3}\s*%?\s*(?:[·|:\-]\s*)?)+(?=[A-Za-z가-힣])', '', s).strip()
+        return s or 'READY'
+
     def _install_progress_panel(self):
-        """One progress bar + one percentage. No second progress-text variable/widget."""
+        """One progress bar + one percentage + a separately sanitized status label."""
         self.progress_value=tk.DoubleVar(value=0)
         header=self._find_result_header()
         if header is None:return
+
+        # The original Enterprise UI already owns the status label. Point it at a display-only
+        # variable so business status_var can never leak a duplicate numeric percentage onscreen.
+        self.status_display_var=tk.StringVar(value=self._clean_status_for_display(self.status_var.get()))
+        def retarget_status_label(widget):
+            for child in widget.winfo_children():
+                try:
+                    if str(child.cget('textvariable')) == str(self.status_var):
+                        child.configure(textvariable=self.status_display_var)
+                except Exception: pass
+                retarget_status_label(child)
+        retarget_status_label(self)
+
         progress_wrap=tk.Frame(header,bg='white'); progress_wrap.pack(side='right',fill='x',expand=True,padx=(20,10))
         self.progress_percent=tk.Label(progress_wrap,text='0%',bg='white',fg=ui.NAVY,font=('Malgun Gothic',8,'bold'),width=5,anchor='e')
         self.progress_percent.pack(side='right',padx=(8,0))
@@ -125,7 +142,13 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         self.progress_canvas.pack(side='right',fill='x',expand=True,pady=3)
         self.progress_fill=self.progress_canvas.create_rectangle(0,0,0,12,fill='#1769AA',outline='')
         self.progress_canvas.bind('<Configure>',lambda _e:self._paint_progress_bar())
-        self.status_var.trace_add('write',self._sync_progress_from_status); self._sync_progress_from_status()
+        self.status_var.trace_add('write',self._sync_progress_from_status)
+        self.status_var.trace_add('write',self._sync_status_display)
+        self._sync_progress_from_status(); self._sync_status_display()
+
+    def _sync_status_display(self,*_):
+        try: self.status_display_var.set(self._clean_status_for_display(self.status_var.get()))
+        except Exception: pass
 
     def _paint_progress_bar(self):
         try:
@@ -136,7 +159,7 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         except Exception: pass
 
     def _set_progress(self,pct,label):
-        """Update only the dedicated percentage widget; status text is owned by status_var."""
+        """Update only the dedicated percentage widget; never add pct to status text."""
         pct=max(0,min(100,int(pct))); self.progress_value.set(pct); self._paint_progress_bar()
         try: self.update_idletasks(); self.update()
         except Exception: pass
