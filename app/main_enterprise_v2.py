@@ -37,9 +37,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         except Exception: pass
 
     def _install_progress_panel(self):
-        """Show real workflow-stage progress in the existing result card.
-        Percentages represent completion of the program workflow stages, not elapsed time.
-        """
+        """Visible, deterministic workflow progress bar independent of Windows ttk theme."""
         parent=self.log.master
         self.progress_value=tk.DoubleVar(value=0)
         self.progress_text=tk.StringVar(value='0%  ·  실행 대기')
@@ -48,41 +46,41 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         top=tk.Frame(panel,bg='white'); top.pack(fill='x',pady=(0,4))
         tk.Label(top,text='진행률',bg='white',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(side='left')
         tk.Label(top,textvariable=self.progress_text,bg='white',fg=ui.NAVY,font=('Malgun Gothic',8,'bold')).pack(side='right')
-        style=ttk.Style(self); style.configure('Enterprise.Horizontal.TProgressbar',thickness=9)
-        self.progressbar=ttk.Progressbar(panel,style='Enterprise.Horizontal.TProgressbar',variable=self.progress_value,maximum=100,mode='determinate')
-        self.progressbar.pack(fill='x')
+        # Canvas is used instead of ttk.Progressbar because corporate Windows themes can hide the filled bar.
+        self.progress_canvas=tk.Canvas(panel,height=12,bg='#E2E8ED',highlightthickness=0,bd=0)
+        self.progress_canvas.pack(fill='x')
+        self.progress_fill=self.progress_canvas.create_rectangle(0,0,0,12,fill=ui.BLUE,outline='')
+        self.progress_canvas.bind('<Configure>',lambda _e:self._paint_progress_bar())
         self.status_var.trace_add('write',self._sync_progress_from_status)
         self._sync_progress_from_status()
 
+    def _paint_progress_bar(self):
+        try:
+            self.progress_canvas.update_idletasks()
+            width=max(1,self.progress_canvas.winfo_width())
+            height=max(1,self.progress_canvas.winfo_height())
+            pct=max(0.0,min(100.0,float(self.progress_value.get())))
+            self.progress_canvas.coords(self.progress_fill,0,0,width*pct/100.0,height)
+        except Exception: pass
+
     def _sync_progress_from_status(self,*_):
         s=self.status_var.get().strip(); low=s.lower()
-        # Stage-based percentages: only advance when the application reaches the corresponding stage.
         if 'error' in low or '실패' in s:
-            self.progress_text.set(f'{int(self.progress_value.get())}%  ·  오류 발생'); return
-        if 'complete' in low or '완료' in s:
-            pct=100; label='업데이트 완료'
-        elif '주간' in s or 'weekly' in low or 'ppt' in low and ('업데이트' in s or '저장' in s):
-            pct=85; label='주간회의 PPT 업데이트 중'
-        elif 'excel' in low and ('업데이트' in s or '저장' in s) or 'issue db 업데이트' in low:
-            pct=70; label='Issue DB 업데이트 중'
-        elif '이슈기인' in s:
-            pct=55; label='이슈기인 확인 중'
-        elif '현상' in s and ('확인' in s or '선택' in s):
-            pct=45; label='Issue DB 현상 확인 중'
-        elif '매칭' in s or 'match' in low:
-            pct=30; label='기존 이슈 매칭 확인 중'
-        elif '추출' in s or 'analyz' in low:
-            pct=15; label='8D 내용 추출 중'
-        elif 'running' in low:
-            pct=max(10,int(self.progress_value.get())); label=s.split('·',1)[-1].strip() if '·' in s else '처리 중'
-        elif 'ready' in low:
-            pct=0; label='실행 대기'
-        else:
-            pct=int(self.progress_value.get()); label=s or '처리 중'
-        # Never move backwards during one execution, except when returning to READY.
+            self.progress_text.set(f'{int(self.progress_value.get())}%  ·  오류 발생'); self._paint_progress_bar(); return
+        if 'complete' in low or '완료' in s: pct=100; label='업데이트 완료'
+        elif '주간' in s or 'weekly' in low or ('ppt' in low and ('업데이트' in s or '저장' in s)): pct=85; label='주간회의 PPT 업데이트 중'
+        elif (('excel' in low and ('업데이트' in s or '저장' in s)) or 'issue db 업데이트' in low): pct=70; label='Issue DB 업데이트 중'
+        elif '이슈기인' in s: pct=55; label='이슈기인 확인 중'
+        elif '현상' in s and ('확인' in s or '선택' in s): pct=45; label='Issue DB 현상 확인 중'
+        elif '매칭' in s or 'match' in low: pct=30; label='기존 이슈 매칭 확인 중'
+        elif '추출' in s or 'analyz' in low: pct=15; label='8D 내용 추출 중'
+        elif 'running' in low: pct=max(10,int(self.progress_value.get())); label=s.split('·',1)[-1].strip() if '·' in s else '처리 중'
+        elif 'ready' in low: pct=0; label='실행 대기'
+        else: pct=int(self.progress_value.get()); label=s or '처리 중'
         if pct==0: self.progress_value.set(0)
         else: self.progress_value.set(max(float(self.progress_value.get()),pct))
         shown=int(self.progress_value.get()); self.progress_text.set(f'{shown}%  ·  {label}')
+        self._paint_progress_bar()
         try: self.update_idletasks()
         except Exception: pass
 
