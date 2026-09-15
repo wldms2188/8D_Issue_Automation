@@ -28,9 +28,8 @@ def _dialog_height(message, requested=250):
     """Keep the footer/buttons visible even for multiline confirmation text."""
     lines=0
     for raw in str(message).splitlines() or ['']:
-        # Approximate wrapped lines at the current 390px text width.
         lines += max(1, (len(raw)+43)//44)
-    return max(requested, min(620, 185 + lines*24))
+    return max(requested, min(640, 195 + lines*24))
 
 
 def dialog(parent, title, message, kind='info', buttons=(('확인', True),), width=500, height=250):
@@ -39,13 +38,14 @@ def dialog(parent, title, message, kind='info', buttons=(('확인', True),), wid
     result={'value':None}
     head=tk.Frame(win,bg=NAVY,height=56); head.pack(fill='x',side='top'); head.pack_propagate(False)
     tk.Label(head,text=title,bg=NAVY,fg=WHITE,font=('Malgun Gothic',12,'bold')).pack(side='left',padx=22)
-    foot=tk.Frame(win,bg='#F6F8FA',height=62); foot.pack(fill='x',side='bottom'); foot.pack_propagate(False)
-    box=tk.Frame(foot,bg='#F6F8FA'); box.pack(side='right',padx=20,pady=12)
+    # Taller footer + button padding: visually matches the primary action buttons in the main UI.
+    foot=tk.Frame(win,bg='#F6F8FA',height=76); foot.pack(fill='x',side='bottom'); foot.pack_propagate(False)
+    box=tk.Frame(foot,bg='#F6F8FA'); box.pack(side='right',padx=20,pady=14)
     def choose(v): result['value']=v; win.destroy()
     for i,(label,value) in enumerate(buttons):
         primary=(i==len(buttons)-1)
-        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=11,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,pady=7)
-        b.pack(side='left',padx=(6,0))
+        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=11,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,padx=4,pady=10)
+        b.pack(side='left',padx=(8,0))
     icon={'info':'i','warning':'!','error':'×','question':'?'}.get(kind,'i')
     col={'info':BLUE,'warning':'#C98424','error':RED,'question':BLUE}.get(kind,BLUE)
     body=tk.Frame(win,bg=WHITE); body.pack(fill='both',expand=True,padx=24,pady=18)
