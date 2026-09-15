@@ -15,6 +15,17 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         self._replace_label_text('예: DUT3 / Sample No.', '예: A1, B1, C2')
         self._replace_label_text('기존값이 있을 때 입력', 'Issue DB 업데이트 시 필수 입력')
         self._install_input_checks()
+        self._install_fixed_status_bar()
+
+    def _install_fixed_status_bar(self):
+        """Always-visible status strip above the footer, independent of result-panel height."""
+        bar=tk.Frame(self,bg='#E9F1F8',height=38,highlightbackground='#D6E2EC',highlightthickness=1)
+        bar.place(relx=0,rely=1.0,y=-68,relwidth=1.0,height=38)
+        tk.Label(bar,text='STATUS',bg='#E9F1F8',fg='#6A8093',font=('Segoe UI',8,'bold')).pack(side='left',padx=(26,12))
+        tk.Label(bar,textvariable=self.status_var,bg='#E9F1F8',fg='#315A7D',font=('Malgun Gothic',9,'bold'),anchor='w').pack(side='left',fill='x',expand=True,pady=7)
+        self._status_bar=bar
+        # Keep it above normal packed widgets even when the main content becomes taller.
+        bar.lift()
 
     def _replace_label_text(self, old, new):
         def walk(widget):
@@ -59,7 +70,6 @@ class EnterpriseAppV2(ent.EnterpriseApp):
             for child in row.winfo_children():
                 if isinstance(child,ttk.Combobox): combo=child; break
             if combo is not None: combo.bind('<<ComboboxSelected>>',lambda e,k=key:self._confirm_dropdown(k),add='+')
-        # Put one concise instruction directly above the classification dropdown block.
         if first_dropdown_row is not None:
             parent=first_dropdown_row.master
             guide=tk.Label(parent,text='※ 분류값을 확인해 주세요.  값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right')
