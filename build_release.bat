@@ -4,8 +4,8 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ================================================
-echo   8D Issue Automation 1.0 - Release Builder
-echo ================================================
+echo   8D Issue Automation 1.0 - Enterprise Release
+ echo ================================================
 
 py -3 -m pip install --upgrade pip
 if errorlevel 1 goto :fail
@@ -22,7 +22,7 @@ py -3 -m PyInstaller --noconfirm --clean --windowed --onefile ^
   --collect-all openpyxl ^
   --collect-all tkinterdnd2 ^
   --hidden-import PIL ^
-  app\main_final.py
+  app\main_enterprise.py
 if errorlevel 1 goto :fail
 
 echo.
