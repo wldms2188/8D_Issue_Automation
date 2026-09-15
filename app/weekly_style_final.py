@@ -3,6 +3,7 @@
 Rules:
 - Signal dot: preserve status color and center horizontally/vertically.
 - Existing issue: every managed field is compared with its previous value; only actual changes are blue.
+- Summary task/issue identity fields use semantic comparison so harmless PPT whitespace/line-break differences do not become false changes.
 - Unchanged/repeated content is black regardless of D stage (2D~6D included).
 - New issue: newly populated automation content is blue because there is no previous issue content.
 - Static template labels remain untouched.
@@ -10,6 +11,7 @@ Rules:
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Pt
+import re
 
 import main_recovery_step14_fix2 as core
 import main_recovery_step14 as s14
@@ -45,6 +47,17 @@ def _color_shape(shape, color):
 
 def _norm(x):
     return '\n'.join(str(x or '').replace('\r\n', '\n').replace('\r', '\n').splitlines()).strip()
+
+
+def _identity_norm(x):
+    """Compare identity text independent of PPT-only wrapping/spacing.
+
+    PowerPoint can expose a visually identical cell as spaces, tabs, NBSP or line
+    breaks depending on how the template was authored. Those are formatting, not
+    an issue-name change.
+    """
+    s = str(x or '').replace('\u00a0', ' ')
+    return re.sub(r'\s+', '', s).casefold()
 
 
 def _auto_text_snapshot(sl):
@@ -101,9 +114,12 @@ def refined_write_summary_row(tb, row, hr, d, g):
                 continue
             new = _norm(tb.cell(row, hm[key]).text)
             previous = old.get(key, '')
-            # Existing populated value: blue only when the value actually changed.
-            # Blank previous value means newly populated content, so it is blue.
-            changed = (previous != new)
+            # Task/issue are identity fields. Ignore visual-only whitespace/wrapping
+            # introduced by PowerPoint so identical content remains black.
+            if key in ('task', 'issue'):
+                changed = (_identity_norm(previous) != _identity_norm(new))
+            else:
+                changed = (previous != new)
             _color_cell(tb.cell(row, hm[key]), UPDATE_BLUE if changed else BLACK)
     except Exception:
         pass
@@ -131,18 +147,14 @@ def refined_update_detail_slide(sl, d, g, mode):
         old_text = before.get(key, '')
 
         if existing:
-            # For a legacy page without an AUTO snapshot, do not guess that it changed.
-            # This prevents old/repeated content from being falsely highlighted.
             if key not in before:
                 changed = False
             else:
                 changed = (old_text != new_text)
             _color_shape(sh, UPDATE_BLUE if changed else BLACK)
         else:
-            # New issue has no prior issue content: populated D content is new.
             _color_shape(sh, UPDATE_BLUE if bool(new_text) else BLACK)
 
-    # Metadata is kept neutral; the blue rule is for issue-content changes.
     labels = {'이슈기인', '발생단계'}
     label_keys = {s13._k(x) for x in labels}
     for sh in v310.walk(sl):
