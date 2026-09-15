@@ -9,7 +9,7 @@ echo ================================================
 
 py -3 -m pip install --upgrade pip
 if errorlevel 1 goto :fail
-py -3 -m pip install pyinstaller python-pptx openpyxl pillow
+py -3 -m pip install pyinstaller python-pptx openpyxl pillow tkinterdnd2
 if errorlevel 1 goto :fail
 
 if exist build rmdir /s /q build
@@ -20,6 +20,7 @@ py -3 -m PyInstaller --noconfirm --clean --windowed --onefile ^
   --paths app ^
   --collect-all pptx ^
   --collect-all openpyxl ^
+  --collect-all tkinterdnd2 ^
   --hidden-import PIL ^
   app\main_final.py
 if errorlevel 1 goto :fail
