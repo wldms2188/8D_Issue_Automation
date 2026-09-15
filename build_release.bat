@@ -22,7 +22,7 @@ py -3 -m PyInstaller --noconfirm --clean --windowed --onefile ^
   --collect-all openpyxl ^
   --collect-all tkinterdnd2 ^
   --hidden-import PIL ^
-  app\main_enterprise.py
+  app\main_enterprise_v2.py
 if errorlevel 1 goto :fail
 
 echo.
