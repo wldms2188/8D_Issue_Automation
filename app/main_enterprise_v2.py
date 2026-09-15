@@ -1,4 +1,4 @@
-"""Enterprise UI v2: guided inputs, explicit classification confirmation, DB validation and 8D preview."""
+"""Enterprise UI v2: compact guided inputs, classification confirmation, DB validation and 8D preview."""
 import tkinter as tk
 from tkinter import ttk
 
@@ -15,17 +15,27 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         self._replace_label_text('예: DUT3 / Sample No.', '예: A1, B1, C2')
         self._replace_label_text('기존값이 있을 때 입력', 'Issue DB 업데이트 시 필수 입력')
         self._install_input_checks()
-        self._install_fixed_status_bar()
+        self._compact_layout()
 
-    def _install_fixed_status_bar(self):
-        """Always-visible status strip above the footer, independent of result-panel height."""
-        bar=tk.Frame(self,bg='#E9F1F8',height=38,highlightbackground='#D6E2EC',highlightthickness=1)
-        bar.place(relx=0,rely=1.0,y=-68,relwidth=1.0,height=38)
-        tk.Label(bar,text='STATUS',bg='#E9F1F8',fg='#6A8093',font=('Segoe UI',8,'bold')).pack(side='left',padx=(26,12))
-        tk.Label(bar,textvariable=self.status_var,bg='#E9F1F8',fg='#315A7D',font=('Malgun Gothic',9,'bold'),anchor='w').pack(side='left',fill='x',expand=True,pady=7)
-        self._status_bar=bar
-        # Keep it above normal packed widgets even when the main content becomes taller.
-        bar.lift()
+    def _compact_layout(self):
+        """Recover vertical space without adding a floating status bar."""
+        self.geometry('1180x850')
+        # Compact only the high-frequency input rows/cards. Keep result/status area intact.
+        for z in getattr(self,'dropzones',{}).values():
+            try:
+                z.pack_configure(pady=3)
+                # Tighten the internal drop-zone vertical spacing while keeping controls usable.
+                kids=z.winfo_children()
+                for child in kids:
+                    try:
+                        info=child.pack_info()
+                        py=info.get('pady',0)
+                        if isinstance(py,tuple): child.pack_configure(pady=(max(1,int(py[0])-2),max(1,int(py[1])-2)))
+                    except Exception: pass
+            except Exception: pass
+        # Reduce the large blank/result allocation: status remains in the original result header.
+        try: self.log.configure(height=4)
+        except Exception: pass
 
     def _replace_label_text(self, old, new):
         def walk(widget):
@@ -48,32 +58,39 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         return found[0] if found else None
 
     def _status_mark(self, row):
-        mark=tk.Label(row,text='○',bg='white',fg='#AAB5BE',font=('Malgun Gothic',12,'bold'),width=3)
-        mark.pack(side='right',padx=(8,0)); return mark
+        mark=tk.Label(row,text='○',bg='white',fg='#AAB5BE',font=('Malgun Gothic',11,'bold'),width=2)
+        mark.pack(side='right',padx=(5,0)); return mark
 
     def _install_input_checks(self):
         self._field_marks={}; self._confirm_vars={}; self._confirm_marks={}
         for label,key in [('담당팀','team'),('담당자','owner'),('발생 샘플','sample'),('PMS/PLM 이슈번호','plm_no')]:
             row=self._find_labeled_row(label)
             if not row: continue
+            row.pack_configure(pady=2)
             mark=self._status_mark(row); self._field_marks[key]=mark
             self.vars[key].trace_add('write',lambda *_args,k=key:self._refresh_field_mark(k)); self._refresh_field_mark(key)
         first_dropdown_row=None
         for label,key in [('폼팩터','form_factor'),('제품 타입','product_type'),('발생처','occurrence_site'),('개발 단계','stage')]:
             row=self._find_labeled_row(label)
             if not row: continue
+            row.pack_configure(pady=3)
             if first_dropdown_row is None: first_dropdown_row=row
             var=tk.BooleanVar(value=False); self._confirm_vars[key]=var
-            btn=tk.Button(row,text='○',command=lambda k=key:self._toggle_confirm(k),bg='white',fg='#8A98A5',activebackground='white',activeforeground=ui.GREEN,bd=0,font=('Malgun Gothic',13,'bold'),width=3,cursor='hand2')
-            btn.pack(side='right',padx=(8,0)); self._confirm_marks[key]=btn
+            btn=tk.Button(row,text='○',command=lambda k=key:self._toggle_confirm(k),bg='white',fg='#8A98A5',activebackground='white',activeforeground=ui.GREEN,bd=0,font=('Malgun Gothic',11,'bold'),width=2,cursor='hand2')
+            btn.pack(side='right',padx=(5,0)); self._confirm_marks[key]=btn
             combo=None
             for child in row.winfo_children():
                 if isinstance(child,ttk.Combobox): combo=child; break
             if combo is not None: combo.bind('<<ComboboxSelected>>',lambda e,k=key:self._confirm_dropdown(k),add='+')
         if first_dropdown_row is not None:
             parent=first_dropdown_row.master
-            guide=tk.Label(parent,text='※ 분류값을 확인해 주세요.  값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right')
-            guide.pack(fill='x',pady=(0,6),before=first_dropdown_row)
+            # Divider above classification block is also tightened.
+            for child in parent.winfo_children():
+                try:
+                    if isinstance(child,tk.Frame) and int(child.cget('height'))==1: child.pack_configure(pady=6)
+                except Exception: pass
+            guide=tk.Label(parent,text='※ 분류값 확인: 값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right')
+            guide.pack(fill='x',pady=(0,3),before=first_dropdown_row)
         self.vars['xlsx'].trace_add('write',lambda *_:self._refresh_field_mark('plm_no'))
 
     def _refresh_field_mark(self,key):
