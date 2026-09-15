@@ -2,10 +2,9 @@
 
 Rules:
 - Signal dot: preserve status color and center horizontally/vertically.
-- Template-reference vivid blue is used only for genuinely new/changed automation content.
-- Summary row through 현상 stays black; 진행사항 is blue only when it changed.
-- Existing issue detail: 2D stays black. 3D~6D are blue only when their text actually changed.
-- New issue detail: 2D stays black; 3D~6D are blue.
+- Existing issue: every managed field is compared with its previous value; only actual changes are blue.
+- Unchanged/repeated content is black regardless of D stage (2D~6D included).
+- New issue: newly populated automation content is blue because there is no previous issue content.
 - Static template labels remain untouched.
 """
 from pptx.dml.color import RGBColor
@@ -17,7 +16,6 @@ import main_recovery_step14 as s14
 import main_recovery_step13 as s13
 import main_v310 as v310
 
-# Vivid royal blue matched to the user's weekly-template reference image.
 UPDATE_BLUE = RGBColor(0x00, 0x33, 0xFF)
 BLACK = RGBColor(0x00, 0x00, 0x00)
 
@@ -67,10 +65,7 @@ def centered_signal(cell, status):
     try:
         tf = cell.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.margin_left = 0
-        tf.margin_right = 0
-        tf.margin_top = 0
-        tf.margin_bottom = 0
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
         for p in tf.paragraphs:
             p.alignment = PP_ALIGN.CENTER
             p.space_before = Pt(0)
@@ -85,27 +80,31 @@ def centered_signal(cell, status):
 core.base.signal = centered_signal
 
 
+# Summary page: compare every managed value before overwriting it.
 _original_write_summary_row = s14._write_summary_row
 
 
 def refined_write_summary_row(tb, row, hr, d, g):
     try:
-        hm_before = s13._summary_map(tb, hr)
-        old_progress = _norm(tb.cell(row, hm_before['progress']).text) if 'progress' in hm_before else ''
+        hm0 = s13._summary_map(tb, hr)
+        old = {k: _norm(tb.cell(row, c).text) for k, c in hm0.items()
+               if k in ('task', 'issue', 'problem', 'progress')}
     except Exception:
-        old_progress = ''
+        old = {}
 
     _original_write_summary_row(tb, row, hr, d, g)
 
     try:
         hm = s13._summary_map(tb, hr)
-        for key in ('task', 'issue', 'problem'):
-            if key in hm:
-                _color_cell(tb.cell(row, hm[key]), BLACK)
-        if 'progress' in hm:
-            new_progress = _norm(tb.cell(row, hm['progress']).text)
-            changed = (old_progress != new_progress)
-            _color_cell(tb.cell(row, hm['progress']), UPDATE_BLUE if changed else BLACK)
+        for key in ('task', 'issue', 'problem', 'progress'):
+            if key not in hm:
+                continue
+            new = _norm(tb.cell(row, hm[key]).text)
+            previous = old.get(key, '')
+            # Existing populated value: blue only when the value actually changed.
+            # Blank previous value means newly populated content, so it is blue.
+            changed = (previous != new)
+            _color_cell(tb.cell(row, hm[key]), UPDATE_BLUE if changed else BLACK)
     except Exception:
         pass
 
@@ -113,6 +112,7 @@ def refined_write_summary_row(tb, row, hr, d, g):
 s14._write_summary_row = refined_write_summary_row
 
 
+# Detail page: no stage is special. Compare 2D~6D identically.
 _original_update_detail_slide = s13._update_detail_slide
 
 
@@ -130,16 +130,19 @@ def refined_update_detail_slide(sl, d, g, mode):
         new_text = after.get(key, _norm(getattr(sh, 'text', '')))
         old_text = before.get(key, '')
 
-        if key.startswith('2D'):
-            _color_shape(sh, BLACK)
-            continue
-
         if existing:
-            changed = bool(old_text) and old_text != new_text
+            # For a legacy page without an AUTO snapshot, do not guess that it changed.
+            # This prevents old/repeated content from being falsely highlighted.
+            if key not in before:
+                changed = False
+            else:
+                changed = (old_text != new_text)
             _color_shape(sh, UPDATE_BLUE if changed else BLACK)
         else:
-            _color_shape(sh, UPDATE_BLUE)
+            # New issue has no prior issue content: populated D content is new.
+            _color_shape(sh, UPDATE_BLUE if bool(new_text) else BLACK)
 
+    # Metadata is kept neutral; the blue rule is for issue-content changes.
     labels = {'이슈기인', '발생단계'}
     label_keys = {s13._k(x) for x in labels}
     for sh in v310.walk(sl):
