@@ -1,9 +1,12 @@
 """Final weekly-PPT presentation polish.
 
-Applies only to text written by the automation:
-- Signal dot is centered horizontally and vertically in its table cell.
-- Updated summary/detail text is blue so meeting participants can see changes.
-Template labels/static text are intentionally left untouched.
+Rules:
+- Signal dot: preserve status color and center horizontally/vertically.
+- Dark navy is used only for genuinely new/changed automation content.
+- Summary row through 현상 stays black; 진행사항 is navy only when it changed.
+- Existing issue detail: 2D stays black. 3D~6D are navy only when their text actually changed.
+- New issue detail: 2D stays black; 3D~6D are navy.
+- Static template labels remain untouched.
 """
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
@@ -14,33 +17,48 @@ import main_recovery_step14 as s14
 import main_recovery_step13 as s13
 import main_v310 as v310
 
-BLUE = RGBColor(0x17, 0x69, 0xAA)
+NAVY = RGBColor(0x00, 0x33, 0x66)
+BLACK = RGBColor(0x00, 0x00, 0x00)
 
 
-def _blue_text_frame(tf):
+def _color_text_frame(tf, color):
     if tf is None:
         return
     for p in tf.paragraphs:
         for run in p.runs:
-            run.font.color.rgb = BLUE
+            run.font.color.rgb = color
 
 
-def _blue_cell(cell):
+def _color_cell(cell, color):
     try:
-        _blue_text_frame(cell.text_frame)
+        _color_text_frame(cell.text_frame, color)
     except Exception:
         pass
 
 
-def _blue_shape(shape):
+def _color_shape(shape, color):
     try:
         if hasattr(shape, 'text_frame'):
-            _blue_text_frame(shape.text_frame)
+            _color_text_frame(shape.text_frame, color)
     except Exception:
         pass
 
 
-# --- Signal: preserve status color, but force true cell centering. ---
+def _norm(x):
+    return '\n'.join(str(x or '').replace('\r\n', '\n').replace('\r', '\n').splitlines()).strip()
+
+
+def _auto_text_snapshot(sl):
+    out = {}
+    for sh in v310.walk(sl):
+        name = str(getattr(sh, 'name', '') or '')
+        if name.startswith('AUTO_8D_TEXT_'):
+            key = name[len('AUTO_8D_TEXT_'):].upper()
+            out[key] = _norm(getattr(sh, 'text', ''))
+    return out
+
+
+# --- Signal: status color unchanged, true cell centering. ---
 _original_signal = core.base.signal
 
 
@@ -58,7 +76,6 @@ def centered_signal(cell, status):
             p.space_before = Pt(0)
             p.space_after = Pt(0)
             for run in p.runs:
-                # Slightly larger than body text makes the status dot visually centered.
                 run.font.size = Pt(10)
                 run.font.bold = True
     except Exception:
@@ -68,69 +85,80 @@ def centered_signal(cell, status):
 core.base.signal = centered_signal
 
 
-# --- Summary row: only the four values written by automation become blue.
-# Signal keeps its own green/yellow/red color. ---
+# --- Summary: 과제명/이슈/현상 are always black. 진행사항 only navy when changed. ---
 _original_write_summary_row = s14._write_summary_row
 
 
-def blue_write_summary_row(tb, row, hr, d, g):
+def refined_write_summary_row(tb, row, hr, d, g):
+    try:
+        hm_before = s13._summary_map(tb, hr)
+        old_progress = _norm(tb.cell(row, hm_before['progress']).text) if 'progress' in hm_before else ''
+    except Exception:
+        old_progress = ''
+
     _original_write_summary_row(tb, row, hr, d, g)
+
     try:
         hm = s13._summary_map(tb, hr)
-        for key in ('task', 'issue', 'problem', 'progress'):
+        for key in ('task', 'issue', 'problem'):
             if key in hm:
-                _blue_cell(tb.cell(row, hm[key]))
+                _color_cell(tb.cell(row, hm[key]), BLACK)
+        if 'progress' in hm:
+            new_progress = _norm(tb.cell(row, hm['progress']).text)
+            changed = (old_progress != new_progress)
+            # A genuinely new row has no old progress; it is also new information.
+            _color_cell(tb.cell(row, hm['progress']), NAVY if changed else BLACK)
     except Exception:
         pass
 
 
-s14._write_summary_row = blue_write_summary_row
+s14._write_summary_row = refined_write_summary_row
 
 
-# --- Detail page: color generated D-content and metadata values written by the app.
-# Static template labels (2D/3D/4D/5D/6D, Signal, 이슈기인, 발생단계...) stay original. ---
+# --- Detail: compare old generated content before renderer replaces it. ---
 _original_update_detail_slide = s13._update_detail_slide
 
 
-def blue_update_detail_slide(sl, d, g, mode):
+def refined_update_detail_slide(sl, d, g, mode):
+    before = _auto_text_snapshot(sl)
     _original_update_detail_slide(sl, d, g, mode)
+    after = _auto_text_snapshot(sl)
+    existing = (s13._k(mode) in ('existing', '기존', '기존이슈'))
 
-    # D-section content created by the renderer is explicitly named AUTO_8D_TEXT_*.
     for sh in v310.walk(sl):
-        try:
-            if str(getattr(sh, 'name', '')).startswith('AUTO_8D_TEXT_'):
-                _blue_shape(sh)
-        except Exception:
-            pass
+        name = str(getattr(sh, 'name', '') or '')
+        if not name.startswith('AUTO_8D_TEXT_'):
+            continue
+        key = name[len('AUTO_8D_TEXT_'):].upper()
+        new_text = after.get(key, _norm(getattr(sh, 'text', '')))
+        old_text = before.get(key, '')
 
-    # Metadata value cells: color the cell to the right of labels the automation updates.
+        # 2D/현상 is always black, including existing issue updates.
+        if key.startswith('2D'):
+            _color_shape(sh, BLACK)
+            continue
+
+        # Existing issue: only genuinely changed 3D~6D content is navy.
+        # Unchanged duplicated content remains black.
+        if existing:
+            changed = bool(old_text) and old_text != new_text
+            # If the legacy slide did not use AUTO names, do not guess: keep black.
+            _color_shape(sh, NAVY if changed else BLACK)
+        else:
+            # New issue: post-현상 D content is newly added information.
+            _color_shape(sh, NAVY)
+
+    # Metadata values are not treated as "changed issue content"; keep them black.
     labels = {'이슈기인', '발생단계'}
+    label_keys = {s13._k(x) for x in labels}
     for sh in v310.walk(sl):
         if not getattr(sh, 'has_table', False):
             continue
         tb = sh.table
         for r in range(len(tb.rows)):
             for c in range(len(tb.columns)):
-                q = s13._k(tb.cell(r, c).text)
-                if q in {s13._k(x) for x in labels} and c + 1 < len(tb.columns):
-                    _blue_cell(tb.cell(r, c + 1))
-
-    # Header/title/team-owner shapes are replaced in-place rather than generated,
-    # so identify them by the values that were just written.
-    candidates = [
-        s13._customer_task(d),
-        s13._issue_display(d),
-        str(g.get('team', '') or ''),
-        str(g.get('owner', '') or ''),
-        str(g.get('stage', '') or ''),
-    ]
-    keys = [s13._k(x) for x in candidates if s13._k(x)]
-    for sh in v310.walk(sl):
-        if not hasattr(sh, 'text_frame'):
-            continue
-        text_key = s13._k(getattr(sh, 'text', ''))
-        if text_key and any(k in text_key for k in keys):
-            _blue_shape(sh)
+                if s13._k(tb.cell(r, c).text) in label_keys and c + 1 < len(tb.columns):
+                    _color_cell(tb.cell(r, c + 1), BLACK)
 
 
-s13._update_detail_slide = blue_update_detail_slide
+s13._update_detail_slide = refined_update_detail_slide
