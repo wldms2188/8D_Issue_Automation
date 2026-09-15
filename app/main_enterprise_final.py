@@ -1,10 +1,12 @@
 """Final enterprise launcher for internal distribution.
 
 UI: main_enterprise_v3
-Weekly PPT polish: centered Signal + blue automation-updated text
+Weekly PPT polish: centered Signal + change-aware dark-navy update text
+Progress polish: one percentage display only
 """
-# Importing this module installs the final weekly-PPT formatting hooks before the app runs.
+# Import hooks before the app starts.
 import weekly_style_final  # noqa: F401
+import progress_display_final  # noqa: F401
 from main_enterprise_v3 import EnterpriseAppV3
 
 
