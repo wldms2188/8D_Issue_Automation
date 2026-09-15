@@ -2,10 +2,10 @@
 
 Rules:
 - Signal dot: preserve status color and center horizontally/vertically.
-- Dark navy is used only for genuinely new/changed automation content.
-- Summary row through 현상 stays black; 진행사항 is navy only when it changed.
-- Existing issue detail: 2D stays black. 3D~6D are navy only when their text actually changed.
-- New issue detail: 2D stays black; 3D~6D are navy.
+- Template-reference vivid blue is used only for genuinely new/changed automation content.
+- Summary row through 현상 stays black; 진행사항 is blue only when it changed.
+- Existing issue detail: 2D stays black. 3D~6D are blue only when their text actually changed.
+- New issue detail: 2D stays black; 3D~6D are blue.
 - Static template labels remain untouched.
 """
 from pptx.dml.color import RGBColor
@@ -17,7 +17,8 @@ import main_recovery_step14 as s14
 import main_recovery_step13 as s13
 import main_v310 as v310
 
-NAVY = RGBColor(0x00, 0x33, 0x66)
+# Vivid royal blue matched to the user's weekly-template reference image.
+UPDATE_BLUE = RGBColor(0x00, 0x33, 0xFF)
 BLACK = RGBColor(0x00, 0x00, 0x00)
 
 
@@ -58,7 +59,6 @@ def _auto_text_snapshot(sl):
     return out
 
 
-# --- Signal: status color unchanged, true cell centering. ---
 _original_signal = core.base.signal
 
 
@@ -85,7 +85,6 @@ def centered_signal(cell, status):
 core.base.signal = centered_signal
 
 
-# --- Summary: 과제명/이슈/현상 are always black. 진행사항 only navy when changed. ---
 _original_write_summary_row = s14._write_summary_row
 
 
@@ -106,8 +105,7 @@ def refined_write_summary_row(tb, row, hr, d, g):
         if 'progress' in hm:
             new_progress = _norm(tb.cell(row, hm['progress']).text)
             changed = (old_progress != new_progress)
-            # A genuinely new row has no old progress; it is also new information.
-            _color_cell(tb.cell(row, hm['progress']), NAVY if changed else BLACK)
+            _color_cell(tb.cell(row, hm['progress']), UPDATE_BLUE if changed else BLACK)
     except Exception:
         pass
 
@@ -115,7 +113,6 @@ def refined_write_summary_row(tb, row, hr, d, g):
 s14._write_summary_row = refined_write_summary_row
 
 
-# --- Detail: compare old generated content before renderer replaces it. ---
 _original_update_detail_slide = s13._update_detail_slide
 
 
@@ -133,22 +130,16 @@ def refined_update_detail_slide(sl, d, g, mode):
         new_text = after.get(key, _norm(getattr(sh, 'text', '')))
         old_text = before.get(key, '')
 
-        # 2D/현상 is always black, including existing issue updates.
         if key.startswith('2D'):
             _color_shape(sh, BLACK)
             continue
 
-        # Existing issue: only genuinely changed 3D~6D content is navy.
-        # Unchanged duplicated content remains black.
         if existing:
             changed = bool(old_text) and old_text != new_text
-            # If the legacy slide did not use AUTO names, do not guess: keep black.
-            _color_shape(sh, NAVY if changed else BLACK)
+            _color_shape(sh, UPDATE_BLUE if changed else BLACK)
         else:
-            # New issue: post-현상 D content is newly added information.
-            _color_shape(sh, NAVY)
+            _color_shape(sh, UPDATE_BLUE)
 
-    # Metadata values are not treated as "changed issue content"; keep them black.
     labels = {'이슈기인', '발생단계'}
     label_keys = {s13._k(x) for x in labels}
     for sh in v310.walk(sl):
