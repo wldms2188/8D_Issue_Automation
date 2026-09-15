@@ -16,21 +16,14 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         self._replace_label_text('기존값이 있을 때 입력', 'Issue DB 업데이트 시 필수 입력')
         self._install_input_checks()
         self._compact_layout()
+        self._install_progress_panel()
 
     def _compact_layout(self):
-        """Fit the complete UI, result box and footer inside common corporate laptop screens."""
-        self.update_idletasks()
-        sw=self.winfo_screenwidth(); sh=self.winfo_screenheight()
-        w=min(1180,max(1040,sw-80)); h=min(800,max(720,sh-90))
-        self.minsize(1040,700)
-        self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
-        # Header: recover vertical space without changing visual hierarchy.
+        self.update_idletasks(); sw=self.winfo_screenwidth(); sh=self.winfo_screenheight(); w=min(1180,max(1040,sw-80)); h=min(800,max(720,sh-90)); self.minsize(1040,700); self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
         for child in self.winfo_children():
             try:
-                if isinstance(child,tk.Frame) and child.cget('bg')==ui.NAVY:
-                    child.configure(height=78); break
+                if isinstance(child,tk.Frame) and child.cget('bg')==ui.NAVY: child.configure(height=78); break
             except Exception: pass
-        # Compact the three file cards.
         for z in getattr(self,'dropzones',{}).values():
             try:
                 z.pack_configure(pady=2)
@@ -40,8 +33,57 @@ class EnterpriseAppV2(ent.EnterpriseApp):
                         if isinstance(py,tuple): child.pack_configure(pady=(max(1,int(py[0])-2),max(1,int(py[1])-2)))
                     except Exception: pass
             except Exception: pass
-        # Keep the result box useful but not tall enough to push the footer off-screen.
         try: self.log.configure(height=3)
+        except Exception: pass
+
+    def _install_progress_panel(self):
+        """Show real workflow-stage progress in the existing result card.
+        Percentages represent completion of the program workflow stages, not elapsed time.
+        """
+        parent=self.log.master
+        self.progress_value=tk.DoubleVar(value=0)
+        self.progress_text=tk.StringVar(value='0%  ·  실행 대기')
+        panel=tk.Frame(parent,bg='white')
+        panel.pack(fill='x',padx=16,pady=(0,7),before=self.log)
+        top=tk.Frame(panel,bg='white'); top.pack(fill='x',pady=(0,4))
+        tk.Label(top,text='진행률',bg='white',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(side='left')
+        tk.Label(top,textvariable=self.progress_text,bg='white',fg=ui.NAVY,font=('Malgun Gothic',8,'bold')).pack(side='right')
+        style=ttk.Style(self); style.configure('Enterprise.Horizontal.TProgressbar',thickness=9)
+        self.progressbar=ttk.Progressbar(panel,style='Enterprise.Horizontal.TProgressbar',variable=self.progress_value,maximum=100,mode='determinate')
+        self.progressbar.pack(fill='x')
+        self.status_var.trace_add('write',self._sync_progress_from_status)
+        self._sync_progress_from_status()
+
+    def _sync_progress_from_status(self,*_):
+        s=self.status_var.get().strip(); low=s.lower()
+        # Stage-based percentages: only advance when the application reaches the corresponding stage.
+        if 'error' in low or '실패' in s:
+            self.progress_text.set(f'{int(self.progress_value.get())}%  ·  오류 발생'); return
+        if 'complete' in low or '완료' in s:
+            pct=100; label='업데이트 완료'
+        elif '주간' in s or 'weekly' in low or 'ppt' in low and ('업데이트' in s or '저장' in s):
+            pct=85; label='주간회의 PPT 업데이트 중'
+        elif 'excel' in low and ('업데이트' in s or '저장' in s) or 'issue db 업데이트' in low:
+            pct=70; label='Issue DB 업데이트 중'
+        elif '이슈기인' in s:
+            pct=55; label='이슈기인 확인 중'
+        elif '현상' in s and ('확인' in s or '선택' in s):
+            pct=45; label='Issue DB 현상 확인 중'
+        elif '매칭' in s or 'match' in low:
+            pct=30; label='기존 이슈 매칭 확인 중'
+        elif '추출' in s or 'analyz' in low:
+            pct=15; label='8D 내용 추출 중'
+        elif 'running' in low:
+            pct=max(10,int(self.progress_value.get())); label=s.split('·',1)[-1].strip() if '·' in s else '처리 중'
+        elif 'ready' in low:
+            pct=0; label='실행 대기'
+        else:
+            pct=int(self.progress_value.get()); label=s or '처리 중'
+        # Never move backwards during one execution, except when returning to READY.
+        if pct==0: self.progress_value.set(0)
+        else: self.progress_value.set(max(float(self.progress_value.get()),pct))
+        shown=int(self.progress_value.get()); self.progress_text.set(f'{shown}%  ·  {label}')
+        try: self.update_idletasks()
         except Exception: pass
 
     def _replace_label_text(self, old, new):
@@ -61,33 +103,26 @@ class EnterpriseAppV2(ent.EnterpriseApp):
                     if child.cget('text') == label_text: found.append(child.master)
                 except Exception: pass
                 walk(child)
-        walk(self)
-        return found[0] if found else None
+        walk(self); return found[0] if found else None
 
-    def _status_mark(self, row):
-        mark=tk.Label(row,text='○',bg='white',fg='#AAB5BE',font=('Malgun Gothic',11,'bold'),width=2)
-        mark.pack(side='right',padx=(5,0)); return mark
+    def _status_mark(self,row):
+        mark=tk.Label(row,text='○',bg='white',fg='#AAB5BE',font=('Malgun Gothic',11,'bold'),width=2); mark.pack(side='right',padx=(5,0)); return mark
 
     def _install_input_checks(self):
         self._field_marks={}; self._confirm_vars={}; self._confirm_marks={}
         for label,key in [('담당팀','team'),('담당자','owner'),('발생 샘플','sample'),('PMS/PLM 이슈번호','plm_no')]:
             row=self._find_labeled_row(label)
             if not row: continue
-            row.pack_configure(pady=1)
-            mark=self._status_mark(row); self._field_marks[key]=mark
-            self.vars[key].trace_add('write',lambda *_args,k=key:self._refresh_field_mark(k)); self._refresh_field_mark(key)
+            row.pack_configure(pady=1); mark=self._status_mark(row); self._field_marks[key]=mark; self.vars[key].trace_add('write',lambda *_args,k=key:self._refresh_field_mark(k)); self._refresh_field_mark(key)
         first_dropdown_row=None
         for label,key in [('폼팩터','form_factor'),('제품 타입','product_type'),('발생처','occurrence_site'),('개발 단계','stage')]:
             row=self._find_labeled_row(label)
             if not row: continue
             row.pack_configure(pady=2)
-            if first_dropdown_row is None: first_dropdown_row=row
+            if first_dropdown_row is None:first_dropdown_row=row
             var=tk.BooleanVar(value=False); self._confirm_vars[key]=var
-            btn=tk.Button(row,text='○',command=lambda k=key:self._toggle_confirm(k),bg='white',fg='#8A98A5',activebackground='white',activeforeground=ui.GREEN,bd=0,font=('Malgun Gothic',11,'bold'),width=2,cursor='hand2')
-            btn.pack(side='right',padx=(5,0)); self._confirm_marks[key]=btn
-            combo=None
-            for child in row.winfo_children():
-                if isinstance(child,ttk.Combobox): combo=child; break
+            btn=tk.Button(row,text='○',command=lambda k=key:self._toggle_confirm(k),bg='white',fg='#8A98A5',activebackground='white',activeforeground=ui.GREEN,bd=0,font=('Malgun Gothic',11,'bold'),width=2,cursor='hand2'); btn.pack(side='right',padx=(5,0)); self._confirm_marks[key]=btn
+            combo=next((c for c in row.winfo_children() if isinstance(c,ttk.Combobox)),None)
             if combo is not None: combo.bind('<<ComboboxSelected>>',lambda e,k=key:self._confirm_dropdown(k),add='+')
         if first_dropdown_row is not None:
             parent=first_dropdown_row.master
@@ -95,8 +130,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
                 try:
                     if isinstance(child,tk.Frame) and int(child.cget('height'))==1: child.pack_configure(pady=4)
                 except Exception: pass
-            guide=tk.Label(parent,text='※ 분류값 확인: 값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right')
-            guide.pack(fill='x',pady=(0,2),before=first_dropdown_row)
+            guide=tk.Label(parent,text='※ 분류값 확인: 값 변경 시 자동 ✓  |  기본값이 맞으면 오른쪽 ○ 클릭 → 선택 완료 ✓',bg='white',fg='#5D7488',font=('Malgun Gothic',8,'bold'),anchor='e',justify='right'); guide.pack(fill='x',pady=(0,2),before=first_dropdown_row)
         self.vars['xlsx'].trace_add('write',lambda *_:self._refresh_field_mark('plm_no'))
 
     def _refresh_field_mark(self,key):
@@ -112,7 +146,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
     def _unconfirmed_classifications(self):
         names={'form_factor':'폼팩터','product_type':'제품 타입','occurrence_site':'발생처','stage':'개발 단계'}; return [names[k] for k,v in self._confirm_vars.items() if not v.get()]
 
-    def _show_preview_window(self, d):
+    def _show_preview_window(self,d):
         win=tk.Toplevel(self); win.withdraw(); win.title('8D 내용 미리보기'); win.configure(bg='white'); win.resizable(True,True); win.transient(self)
         head=tk.Frame(win,bg=ui.NAVY,height=64); head.pack(fill='x'); head.pack_propagate(False); tk.Label(head,text='8D 내용 미리보기',bg=ui.NAVY,fg='white',font=('Malgun Gothic',14,'bold')).pack(side='left',padx=24); tk.Label(head,text='원본 8D에서 추출된 내용을 확인합니다.',bg=ui.NAVY,fg='#C9D8E6',font=('Malgun Gothic',8)).pack(side='right',padx=24)
         body=tk.Frame(win,bg='white'); body.pack(fill='both',expand=True,padx=22,pady=18); meta=tk.Frame(body,bg='#F4F7FA',highlightbackground=ui.BORDER,highlightthickness=1); meta.pack(fill='x',pady=(0,12))
@@ -125,15 +159,15 @@ class EnterpriseAppV2(ent.EnterpriseApp):
     def preview(self):
         g=self.gui()
         if not g.get('ppt8d','').strip(): return ui.warning(self,'입력 확인','8D 원본 PPT를 선택해 주세요.')
-        try: self.status_var.set('ANALYZING  ·  8D 내용을 추출하고 있습니다...'); self.update_idletasks(); d=base.extract(g['ppt8d']); self.status_var.set('READY  ·  8D 추출 완료'); self._show_preview_window(d)
-        except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
+        try:self.status_var.set('ANALYZING  ·  8D 내용을 추출하고 있습니다...'); self.update_idletasks(); d=base.extract(g['ppt8d']); self.status_var.set('READY  ·  8D 추출 완료'); self._show_preview_window(d)
+        except Exception as e:self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
     def run(self):
         g=self.gui()
         if g.get('xlsx','').strip() and not g.get('plm_no','').strip(): self.status_var.set('READY  ·  PMS/PLM 이슈번호 입력이 필요합니다.'); return ui.warning(self,'PMS/PLM 이슈번호 확인','Issue DB Excel을 업데이트하려면 PMS/PLM 이슈번호를 입력해 주세요.\n\n주간회의 PPT만 업데이트하는 경우에는 입력하지 않아도 됩니다.')
         missing=self._unconfirmed_classifications()
-        if missing: self.status_var.set('READY  ·  분류 정보 확인이 필요합니다.'); return ui.warning(self,'분류 정보 확인','아래 분류값을 확인해 주세요.\n\n'+' / '.join(missing)+'\n\n값을 직접 선택하거나, 현재 기본값이 맞으면 오른쪽 ○를 클릭해 ✓로 확인해 주세요.')
+        if missing:self.status_var.set('READY  ·  분류 정보 확인이 필요합니다.'); return ui.warning(self,'분류 정보 확인','아래 분류값을 확인해 주세요.\n\n'+' / '.join(missing)+'\n\n값을 직접 선택하거나, 현재 기본값이 맞으면 오른쪽 ○를 클릭해 ✓로 확인해 주세요.')
         return super().run()
 
 
-if __name__ == '__main__': EnterpriseAppV2().mainloop()
+if __name__=='__main__':EnterpriseAppV2().mainloop()
