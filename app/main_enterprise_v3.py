@@ -1,7 +1,8 @@
 """Enterprise UI v3.
-Fixes two Windows/Tk layout issues seen with populated file cards:
-1) requested child widths preventing the opposite card from expanding;
-2) progress strip being clipped below the visible result area.
+Windows/Tk production layout:
+- fixed 50/50 and 65/35 cards independent of long filenames;
+- always-visible progress strip;
+- explicit active-card border state for click, browse, focus, wheel and drag/drop interaction.
 Business logic remains inherited unchanged from main_enterprise_v2.
 """
 import tkinter as tk
@@ -11,12 +12,14 @@ import ui_enterprise as ui
 
 
 class EnterpriseAppV3(v2.EnterpriseAppV2):
+    ACTIVE_BORDER = ui.NAVY
+    INACTIVE_BORDER = ui.BORDER
+
     def _compact_layout(self):
         """Keep enough vertical room at common Windows display scaling."""
         self.update_idletasks()
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         w = min(1180, max(1040, sw - 60))
-        # Do not request a window taller than the usable screen area.
         h = min(820, max(700, sh - 55))
         self.minsize(min(1040, w), min(690, h))
         self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
@@ -31,7 +34,7 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
                 pass
 
     def _balance_and_focus_cards(self):
-        """Use place geometry so child requested widths can never block 50/50 or 35/65 sizing."""
+        """Force card geometry and make the interaction owner visually explicit."""
         self.card01 = self._find_section_card('01')
         self.card02 = self._find_section_card('02')
         if not self.card01 or not self.card02 or self.card01.master is not self.card02.master:
@@ -39,7 +42,6 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         p = self.card01.master
         self._cards_parent = p
 
-        # Capture the natural height while the original packed cards are still rendered.
         self.update_idletasks()
         natural_h = max(p.winfo_height(), self.card01.winfo_reqheight(), self.card02.winfo_reqheight())
         natural_h = max(410, natural_h)
@@ -55,8 +57,6 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         except Exception:
             pass
 
-        # Critical: freeze parent height and use place. Unlike grid/pack, place ignores
-        # the long filename / Entry requested width that was keeping card 01 too wide.
         p.configure(height=natural_h)
         p.pack_propagate(False)
         p.grid_propagate(False)
@@ -64,6 +64,10 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         def bind_tree(widget, side):
             widget.bind('<ButtonPress-1>', lambda _e, s=side: self._set_card_ratio(s), add='+')
             widget.bind('<FocusIn>', lambda _e, s=side: self._set_card_ratio(s), add='+')
+            widget.bind('<MouseWheel>', lambda _e, s=side: self._set_card_ratio(s), add='+')
+            # Linux-style wheel bindings are harmless on Windows and keep behavior portable.
+            widget.bind('<Button-4>', lambda _e, s=side: self._set_card_ratio(s), add='+')
+            widget.bind('<Button-5>', lambda _e, s=side: self._set_card_ratio(s), add='+')
             for child in widget.winfo_children():
                 bind_tree(child, side)
 
@@ -71,6 +75,20 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         bind_tree(self.card02, 2)
         self.bind_all('<ButtonPress-1>', self._route_card_click_v3, add='+')
         self.bind_all('<FocusIn>', self._route_card_focus_v3, add='+')
+        self.bind_all('<MouseWheel>', self._route_card_wheel_v3, add='+')
+
+        # DnD can arrive without a normal ButtonPress. Wrap each DropZone callback so
+        # dropping a file into 01 also makes 01 the active card immediately.
+        for zone in getattr(self, 'dropzones', {}).values():
+            try:
+                old_drop = zone._drop
+                def active_drop(paths, _old=old_drop):
+                    self._set_card_ratio(1)
+                    return _old(paths)
+                zone._drop = active_drop
+            except Exception:
+                pass
+
         self._set_card_ratio(0)
 
     def _route_card_click_v3(self, event):
@@ -85,8 +103,39 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         elif self._is_descendant(event.widget, getattr(self, 'card01', None)):
             self._set_card_ratio(1)
 
+    def _route_card_wheel_v3(self, event):
+        if self._is_descendant(event.widget, getattr(self, 'card02', None)):
+            self._set_card_ratio(2)
+        elif self._is_descendant(event.widget, getattr(self, 'card01', None)):
+            self._set_card_ratio(1)
+
+    def _paint_active_card(self, active):
+        """Dark border belongs only to the active card; inactive card returns to neutral gray."""
+        try:
+            if active == 1:
+                self.card01.configure(highlightbackground=self.ACTIVE_BORDER,
+                                      highlightcolor=self.ACTIVE_BORDER,
+                                      highlightthickness=2)
+                self.card02.configure(highlightbackground=self.INACTIVE_BORDER,
+                                      highlightcolor=self.INACTIVE_BORDER,
+                                      highlightthickness=1)
+            elif active == 2:
+                self.card01.configure(highlightbackground=self.INACTIVE_BORDER,
+                                      highlightcolor=self.INACTIVE_BORDER,
+                                      highlightthickness=1)
+                self.card02.configure(highlightbackground=self.ACTIVE_BORDER,
+                                      highlightcolor=self.ACTIVE_BORDER,
+                                      highlightthickness=2)
+            else:
+                for card in (self.card01, self.card02):
+                    card.configure(highlightbackground=self.INACTIVE_BORDER,
+                                   highlightcolor=self.INACTIVE_BORDER,
+                                   highlightthickness=1)
+        except Exception:
+            pass
+
     def _set_card_ratio(self, active=0):
-        """Default 50/50; selected card 65%, other card 35%, regardless of its contents."""
+        """Default 50/50; selected card 65%, other card 35%, plus matching active border."""
         if not getattr(self, 'card01', None) or not getattr(self, 'card02', None):
             return
         try:
@@ -97,9 +146,9 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
             else:
                 left, right = 0.50, 0.50
 
-            # Small absolute gap between cards; widths are forced by relwidth.
             self.card01.place(x=0, rely=0, relwidth=left, relheight=1.0)
             self.card02.place(relx=left, x=7, rely=0, relwidth=right, width=-7, relheight=1.0)
+            self._paint_active_card(active)
             self.card01.lift()
             self.card02.lift()
             self.update_idletasks()
@@ -127,7 +176,6 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         if header is None:
             return
 
-        # Existing status badge is already on the right. Pack progress immediately beside it.
         progress_wrap = tk.Frame(header, bg='white')
         progress_wrap.pack(side='right', fill='x', expand=True, padx=(20, 10))
 
