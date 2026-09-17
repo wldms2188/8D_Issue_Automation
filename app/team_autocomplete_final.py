@@ -1,4 +1,4 @@
-"""Standardized 담당팀 autocomplete with non-standard confirmation."""
+"""Standardized 담당팀 search suggestions with non-standard confirmation."""
 import tkinter as tk
 from tkinter import ttk
 
@@ -25,33 +25,97 @@ def _team_autocomplete_entry(self, parent, label, key, hint):
     tk.Label(row, text=label, bg="white", fg=ui.TEXT,
              font=("Malgun Gothic", 9), width=17, anchor="w").pack(side="left")
 
-    combo = ttk.Combobox(row, textvariable=self.vars[key], values=TEAMS, state="normal")
-    combo.pack(side="left", fill="x", expand=True)
+    entry_wrap = tk.Frame(row, bg="white")
+    entry_wrap.pack(side="left", fill="x", expand=True)
+    entry = ttk.Entry(entry_wrap, textvariable=self.vars[key])
+    entry.pack(fill="x")
+
+    popup = None
+    listbox = None
 
     def matches_for(value):
         q = value.strip().casefold()
         return [x for x in TEAMS if q in x.casefold()] if q else list(TEAMS)
 
-    def filter_values(_event=None):
-        combo.configure(values=matches_for(self.vars[key].get()) or TEAMS)
+    def close_popup(_event=None):
+        nonlocal popup, listbox
+        if popup is not None:
+            try:
+                popup.destroy()
+            except Exception:
+                pass
+        popup = None
+        listbox = None
 
-    def complete_if_unique(_event=None):
-        value = self.vars[key].get().strip()
-        if value in TEAMS:
-            combo.configure(values=TEAMS)
+    def choose_candidate(_event=None):
+        if listbox is None:
             return
-        matches = matches_for(value)
-        if len(matches) == 1:
-            self.vars[key].set(matches[0])
-        # Multiple/no matches: keep the user's text. Validation happens at Run.
-        combo.configure(values=TEAMS)
+        sel = listbox.curselection()
+        if not sel:
+            return
+        self.vars[key].set(listbox.get(sel[0]))
+        entry.icursor("end")
+        close_popup()
+        entry.focus_set()
 
-    combo.bind("<KeyRelease>", filter_values, add="+")
-    combo.bind("<<ComboboxSelected>>", complete_if_unique, add="+")
-    combo.bind("<Return>", complete_if_unique, add="+")
-    combo.bind("<FocusOut>", complete_if_unique, add="+")
+    def show_candidates(_event=None):
+        nonlocal popup, listbox
+        value = self.vars[key].get()
+        candidates = matches_for(value)
+        close_popup()
+        if not candidates:
+            return
+        self.update_idletasks()
+        popup = tk.Toplevel(self)
+        popup.wm_overrideredirect(True)
+        popup.configure(bg=ui.BORDER)
+        try:
+            popup.attributes("-topmost", True)
+        except Exception:
+            pass
+        x = entry.winfo_rootx()
+        y = entry.winfo_rooty() + entry.winfo_height()
+        width = max(entry.winfo_width(), 300)
+        height = min(4, len(candidates)) * 28 + 4
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        listbox = tk.Listbox(
+            popup, font=("Malgun Gothic", 9), relief="flat", bd=0,
+            highlightthickness=1, highlightbackground=ui.BORDER,
+            activestyle="none", exportselection=False
+        )
+        listbox.pack(fill="both", expand=True, padx=1, pady=1)
+        for item in candidates:
+            listbox.insert("end", item)
+        listbox.bind("<ButtonRelease-1>", choose_candidate)
+        listbox.bind("<Return>", choose_candidate)
+        listbox.bind("<Escape>", close_popup)
 
-    tk.Label(parent, text="표준 팀명 4개 · 입력 시 자동완성 · 비표준 팀명은 실행 전 확인",
+    def on_keyrelease(event):
+        if event.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
+            return
+        show_candidates()
+
+    def on_down(_event=None):
+        if popup is None:
+            show_candidates()
+        if listbox is not None and listbox.size():
+            listbox.focus_set()
+            listbox.selection_clear(0, "end")
+            listbox.selection_set(0)
+            listbox.activate(0)
+        return "break"
+
+    def delayed_close(_event=None):
+        # Give a mouse click on the suggestion list time to complete first.
+        self.after(180, lambda: close_popup() if entry.focus_get() is not listbox else None)
+
+    entry.bind("<KeyRelease>", on_keyrelease, add="+")
+    entry.bind("<FocusIn>", show_candidates, add="+")
+    entry.bind("<Down>", on_down, add="+")
+    entry.bind("<Escape>", close_popup, add="+")
+    entry.bind("<FocusOut>", delayed_close, add="+")
+
+    tk.Label(parent, text="표준 팀명 검색 후보 표시 · 클릭 시 입력 · 비표준 팀명은 실행 전 확인",
              bg="white", fg="#98A3AD", font=("Malgun Gothic", 7)).pack(anchor="e")
 
 
