@@ -39,26 +39,30 @@ def _blue_inline(cell):
     return InlineFont(rFont=f.name or '맑은 고딕',sz=f.sz,b=f.b,i=f.i,strike=f.strike,color=BLUE)
 
 
-def _date_only(value):
-    """Keep the final modified date as an Excel date value, never a datetime/string."""
-    if isinstance(value,datetime.datetime):return value.date()
-    if isinstance(value,datetime.date):return value
+def _date_text(value):
+    """Return a stable date-only display string; never preserve an Excel time part."""
+    if isinstance(value,datetime.datetime):return value.strftime('%Y-%m-%d')
+    if isinstance(value,datetime.date):return value.strftime('%Y-%m-%d')
     text=str(value or '').strip()
     for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%d','%Y/%m/%d %H:%M:%S','%Y/%m/%d'):
-        try:return datetime.datetime.strptime(text,fmt).date()
+        try:return datetime.datetime.strptime(text,fmt).strftime('%Y-%m-%d')
         except ValueError:pass
-    return value
+    m=re.match(r'^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+.*)?$',text)
+    if m:
+        try:return datetime.date(int(m.group(1)),int(m.group(2)),int(m.group(3))).strftime('%Y-%m-%d')
+        except ValueError:pass
+    return text
 
 
 def _polish_excel(saved,src,d,g,new):
-    """Date is a true date-only cell; when issue status changes, color the whole status word blue."""
+    """Final modified date is display text; changed issue status is wholly blue."""
     try:
         wb=load_workbook(saved,rich_text=True); ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active
         row,_=base.find(ws,d,g)
         if not row:return
         date_cell=ws.cell(row,2)
-        date_cell.value=_date_only(date_cell.value)
-        date_cell.number_format='yyyy-mm-dd'
+        date_cell.value=_date_text(date_cell.value)
+        date_cell.number_format='@'
         old_status=''
         if not new:
             try:
