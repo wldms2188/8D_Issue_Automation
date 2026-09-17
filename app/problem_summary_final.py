@@ -15,7 +15,6 @@ _active_summary=""; _active_db_choice=None; _active_weekly_choice=None; _active_
 def _norm(s): return re.sub(r"\s+"," ",N(s)).strip()
 def _db_clean(s):
     s=N(s)
-    # Issue DB column is already the phenomenon field, so remove redundant headings only there.
     s=re.sub(r"(?im)^\s*[•·\-]?\s*\d+[.)]?\s*현상\s*[:：]\s*","",s)
     s=re.sub(r"(?im)^\s*현상\s*[:：]\s*","",s)
     return s.strip()
@@ -56,10 +55,23 @@ def _compact_problem(d):
         if not s or key in seen:continue
         if any(key and (key in old or old in key) for old in seen):continue
         seen.append(key); cleaned.append(s)
-    body=" / ".join(cleaned) if cleaned else _norm(src)
-    text=(header+"\n"+body).strip() if header else body
-    if len(text)<=MAX_LEN:return text
-    return text[:MAX_LEN].rstrip(" ,.;·-/")
+    # Never cut a sentence/line merely to hit the character limit. Add only whole
+    # candidate statements that fit; if the next one would overflow, omit it.
+    selected=[]
+    prefix=(header+"\n") if header else ""
+    used=len(prefix)
+    for part in cleaned:
+        sep=3 if selected else 0
+        if used+sep+len(part)<=MAX_LEN:
+            selected.append(part); used+=sep+len(part)
+        else:
+            continue
+    if selected:return (prefix+" / ".join(selected)).strip()
+    if header:return header[:MAX_LEN]
+    # One source statement can itself exceed 150 chars. Do not return a broken
+    # fragment; leave the automatic suggestion empty so the user can edit from
+    # the full source shown in the dialog.
+    return ""
 
 class EditableProblemDialog(tk.Toplevel):
     def __init__(self,parent,summary,full_text="",title="이슈 DB 현상 요약 확인"):
@@ -67,7 +79,7 @@ class EditableProblemDialog(tk.Toplevel):
         head=tk.Frame(self,bg=ui.NAVY,height=58); head.pack(fill="x"); head.pack_propagate(False); tk.Label(head,text=title,bg=ui.NAVY,fg="white",font=("Malgun Gothic",12,"bold")).pack(side="left",padx=22)
         body=tk.Frame(self,bg="white"); body.pack(fill="both",expand=True,padx=24,pady=16)
         tk.Label(body,text="이슈 DB의 현상 칸에 들어갈 요약입니다. 필요하면 직접 수정하세요.",bg="white",fg=ui.TEXT,font=("Malgun Gothic",9,"bold")).pack(anchor="w")
-        tk.Label(body,text=f"※ {MAX_LEN}자 이내 · 더 짧아도 괜찮습니다.",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8)).pack(anchor="w",pady=(3,10))
+        tk.Label(body,text=f"※ {MAX_LEN}자 이내 · 문장을 중간에서 자르지 않습니다.",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8)).pack(anchor="w",pady=(3,10))
         tk.Label(body,text="8D 현상 원문",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(anchor="w")
         original=tk.Text(body,height=6,wrap="word",bg="#F7F9FB",fg=ui.TEXT,relief="flat",highlightthickness=1,highlightbackground=ui.BORDER,font=("Malgun Gothic",9),padx=9,pady=7); original.pack(fill="x",pady=(4,10)); original.insert("1.0",full_text or "(원문 없음)"); original.configure(state="disabled")
         line=tk.Frame(body,bg="white"); line.pack(fill="x"); tk.Label(line,text="이슈 DB 자동 요약본 (수정 가능)",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(side="left"); self.count=tk.Label(line,text="",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")); self.count.pack(side="right")
@@ -87,12 +99,16 @@ class EditableProblemDialog(tk.Toplevel):
         self.result=value; self.destroy()
 
 class WeeklyEditDialog(tk.Toplevel):
-    def __init__(self,parent,text):
+    def __init__(self,parent,text,full_text=""):
         super().__init__(parent); self.withdraw(); self.result=None; self.summary=None; self.title("주간회의 현상 수정"); self.configure(bg="white"); self.transient(parent)
-        tk.Label(self,text="주간회의 요약 페이지에 넣을 현상을 수정하세요.",bg="white",fg=ui.TEXT,font=("Malgun Gothic",10,"bold")).pack(anchor="w",padx=24,pady=(20,8))
-        self.edit=tk.Text(self,height=9,wrap="word",font=("Malgun Gothic",9),padx=9,pady=7); self.edit.pack(fill="both",expand=True,padx=24); self.edit.insert("1.0",text)
-        b=tk.Frame(self,bg="white"); b.pack(fill="x",padx=24,pady=16); tk.Button(b,text="취소",command=self.destroy,width=12).pack(side="right",padx=4); tk.Button(b,text="수정 적용",command=self.apply,width=12,bg=ui.BLUE,fg="white").pack(side="right",padx=4)
-        ui.center_window(self,parent,720,390); self.deiconify(); self.grab_set(); self.edit.focus_set(); parent.wait_window(self)
+        tk.Label(self,text="주간회의 요약 페이지 현상 수정",bg=ui.NAVY,fg="white",font=("Malgun Gothic",12,"bold"),anchor="w",padx=22).pack(fill="x",ipady=17)
+        body=tk.Frame(self,bg="white"); body.pack(fill="both",expand=True,padx=24,pady=16)
+        tk.Label(body,text="8D 현상 원문 (참고용)",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(anchor="w")
+        original=tk.Text(body,height=7,wrap="word",bg="#F7F9FB",fg=ui.TEXT,relief="flat",highlightthickness=1,highlightbackground=ui.BORDER,font=("Malgun Gothic",9),padx=9,pady=7); original.pack(fill="x",pady=(4,12)); original.insert("1.0",full_text or "(원문 없음)"); original.configure(state="disabled")
+        tk.Label(body,text="주간회의 요약 페이지 문구 (수정 가능)",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(anchor="w")
+        self.edit=tk.Text(body,height=7,wrap="word",font=("Malgun Gothic",9),padx=9,pady=7); self.edit.pack(fill="both",expand=True,pady=(4,0)); self.edit.insert("1.0",text)
+        b=tk.Frame(self,bg="#F6F8FA"); b.pack(fill="x"); tk.Button(b,text="취소",command=self.destroy,width=12).pack(side="right",padx=4,pady=13); tk.Button(b,text="수정 적용",command=self.apply,width=12,bg=ui.BLUE,fg="white").pack(side="right",padx=4,pady=13)
+        ui.center_window(self,parent,780,620); self.deiconify(); self.grab_set(); self.edit.focus_set(); parent.wait_window(self)
     def apply(self):
         text=self.edit.get("1.0","end-1c").strip()
         if not text:return ui.warning(self,"주간회의 현상 수정","내용이 비어 있습니다.")
@@ -100,15 +116,15 @@ class WeeklyEditDialog(tk.Toplevel):
 
 class WeeklyProblemDialog(tk.Toplevel):
     def __init__(self,parent,summary,full_text=""):
-        super().__init__(parent); self.withdraw(); self.result=None; self.summary=summary; self.title("주간회의 요약 페이지 현상"); self.configure(bg="white"); self.transient(parent)
+        super().__init__(parent); self.withdraw(); self.result=None; self.summary=summary; self.full_text=full_text; self.title("주간회의 요약 페이지 현상"); self.configure(bg="white"); self.transient(parent)
         tk.Label(self,text="주간회의 요약 페이지 현상",bg=ui.NAVY,fg="white",font=("Malgun Gothic",12,"bold"),anchor="w",padx=22).pack(fill="x",ipady=17)
         body=tk.Frame(self,bg="white"); body.pack(fill="both",expand=True,padx=24,pady=18); tk.Label(body,text="전체 내용/이슈 DB 요약본을 선택하거나, 주간회의용으로 별도 수정할 수 있습니다.\n상세 페이지 2D는 8D 원문 전체를 유지합니다.",bg="white",fg=ui.TEXT,justify="left").pack(anchor="w")
         box=tk.Text(body,height=8,wrap="word",bg="#F7F9FB",font=("Malgun Gothic",9)); box.pack(fill="both",expand=True,pady=(10,0)); box.insert("1.0",summary or "(요약 내용 없음)"); box.configure(state="disabled")
-        b=tk.Frame(self,bg="#F6F8FA"); b.pack(fill="x",pady=0); 
-        for text,cmd in (("취소",lambda:self.choose(None)),("전체 내용 기재",lambda:self.choose("full")),("수정",lambda:self.modify(parent,full_text)),("요약본 기재",lambda:self.choose("summary"))): tk.Button(b,text=text,command=cmd,width=14,pady=7).pack(side="right",padx=4,pady=13)
+        b=tk.Frame(self,bg="#F6F8FA"); b.pack(fill="x")
+        for text,cmd in (("취소",lambda:self.choose(None)),("전체 내용 기재",lambda:self.choose("full")),("수정",self.modify),("요약본 기재",lambda:self.choose("summary"))): tk.Button(b,text=text,command=cmd,width=14,pady=7).pack(side="right",padx=4,pady=13)
         ui.center_window(self,parent,760,470); self.deiconify(); self.grab_set(); parent.wait_window(self)
-    def modify(self,parent,full_text):
-        ed=WeeklyEditDialog(self,self.summary or full_text)
+    def modify(self):
+        ed=WeeklyEditDialog(self,self.summary or self.full_text,self.full_text)
         if ed.result=="summary":self.summary=ed.summary; self.choose("summary")
     def choose(self,v):self.result=v; self.destroy()
 
@@ -153,7 +169,6 @@ def _run_with_problem_summary(self):
         except Exception:self._problem_full_text=""; self._problem_summary_suggested=""
     weekly=bool(g.get("pptweekly","").strip()); excel=bool(g.get("xlsx","").strip()); self._problem_weekly_enabled=weekly
     if weekly and not excel and ppt8d:
-        # Weekly-only does not need an Issue DB decision; show the weekly chooser directly.
         if not _ask_weekly(self):return
     return _original_run(self)
 
