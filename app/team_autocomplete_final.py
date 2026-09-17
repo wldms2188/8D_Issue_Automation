@@ -21,38 +21,39 @@ def _team_autocomplete_entry(self, parent, label, key, hint):
 
     row = tk.Frame(parent, bg="white")
     row.pack(fill="x", pady=4)
-    tk.Label(
-        row, text=label, bg="white", fg=ui.TEXT,
-        font=("Malgun Gothic", 9), width=17, anchor="w"
-    ).pack(side="left")
+    tk.Label(row, text=label, bg="white", fg=ui.TEXT,
+             font=("Malgun Gothic", 9), width=17, anchor="w").pack(side="left")
 
-    combo = ttk.Combobox(
-        row, textvariable=self.vars[key], values=TEAMS, state="normal"
-    )
+    combo = ttk.Combobox(row, textvariable=self.vars[key], values=TEAMS, state="normal")
     combo.pack(side="left", fill="x", expand=True)
 
-    def filter_values(_event=None):
-        typed = self.vars[key].get().strip().casefold()
-        matches = [x for x in TEAMS if typed in x.casefold()] if typed else list(TEAMS)
-        combo.configure(values=matches or TEAMS)
+    def matches_for(value):
+        q = value.strip().casefold()
+        return [x for x in TEAMS if q in x.casefold()] if q else list(TEAMS)
 
-    def complete_selection(_event=None):
+    def filter_values(_event=None):
+        combo.configure(values=matches_for(self.vars[key].get()) or TEAMS)
+
+    def commit_standard(_event=None):
         value = self.vars[key].get().strip()
         if value in TEAMS:
+            combo.configure(values=TEAMS)
             return
-        matches = [x for x in TEAMS if value.casefold() in x.casefold()]
+        matches = matches_for(value)
         if len(matches) == 1:
             self.vars[key].set(matches[0])
+        else:
+            # Never leave a non-standard team name in the business data.
+            self.vars[key].set("")
+        combo.configure(values=TEAMS)
 
     combo.bind("<KeyRelease>", filter_values, add="+")
-    combo.bind("<<ComboboxSelected>>", complete_selection, add="+")
-    combo.bind("<FocusOut>", complete_selection, add="+")
+    combo.bind("<<ComboboxSelected>>", commit_standard, add="+")
+    combo.bind("<Return>", commit_standard, add="+")
+    combo.bind("<FocusOut>", commit_standard, add="+")
 
-    tk.Label(
-        parent,
-        text="표준 팀명 선택 · 입력 시 자동완성",
-        bg="white", fg="#98A3AD", font=("Malgun Gothic", 7)
-    ).pack(anchor="e")
+    tk.Label(parent, text="표준 팀명 4개 · 입력 시 자동완성 · 비표준 값은 저장되지 않음",
+             bg="white", fg="#98A3AD", font=("Malgun Gothic", 7)).pack(anchor="e")
 
 
 v3.EnterpriseAppV3._enterprise_entry = _team_autocomplete_entry
