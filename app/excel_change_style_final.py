@@ -12,8 +12,8 @@ BLUE = "0033FF"
 BLACK = "000000"
 
 # Every field written by write_row must participate in change highlighting.
-# Column 2 (최종 수정일) is handled specially: it must remain a real Excel date,
-# never rich-text/string, otherwise Excel can display 00:00:00.
+# Column 2 (최종 수정일) is stored as plain YYYY-MM-DD display text.  This avoids
+# Excel applying a time-bearing date format and showing 00:00:00 on first open.
 MANAGED_COLS = (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18)
 
 def _plain(value): return "" if value is None else str(value)
@@ -36,24 +36,30 @@ def _set_change_rich_text(cell,old_text,new_text):
         rich.append(TextBlock(black if tag=="equal" else blue,new_text[j1:j2]))
     cell.value=rich if len(rich) else new_text
 
-def _as_date(value):
-    """Normalize date/datetime/string values to a date-only Excel value."""
-    if isinstance(value, datetime.datetime): return value.date()
-    if isinstance(value, datetime.date): return value
+def _date_text(value):
+    """Return only YYYY-MM-DD, regardless of source date/datetime/Excel text."""
+    if isinstance(value, datetime.datetime): return value.strftime("%Y-%m-%d")
+    if isinstance(value, datetime.date): return value.strftime("%Y-%m-%d")
     text=_plain(value).strip()
-    if not text:return None
+    if not text:return ""
     for fmt in ("%Y-%m-%d %H:%M:%S","%Y-%m-%d","%Y/%m/%d %H:%M:%S","%Y/%m/%d"):
-        try:return datetime.datetime.strptime(text,fmt).date()
+        try:return datetime.datetime.strptime(text,fmt).strftime("%Y-%m-%d")
         except ValueError:pass
-    return value
+    # If Excel/openpyxl supplied an ISO-like value, discard a trailing time only
+    # when the leading part is a valid date.
+    m=__import__('re').match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+.*)?$",text)
+    if m:
+        try:return datetime.date(int(m.group(1)),int(m.group(2)),int(m.group(3))).strftime("%Y-%m-%d")
+        except ValueError:pass
+    return text
 
 def _style_modified_date(cell,old_value,new_value,is_new=False):
-    """Keep column 2 as date type and color the whole date blue when changed."""
-    new_date=_as_date(new_value)
-    old_date=_as_date(old_value)
-    cell.value=new_date
-    cell.number_format="yyyy-mm-dd"
-    changed=is_new or old_date!=new_date
+    """Store final modified date as plain text so Excel can never render 00:00:00."""
+    new_text=_date_text(new_value)
+    old_text=_date_text(old_value)
+    cell.value=new_text
+    cell.number_format="@"
+    changed=is_new or old_text!=new_text
     _set_font_color(cell,BLUE if changed else BLACK)
 
 def _find_target_row(src,d,g):
