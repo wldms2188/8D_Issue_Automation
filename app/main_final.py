@@ -5,6 +5,8 @@ from tkinter import ttk, filedialog, messagebox
 from openpyxl import load_workbook
 
 import main_recovery_step14_fix2 as core
+import main_recovery_step14 as s14
+import main_recovery_step13 as s13
 import main_recovery_step9 as step9
 import main_recovery_step8 as step8
 import main_recovery_step7 as step7
@@ -210,12 +212,8 @@ class FinalApp(core.RecoveryStep14Fix5App):
             return messagebox.showwarning('입력 확인','선택한 주간회의 PPT 파일을 찾을 수 없습니다.',parent=self)
         if xlsx and not os.path.exists(xlsx):
             return messagebox.showwarning('입력 확인','선택한 이슈 DB Excel 파일을 찾을 수 없습니다.',parent=self)
-        if g.get('occurrence_site') not in OCCURRENCE_SITES:
-            return messagebox.showwarning('입력 확인','발생처를 선택해 주세요.',parent=self)
         try:
-            self.status_var.set('Running  |  자동 업데이트를 진행하고 있습니다...'); self.update_idletasks()
-            d=base.extract(ppt8d); mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx)
-            excel_row=None
+            d=base.extract(ppt8d); mode=self.mode.get(); do_excel=bool(xlsx); do_weekly=bool(weekly)
             if do_excel:
                 wb=load_workbook(xlsx); ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active
                 excel_row,_=base.find(ws,d,g)
