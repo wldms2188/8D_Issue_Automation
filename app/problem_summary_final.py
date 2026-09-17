@@ -35,12 +35,7 @@ def _context_header(src):
     return ""
 
 def _structured_blocks(src):
-    """Group the source by visible list markers so a structured item is all-or-nothing.
-
-    A new block starts at '-', '•', '·', '1.', '1)', '(1)' etc. Continuation
-    lines belong to that block until the next marker. This prevents a 150-char
-    summary from keeping only the beginning of e.g. '2. 시험 조건'.
-    """
+    """Treat each top-level marker and its following text as one indivisible block."""
     marker=re.compile(r"^\s*(?:[-•·]|\(?\d+\s*[.)])\s*")
     lines=[x.strip() for x in N(src).replace("\r\n","\n").replace("\r","\n").split("\n") if x.strip()]
     blocks=[]; current=[]
@@ -64,9 +59,6 @@ def _compact_problem(d):
     src=_db_clean(d.get("problem"))
     if not src:return ""
     header=_context_header(src)
-
-    # Preserve source structure. Each marked item and all of its continuation text
-    # is one indivisible block. A block that does not fit is omitted in full.
     candidates=[]; seen=set()
     for raw in _structured_blocks(src):
         s=_clean_block(raw)
@@ -74,14 +66,18 @@ def _compact_problem(d):
         if not s or key in seen:continue
         seen.add(key); candidates.append(s)
 
+    # IMPORTANT: source order is strict. Once the next complete block would make
+    # the summary exceed 150 chars, stop there. Do NOT skip that block and then
+    # pull a later block into the remaining space. This means e.g. '2. 시험조건'
+    # and every later item disappear together if item 2 cannot fit completely.
     selected=[]
     prefix=(header+"\n") if header else ""
     used=len(prefix)
     for block in candidates:
         sep=3 if selected else 0
-        if used+sep+len(block)<=MAX_LEN:
-            selected.append(block); used+=sep+len(block)
-        # IMPORTANT: never take a prefix of an overflowing block.
+        if used+sep+len(block)>MAX_LEN:
+            break
+        selected.append(block); used+=sep+len(block)
     if selected:return (prefix+" / ".join(selected)).strip()
     if header and len(header)<=MAX_LEN:return header
     return ""
@@ -92,7 +88,7 @@ class EditableProblemDialog(tk.Toplevel):
         head=tk.Frame(self,bg=ui.NAVY,height=58); head.pack(fill="x"); head.pack_propagate(False); tk.Label(head,text=title,bg=ui.NAVY,fg="white",font=("Malgun Gothic",12,"bold")).pack(side="left",padx=22)
         body=tk.Frame(self,bg="white"); body.pack(fill="both",expand=True,padx=24,pady=16)
         tk.Label(body,text="이슈 DB의 현상 칸에 들어갈 요약입니다. 필요하면 직접 수정하세요.",bg="white",fg=ui.TEXT,font=("Malgun Gothic",9,"bold")).pack(anchor="w")
-        tk.Label(body,text=f"※ {MAX_LEN}자 이내 · 문장/목록 항목을 중간에서 자르지 않습니다.",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8)).pack(anchor="w",pady=(3,10))
+        tk.Label(body,text=f"※ {MAX_LEN}자 이내 · 다음 항목이 전부 들어가지 않으면 그 항목부터 이후 내용은 제외합니다.",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8)).pack(anchor="w",pady=(3,10))
         tk.Label(body,text="8D 현상 원문",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(anchor="w")
         original=tk.Text(body,height=6,wrap="word",bg="#F7F9FB",fg=ui.TEXT,relief="flat",highlightthickness=1,highlightbackground=ui.BORDER,font=("Malgun Gothic",9),padx=9,pady=7); original.pack(fill="x",pady=(4,10)); original.insert("1.0",full_text or "(원문 없음)"); original.configure(state="disabled")
         line=tk.Frame(body,bg="white"); line.pack(fill="x"); tk.Label(line,text="이슈 DB 자동 요약본 (수정 가능)",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")).pack(side="left"); self.count=tk.Label(line,text="",bg="white",fg=ui.MUTED,font=("Malgun Gothic",8,"bold")); self.count.pack(side="right")
