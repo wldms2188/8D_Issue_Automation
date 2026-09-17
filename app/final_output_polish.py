@@ -1,4 +1,5 @@
 """Final output polish: persistent version names, Excel date/status styling, PPT empty-placeholder cleanup."""
+import datetime
 import re
 from pathlib import Path
 from openpyxl import load_workbook
@@ -38,13 +39,26 @@ def _blue_inline(cell):
     return InlineFont(rFont=f.name or '맑은 고딕',sz=f.sz,b=f.b,i=f.i,strike=f.strike,color=BLUE)
 
 
+def _date_only(value):
+    """Keep the final modified date as an Excel date value, never a datetime/string."""
+    if isinstance(value,datetime.datetime):return value.date()
+    if isinstance(value,datetime.date):return value
+    text=str(value or '').strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%d','%Y/%m/%d %H:%M:%S','%Y/%m/%d'):
+        try:return datetime.datetime.strptime(text,fmt).date()
+        except ValueError:pass
+    return value
+
+
 def _polish_excel(saved,src,d,g,new):
-    """Date is date-only; when issue status changes, color the whole status word blue."""
+    """Date is a true date-only cell; when issue status changes, color the whole status word blue."""
     try:
         wb=load_workbook(saved,rich_text=True); ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active
         row,_=base.find(ws,d,g)
         if not row:return
-        ws.cell(row,2).number_format='yyyy-mm-dd'
+        date_cell=ws.cell(row,2)
+        date_cell.value=_date_only(date_cell.value)
+        date_cell.number_format='yyyy-mm-dd'
         old_status=''
         if not new:
             try:
