@@ -102,7 +102,21 @@ def classify(d):
 
     ranked=sorted(scores.items(),key=lambda x:x[1],reverse=True)
     best,bscore=ranked[0]; second,sscore=ranked[1]; margin=bscore-sscore
-    if bscore<3.2:
+    # When the confirmed cause itself contains strong evidence for two technical
+    # origins, keep it for human discussion even if the action plan adds more
+    # weight to one side.  Corrective actions must not erase causal ambiguity.
+    cause_scores={c:0.0 for c in CATEGORIES}
+    for field in ('cause_4d','leak_cause','system_cause'):
+        fw=FIELD_WEIGHT[field]
+        for cat in CATEGORIES:
+            for _,pw in _field_hits(d.get(field),cat):
+                cause_scores[cat]+=pw*fw
+    cause_ranked=sorted(cause_scores.items(),key=lambda x:x[1],reverse=True)
+    cause_ambiguous=(cause_ranked[1][1]>=3.2 and
+                     cause_ranked[0][1]/cause_ranked[1][1]<1.60)
+    if cause_ambiguous:
+        rec='논의 중'; conf='경합'
+    elif bscore<3.2:
         rec='논의 중'; conf='낮음'
     elif margin<1.8 or (sscore>0 and bscore/sscore<1.40):
         rec='논의 중'; conf='경합'
