@@ -20,13 +20,27 @@ def _norm(s): return re.sub(r'[^0-9A-Za-z가-힣]+','',str(s or '')).casefold()
 def _no_paren(s): return _norm(re.sub(r'\([^)]*\)','',str(s or '')))
 def _all_projects(): return tuple(x for xs in PROJECTS.values() for x in xs)
 
+def split_customer_task(value):
+    """List contract: first underscore separates customer(A) from project(B)."""
+    s=str(value or '').strip()
+    if '_' not in s:return '',s
+    customer,task=s.split('_',1)
+    return customer.strip(),task.strip()
+
+def project_part(value):
+    return split_customer_task(value)[1]
+
+def project_key(value,drop_parentheses=False):
+    task=project_part(value)
+    return _no_paren(task) if drop_parentheses else _norm(task)
+
 def canonical_candidates(value,team=""):
-    q=_norm(value); qp=_no_paren(value)
+    q=project_key(value); qp=project_key(value,True)
     pool=PROJECTS.get(team,()) or _all_projects()
-    exact_paren=[x for x in pool if qp and _no_paren(x)==qp and _norm(x)!=q]
+    exact_paren=[x for x in pool if qp and project_key(x,True)==qp and project_key(x)!=q]
     if exact_paren:return exact_paren
     if not q:return list(pool)
-    return [x for x in pool if q in _norm(x) or _norm(x) in q]
+    return [x for x in pool if q in project_key(x) or project_key(x) in q]
 
 def _project_entry(self,parent,label,key,hint):
     if key!="task_name": return _original_entry(self,parent,label,key,hint)
@@ -65,7 +79,7 @@ def _confirm_project(self):
     team=self.vars["team"].get().strip()
     pool=PROJECTS.get(team,()) or _all_projects()
     if v in pool:return True
-    same=[x for x in pool if _no_paren(x)==_no_paren(v) and _norm(x)!=_norm(v)]
+    same=[x for x in pool if project_key(x,True)==project_key(v,True) and project_key(x)!=project_key(v)]
     if same:
         # Simple chooser dialog for parenthesized canonical variants.
         win=tk.Toplevel(self); win.title("유사한 과제가 있습니다."); win.transient(self); win.grab_set(); result={"v":None}
