@@ -79,7 +79,13 @@ def _project_entry(self,parent,label,key,hint):
 
 def _confirm_project(self):
     v=self.vars.get("task_name").get().strip() if self.vars.get("task_name") else ""
-    if not v:return True
+    if not v:
+        ok=ui.ask_yes_no(self,"고객사/과제명 확인","고객사/과제명을 입력하지 않았습니다.\n\n자동 분류로 진행하시겠습니까?")
+        if ok:
+            # Do not inject a manual task_name. The original V1 extraction/matching path
+            # will classify customer/project from the 8D source as before.
+            return True
+        return False
     team=self.vars["team"].get().strip()
     pool=PROJECTS.get(team,()) or _all_projects()
     if v in pool:return True
