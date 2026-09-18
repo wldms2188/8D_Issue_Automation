@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Compile classifier
-        run: python -m py_compile app/origin_classifier_final.py
+        run: python -m py_compile app/origin_v1_refined_patch.py
       - name: Compile output selector
         run: python -m py_compile app/output_variant_final.py app/main_enterprise_final.py
       - name: Origin classifier regression
