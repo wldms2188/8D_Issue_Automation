@@ -113,7 +113,11 @@ def classify(d):
                 cause_scores[cat]+=pw*fw
     cause_ranked=sorted(cause_scores.items(),key=lambda x:x[1],reverse=True)
     cause_ratio = cause_ranked[0][1] / max(cause_ranked[1][1], 0.001)
-    # A cause sentence explicitly naming two strong origins should remain human-reviewed.\n    # The 3.2 cutoff was too high for valid mixed cases such as 설계 공차 + 체결토크.\n    cause_ambiguous = cause_ranked[1][1] >= 2.5 and cause_ratio < 1.80
+    # Mixed-origin wording in the confirmed cause stays human-reviewed.
+    cause_text = _n(' '.join(str(d.get(k) or '') for k in ('cause_4d','leak_cause','system_cause')))
+    joint_cause = any(x in cause_text for x in ('동시에','복합','및','그리고','와','과'))
+    strong_cats = sum(1 for _, score in cause_ranked if score >= 4.0)
+    cause_ambiguous = strong_cats >= 2 and joint_cause
     if cause_ambiguous:
         rec='논의 중'; conf='경합'
     elif bscore<3.2:
