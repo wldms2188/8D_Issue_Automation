@@ -69,10 +69,11 @@ def _excel_update_only(source,saved):
                 different=True; break
         if different:changed.append(r)
     if not changed:return None,0
-    # Keep header rows above the data plus only changed data rows.  This preserves column meaning.
-    first_changed=min(changed)
-    header_end=max(1,first_changed-1)
-    keep=set(range(1,header_end+1))|set(changed)
+    # Issue DB contract: rows 1-6 are fixed header/template rows.
+    # In update-only output, always preserve them exactly and keep only changed data rows from row 7 onward.
+    changed=[r for r in changed if r>=7]
+    if not changed:return None,0
+    keep=set(range(1,7))|set(changed)
     for r in range(ws.max_row,0,-1):
         if r not in keep:ws.delete_rows(r,1)
     target=Path(saved).with_name(Path(saved).stem+'_업데이트사항만'+Path(saved).suffix)
