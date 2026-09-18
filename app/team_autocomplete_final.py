@@ -10,6 +10,8 @@ TEAMS = (
     "파우치형Pack개발품질2팀",
     "원통형Pack개발품질팀",
     "ESS System개발품질팀",
+    "회로개발품질팀",
+    "양산이슈",
 )
 
 _original_entry = v3.EnterpriseAppV3._enterprise_entry
