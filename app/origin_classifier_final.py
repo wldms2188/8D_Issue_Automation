@@ -112,7 +112,8 @@ def classify(d):
             for _,pw in _field_hits(d.get(field),cat):
                 cause_scores[cat]+=pw*fw
     cause_ranked=sorted(cause_scores.items(),key=lambda x:x[1],reverse=True)
-    cause_ambiguous=(cause_ranked[1][1]>=3.2 and\n                     cause_ranked[0][1]/cause_ranked[1][1]<1.80)
+    cause_ratio = cause_ranked[0][1] / max(cause_ranked[1][1], 0.001)
+    cause_ambiguous = cause_ranked[1][1] >= 3.2 and cause_ratio < 1.80
     if cause_ambiguous:
         rec='논의 중'; conf='경합'
     elif bscore<3.2:
