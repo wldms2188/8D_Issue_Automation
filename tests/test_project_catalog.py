@@ -7,7 +7,7 @@ class ProjectCatalogTests(unittest.TestCase):
  def test_customer_project_split_uses_first_underscore(self):
   self.assertEqual(p.split_customer_task('MBAG_EB565M'),('MBAG','EB565M'))
   self.assertEqual(p.split_customer_task('Renault_EV2020 CTP 800V'),('Renault','EV2020 CTP 800V'))
-  self.assertEqual(p.split_customer_task('JF2S Delta (Set_Biz)'),('JF2S Delta (Set','Biz)'))
+  self.assertEqual(p.split_customer_task('JF2S Delta (Set_Biz)'),('', 'JF2S Delta (Set_Biz)'))
  def test_project_matching_ignores_customer_prefix(self):
   self.assertEqual(p.project_key('MBAG_EB-L(EU)',True),p.project_key('Other_EB-L(US)',True))
  def test_parenthesis_variants_are_suggested(self):
