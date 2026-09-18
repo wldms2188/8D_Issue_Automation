@@ -27,6 +27,21 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         self.assertEqual(total,120)
         self.assertEqual(correct,120,msg=str(errors[:10]))
 
+    def test_large_combinatorial_clear_cases(self):
+        prefixes=('확인 결과 ','분석 결과 ','4D 원인: ','재현시험 결과 ')
+        suffixes=(' 확인됨',' 영향으로 발생',' 원인으로 판단',' 재현됨')
+        qualifiers=('',' 반복',' 특정 LOT',' DV 단계')
+        total=0
+        for expected,causes in TEMPLATES.items():
+            for cause in causes:
+                for pre in prefixes:
+                    for suf in suffixes:
+                        for qual in qualifiers:
+                            rec,_=clf.recommend_origin({'cause_4d':pre+cause+qual+suf})
+                            self.assertEqual(rec,expected,msg=(expected,rec,pre+cause+qual+suf))
+                            total+=1
+        self.assertEqual(total,768)
+
     def test_ambiguous_design_process_is_not_forced(self):
         rec,_=clf.recommend_origin({'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향'})
         self.assertEqual(rec,'논의 중')
