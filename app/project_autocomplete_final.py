@@ -21,13 +21,15 @@ def _no_paren(s): return _norm(re.sub(r'\([^)]*\)','',str(s or '')))
 def _all_projects(): return tuple(x for xs in PROJECTS.values() for x in xs)
 
 def split_customer_task(value):
-    """List contract: first underscore separates customer(A) from project(B)."""
+    """List contract: A_B means customer A + project B when A is a known customer prefix."""
     s=str(value or '').strip()
     if '_' not in s:return '',s
-    # Parenthesized underscores such as (Set_Biz) belong to the project suffix.
-    # The first underscore is still the A_B customer/project delimiter by contract.
-    customer,task=s.split('_',1)
-    return customer.strip(),task.strip()
+    prefix,task=s.split('_',1)
+    # Some legitimate project names contain underscores but do not encode a customer,
+    # e.g. Model Care is customerless and user-entered names may contain underscores.
+    known={x.split('_',1)[0].casefold() for x in _all_projects() if '_' in x}
+    if prefix.casefold() not in known:return '',s
+    return prefix.strip(),task.strip()
 
 def project_part(value):
     return split_customer_task(value)[1]
