@@ -18,20 +18,20 @@ _original_weekly=base.weekly
 
 
 def _version_path(requested):
-    """Return root_v.NN.ext in the requested output folder, scanning existing versions."""
+    """Return root_v0.N.ext in the requested output folder, scanning existing versions."""
     p=Path(requested)
     stem=re.sub(r'_업데이트$','',p.stem,flags=re.I)
-    m=re.match(r'^(.*)_v\.(\d+)$',stem,re.I)
+    m=re.match(r'^(.*)_v(\\d+)$',stem,re.I)
     root=m.group(1) if m else stem
     current=int(m.group(2)) if m else 0
-    pat=re.compile(rf'^{re.escape(root)}_v\.(\d+){re.escape(p.suffix)}$',re.I)
+    pat=re.compile(rf'^{re.escape(root)}_v(\\d+){re.escape(p.suffix)}$',re.I)
     nums=[current]
     if p.parent.exists():
         for f in p.parent.iterdir():
             mm=pat.match(f.name)
             if mm: nums.append(int(mm.group(1)))
     n=max(nums)+1
-    return p.with_name(f'{root}_v.{n:02d}{p.suffix}')
+    return p.with_name(f'{root}_v0.{n}{p.suffix}')
 
 
 def _blue_inline(cell):
