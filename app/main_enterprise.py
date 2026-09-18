@@ -87,8 +87,8 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             z=ui.DropZone(filebody,title,key,self.vars[key],exts,self.pick,self._refresh_target,req); z.pack(fill='x',pady=5); self.dropzones[key]=z
         tk.Label(filebody,text=f"Drag & Drop: {'사용 가능' if ui.DND_AVAILABLE else '미사용 · [찾기] 버튼 사용'}  |  8D는 필수, 나머지는 선택 입력",bg='white',fg=ui.MUTED,font=('Malgun Gothic',8)).pack(anchor='w',pady=(4,0))
         self._section_title(right,'02','담당 및 분류 정보','표준 입력'); fields=tk.Frame(right,bg='white'); fields.pack(fill='x',padx=18,pady=(0,10))
-        for key in ('team','owner','sample','plm_no'): self.vars[key]=tk.StringVar()
-        self._enterprise_entry(fields,'담당팀','team','예: Pack개발품질1팀'); self._enterprise_entry(fields,'담당자','owner','예: 홍길동'); self._enterprise_entry(fields,'발생 샘플','sample','예: DUT3 / Sample No.'); self._enterprise_entry(fields,'PMS/PLM 이슈번호','plm_no','기존값이 있을 때 입력'); tk.Frame(fields,bg=ui.BORDER,height=1).pack(fill='x',pady=10)
+        for key in ('team','task_name','owner','sample','plm_no'): self.vars[key]=tk.StringVar()
+        self._enterprise_entry(fields,'담당팀','team','예: Pack개발품질1팀'); self._enterprise_entry(fields,'고객사 과제명','task_name','담당팀 연계 과제 선택'); self._enterprise_entry(fields,'담당자','owner','예: 홍길동'); self._enterprise_entry(fields,'발생 샘플','sample','예: DUT3 / Sample No.'); self._enterprise_entry(fields,'PMS/PLM 이슈번호','plm_no','기존값이 있을 때 입력'); tk.Frame(fields,bg=ui.BORDER,height=1).pack(fill='x',pady=10)
         self.vars['form_factor']=tk.StringVar(value='파우치형'); self.vars['product_type']=tk.StringVar(value='EV Pack'); self.vars['occurrence_site']=tk.StringVar(value=legacy.OCCURRENCE_SITES[0]); self.vars['stage']=tk.StringVar(value='DV')
         self._enterprise_combo(fields,'폼팩터','form_factor',legacy.FORM_FACTORS); self._enterprise_combo(fields,'제품 타입','product_type',legacy.PRODUCT_TYPES); self._enterprise_combo(fields,'발생처','occurrence_site',legacy.OCCURRENCE_SITES); self._enterprise_combo(fields,'개발 단계','stage',legacy.STAGES)
         target=tk.Frame(body,bg='white',highlightbackground=ui.BORDER,highlightthickness=1); target.pack(fill='x',pady=12); tk.Label(target,text='UPDATE TARGET',bg='white',fg=ui.MUTED,font=('Segoe UI',8,'bold')).pack(side='left',padx=(16,12),pady=12); self.target_label=tk.Label(target,text='',bg='white',fg=ui.NAVY,font=('Malgun Gothic',9,'bold')); self.target_label.pack(side='left'); self.target_weekly=tk.Label(target,text='',bg='#EDF1F4',font=('Segoe UI',8,'bold'),padx=9,pady=4); self.target_weekly.pack(side='right',padx=(5,16)); self.target_excel=tk.Label(target,text='',bg='#EDF1F4',font=('Segoe UI',8,'bold'),padx=9,pady=4); self.target_excel.pack(side='right')
@@ -125,7 +125,9 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         if xlsx and not os.path.exists(xlsx): return ui.warning(self,'입력 확인','선택한 Issue DB Excel 파일을 찾을 수 없습니다.')
         if g.get('occurrence_site') not in legacy.OCCURRENCE_SITES: return ui.warning(self,'입력 확인','발생처를 선택해 주세요.')
         try:
-            self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx); excel_row=None
+            self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip();
+            if selected_task: d['task_name']=selected_task
+            mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx); excel_row=None
             if do_excel:
                 self.status_var.set('RUNNING  ·  Issue DB 대상 확인 중...'); self.update_idletasks(); wb=load_workbook(xlsx); ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active; excel_row,_=base.find(ws,d,g)
                 if mode=='existing' and not excel_row:
