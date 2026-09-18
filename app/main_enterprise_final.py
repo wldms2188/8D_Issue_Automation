@@ -3,6 +3,7 @@ import excel_change_style_final  # noqa: F401
 from main_enterprise_v3 import EnterpriseAppV3
 import team_autocomplete_final  # noqa: F401
 import project_autocomplete_final  # noqa: F401
+import project_weekly_match_final  # noqa: F401
 import problem_summary_final  # noqa: F401
 import english_8d_final  # noqa: F401
 import attachment_dedupe_final  # noqa: F401
