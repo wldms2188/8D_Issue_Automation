@@ -24,6 +24,8 @@ def split_customer_task(value):
     """List contract: first underscore separates customer(A) from project(B)."""
     s=str(value or '').strip()
     if '_' not in s:return '',s
+    # Parenthesized underscores such as (Set_Biz) belong to the project suffix.
+    # The first underscore is still the A_B customer/project delimiter by contract.
     customer,task=s.split('_',1)
     return customer.strip(),task.strip()
 
