@@ -113,7 +113,7 @@ def classify(d):
                 cause_scores[cat]+=pw*fw
     cause_ranked=sorted(cause_scores.items(),key=lambda x:x[1],reverse=True)
     cause_ratio = cause_ranked[0][1] / max(cause_ranked[1][1], 0.001)
-    cause_ambiguous = cause_ranked[1][1] >= 3.2 and cause_ratio < 1.80
+    # A cause sentence explicitly naming two strong origins should remain human-reviewed.\n    # The 3.2 cutoff was too high for valid mixed cases such as 설계 공차 + 체결토크.\n    cause_ambiguous = cause_ranked[1][1] >= 2.5 and cause_ratio < 1.80
     if cause_ambiguous:
         rec='논의 중'; conf='경합'
     elif bscore<3.2:
