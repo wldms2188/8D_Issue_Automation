@@ -474,28 +474,30 @@ def translation_coverage(d):
     converted=max(0,total-remaining)
     return max(0,min(100,int(round(converted*100.0/total))))
 
-def _ask_translation_choice(self,d,path):
-    """Ask at preview-time whether to view/use the dictionary-translated Korean text."""
+def _ask_translation_choice(self,d,path,action='preview'):
+    """Ask separately for preview or update; button labels describe the exact action."""
     if not d.get('_english_detected'):
-        self._english_preview_choice=(str(path),False)
         return False
     pct=translation_coverage(d)
+    is_update=(action=='update')
+    verb='업데이트' if is_update else '미리보기'
     msg=(
         '영문 8D를 감지했습니다.\n\n'
         f'현재 자동 한글 번역률은 약 {pct}%입니다.\n'
-        '한글로 변환된 내용을 기준으로 미리보기할까요?\n\n'
-        '· 한글 번역 : 자동 변환된 한글 내용 사용\n'
-        '· 영문 원문 : 원문 그대로 사용'
+        f'이번 {verb}에 사용할 언어를 선택해 주세요.\n\n'
+        '선택한 버튼의 내용으로만 처리됩니다.'
+    )
+    buttons=(
+        (f'영문 원문으로 {verb}',False),
+        (f'한글 번역으로 {verb}',True),
     )
     choice=ui.dialog(
-        self,'영문 8D 번역 선택',msg,'question',
-        (('영문 원문',False),('한글 번역',True)),
-        width=560,height=330
+        self,f'영문 8D {verb} 선택',msg,'question',
+        buttons,width=600,height=320
     )
     if choice is None:
         return None
     use_original=not bool(choice)
-    self._english_preview_choice=(str(path),use_original)
     self._english_translation_percent=pct
     return use_original
 
@@ -564,7 +566,7 @@ def _preview_with_translation_choice(self):
         self.status_var.set('ANALYZING · 8D 내용을 추출하고 있습니다...')
         self._set_progress(15,'8D 내용 추출 중')
         d=extract(path)
-        use_original=_ask_translation_choice(self,d,path)
+        use_original=_ask_translation_choice(self,d,path,'preview')
         if use_original is None:
             self.status_var.set('READY · 미리보기가 취소되었습니다.')
             return
@@ -576,7 +578,7 @@ def _preview_with_translation_choice(self):
         if d.get('_english_detected'):
             pct=getattr(self,'_english_translation_percent',translation_coverage(d))
             mode='영문 원문' if use_original else '한글 번역'
-            self.log.insert('end',f'영문 처리       : {mode} 선택 · 자동 한글 번역률 약 {pct}%\n')
+            self.log.insert('end',f'미리보기 언어   : {mode} · 자동 한글 번역률 약 {pct}%\n')
         self.log.insert('end','상태            : 8D 내용 추출 완료 · 미리보기 확인 가능\n')
         self.log.insert('end','※ 아래 [8D 내용 미리보기] 창에서 2D~8D 추출 내용을 확인해 주세요.\n')
         self.status_var.set('READY · 8D 추출 완료')
@@ -591,14 +593,12 @@ def _run_with_translation_confirmation(self):
         return _original_run(self)
 
     probe=extract(path)
-    cached=getattr(self,'_english_preview_choice',None)
     use_original=None
-    if cached and cached[0]==str(path):
-        use_original=bool(cached[1])
-    elif probe.get('_english_detected'):
-        use_original=_ask_translation_choice(self,probe,path)
+    if probe.get('_english_detected'):
+        # Always ask again for update, even if the user already previewed the same file.
+        use_original=_ask_translation_choice(self,probe,path,'update')
         if use_original is None:
-            self.status_var.set('READY · 실행이 취소되었습니다.')
+            self.status_var.set('READY · 업데이트가 취소되었습니다.')
             return
 
     if use_original is None:
