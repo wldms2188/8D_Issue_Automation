@@ -93,7 +93,9 @@ class OutputVersionTests(unittest.TestCase):
    self.assertEqual(n,1)
    rwbook=load_workbook(reduced)
    rw=rwbook['Sheet1']
-   self.assertEqual(rw.sheet_view.topLeftCell,'A7')
+   self.assertEqual(rw.sheet_view.topLeftCell,'A1')
+   self.assertIsNone(rw.freeze_panes)
+   self.assertIsNone(rw.sheet_view.pane)
    self.assertEqual(rw.sheet_view.selection[0].activeCell,'A7')
    self.assertEqual(rw.sheet_view.selection[0].sqref,'A7')
    self.assertIs(rwbook.active,rw)
