@@ -135,23 +135,49 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Horizontal deployment done',x['verification_6d'])
    self.assertNotIn('Customer request A',x['verification_6d'])
 
- def test_geometry_region_does_not_move_content_from_mismatched_heading(self):
-  x,detected=e._english_fields_from_spatial([
-   '2D','Containment','Scratch on metal strap',
-   '3D','Root Cause','Stop shipment',
-   '4D','Corrective Action','Guide interference',
-   '5D','Verification','Guide revised',
-   '6D','Problem Description','DV passed'])
-  self.assertIn('Containment',x['problem'])
-  self.assertIn('Scratch on metal strap',x['problem'])
-  self.assertIn('Root Cause',x['temporary_action'])
-  self.assertIn('Stop shipment',x['temporary_action'])
-  self.assertIn('Corrective Action',x['cause_4d'])
-  self.assertIn('Guide interference',x['cause_4d'])
-  self.assertIn('Verification',x['action_5d'])
-  self.assertIn('Guide revised',x['action_5d'])
-  self.assertIn('Problem Description',x['verification_6d'])
-  self.assertIn('DV passed',x['verification_6d'])
+ def test_semantic_table_headers_are_not_rejected_by_geometry(self):
+  # The table/header meaning is authoritative. A geometry disagreement must not
+  # cause content to be dropped or moved to another D section.
+  semantic,detected=e._semantic_fields_and_detected([
+   'Problem Description','Scratch on metal strap',
+   'Containment','Stop shipment',
+   'Root Cause','Guide interference',
+   'Corrective Action','Guide revised',
+   'Verification','DV passed'])
+  geo,_=e._english_fields_from_spatial([
+   '2D','Stop shipment','3D','Guide interference','4D','Guide revised','5D','DV passed'])
+  self.assertIn('Scratch on metal strap',semantic['problem'])
+  self.assertIn('Stop shipment',semantic['temporary_action'])
+  self.assertIn('Guide interference',semantic['cause_4d'])
+  self.assertIn('Guide revised',semantic['action_5d'])
+  self.assertIn('DV passed',semantic['verification_6d'])
+  self.assertNotEqual(semantic['problem'],geo.get('problem',''))
+
+ def test_extract_prefers_table_headers_over_d_marker_geometry(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'semantic_first.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   # Deliberately misleading D marker positions.
+   for label,y in [('2D',0.5),('3D',1.8),('4D',3.1),('5D',4.4),('6D',5.7)]:
+    m=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); m.text=label
+   tb=sl.shapes.add_table(5,2,Inches(0.9),Inches(0.5),Inches(7.5),Inches(6.2)).table
+   rows=[
+    ('Problem Description','Scratch on metal strap'),
+    ('Containment','Stop shipment'),
+    ('Root Cause','Guide interference'),
+    ('Corrective Action','Guide revised'),
+    ('Verification','DV passed'),
+   ]
+   for r,(a,b) in enumerate(rows):
+    tb.cell(r,0).text=a; tb.cell(r,1).text=b
+   prs.save(p)
+   x=e.extract(p)
+   self.assertTrue(x['_english_mode'])
+   self.assertIn('Scratch on metal strap',x.get('problem_en_original') or x['problem'])
+   self.assertIn('Stop shipment',x.get('temporary_action_en_original') or x['temporary_action'])
+   self.assertIn('Guide interference',x.get('cause_4d_en_original') or x['cause_4d'])
+   self.assertIn('Guide revised',x.get('action_5d_en_original') or x['action_5d'])
+   self.assertIn('DV passed',x.get('verification_6d_en_original') or x['verification_6d'])
 
  def test_4d_subheadings_split_only_within_4d(self):
   x,detected=e._english_fields_from_spatial([
