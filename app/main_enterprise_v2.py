@@ -221,7 +221,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         tk.Label(head,text='8D 내용 미리보기',bg=ui.NAVY,fg='white',font=('Malgun Gothic',13,'bold')).pack(side='left',padx=22)
         body=tk.Frame(win,bg='white'); body.pack(fill='both',expand=True,padx=22,pady=16)
         txt=tk.Text(body,wrap='word',bg='#FBFCFD',fg=ui.TEXT,relief='flat',highlightthickness=1,highlightbackground=ui.BORDER,font=('Malgun Gothic',9),padx=14,pady=12); txt.pack(fill='both',expand=True)
-        for label,key in [('현상','problem'),('3D 임시조치','temporary_action'),('4D 발생원인','cause_4d'),('4D 유출원인','leak_cause'),('4D 시스템원인','system_cause'),('5D 개선대책','action_5d'),('6D 효과검증','verification_6d'),('고객대응','customer_action'),('수평전개','horizontal_deployment'),('요청사항','request')]:
+        for label,key in [('2D 현상','problem'),('3D 임시조치','temporary_action'),('4D 발생원인','cause_4d'),('4D 유출원인','leak_cause'),('4D 시스템원인','system_cause'),('5D 개선대책','action_5d'),('6D 효과검증','verification_6d'),('고객대응','customer_action'),('수평전개','horizontal_deployment'),('요청사항','request')]:
             txt.insert('end',f'■ {label}\n','h'); txt.insert('end',(N(d.get(key)) or '추출 내용 없음')+'\n\n')
         txt.tag_configure('h',font=('Malgun Gothic',9,'bold'),foreground=ui.NAVY); txt.configure(state='disabled')
         foot=tk.Frame(win,bg='#F6F8FA',height=60); foot.pack(fill='x'); foot.pack_propagate(False)
