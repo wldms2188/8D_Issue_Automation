@@ -43,6 +43,10 @@ def _customer_task(d):
         return customer+'_'+task
     return customer or task
 
+# Make the active v2.8/v2.9 base use the same canonical customer_task everywhere.
+# This fixes Issue DB matching/writing cases such as A / A_B -> A_B.
+base.task=_customer_task
+
 
 def _issue_display(d):
     return step4.step1._page1_issue(d)
