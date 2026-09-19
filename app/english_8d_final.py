@@ -95,7 +95,7 @@ def _marker(line):
     m=re.match(r'^\s*([2-8])\s*[dD]\b[\s.:：\-–—)]*(.*)$',s)
     if m:
         n=m.group(1); rest=m.group(2).strip()
-        if n in ('7','8'): return n+'D',rest
+        if n in ('1','7','8'): return n+'D',rest
         sec=n+'D'
         if n=='4':
             low=rest.casefold()
@@ -121,10 +121,22 @@ def _strip_semantic_label(text,sec):
                 return s[len(lab):].lstrip(' :：-–—')
     return s
 
-def extract_sections_from_blocks(blocks):
+
+# Short photo captions are useful for image collage context but must not become 2D~6D text.
+CAPTION_HINTS=('process','improvement','before','after','sample','photo','image','view','detail','unloading','loading','공정','개선전','개선후','사진','이미지')
+
+def _is_photo_caption(line):
+    s=_norm_line(line)
+    if not s or len(s)>80:return False
+    q=s.strip('[]() ').casefold()
+    if re.fullmatch(r'(before|after)( improvement)?',q):return True
+    if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True
+    if (s.startswith('[') and s.endswith(']')) and any(x in q for x in CAPTION_HINTS):return True
+    return False
+\ndef extract_sections_from_blocks(blocks):
     """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
     out={v:'' for v in SECTION_FIELDS.values()}
-    buckets={k:[] for k in SECTION_FIELDS}
+    buckets={k:[] for k,v in SECTION_FIELDS.items() if v}
     current=None
     for block in blocks:
         for raw in str(block or '').replace('\r','\n').splitlines():
