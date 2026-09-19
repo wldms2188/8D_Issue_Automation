@@ -70,6 +70,104 @@ class UIStateTests(unittest.TestCase):
             self.assertEqual(state,'complete',msg=text)
             self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료',msg=text)
 
+    def test_issue_db_comprehensive_completed_5d_6d_matrix(self):
+        action_done=[
+            'Corrective action completed.',
+            'Countermeasure implemented.',
+            'Change successfully implemented.',
+            'Design revision completed.',
+            'Process parameter updated.',
+            'New control applied.',
+            'Improvement action released.',
+            '개선 완료 및 적용 완료',
+        ]
+        verification_done=[
+            'No additional abnormalities were observed.',
+            'No additional abnomalities were observed.',
+            'No further abnormalities detected.',
+            'No abnormality occurred after implementation.',
+            'No abnormalities found during validation.',
+            'No recurrence observed.',
+            'No repeat issue was found.',
+            'Verification completed and passed.',
+            'Validation completed successfully.',
+            'Effectiveness confirmed.',
+            'All acceptance criteria met.',
+            'Result is within specification.',
+            'Evaluation completed with normal result.',
+            'All tests passed.',
+        ]
+        total=0
+        for a in action_done:
+            for v in verification_done:
+                status,_=ent.issue_db_recommended_status({'action_5d':a,'verification_6d':v})
+                self.assertEqual(status,'close',msg=(a,v))
+                total+=1
+        self.assertEqual(total,112)
+
+    def test_issue_db_comprehensive_pending_matrix_stays_open(self):
+        action_done=[
+            'Corrective action completed.',
+            'Countermeasure implemented.',
+            'Design revision completed.',
+            'Process parameter updated.',
+        ]
+        verification_pending=[
+            'Verification in progress.',
+            'Validation pending.',
+            'Verification is scheduled next week.',
+            'To be verified after DV.',
+            'Not yet validated.',
+            'Additional verification required.',
+            'Remaining validation is in progress.',
+            'Awaiting verification result.',
+            'Verification to follow.',
+            'Under validation.',
+        ]
+        total=0
+        for a in action_done:
+            for v in verification_pending:
+                status,_=ent.issue_db_recommended_status({'action_5d':a,'verification_6d':v})
+                self.assertEqual(status,'open',msg=(a,v))
+                total+=1
+        self.assertEqual(total,40)
+
+    def test_issue_db_comprehensive_abnormal_matrix_stays_open(self):
+        abnormal=[
+            'Final validation failed.',
+            'Abnormality observed during DV.',
+            'Defect detected after implementation.',
+            'Issue recurred after the action.',
+            'Result was NG.',
+            'Result is out of spec.',
+            'Acceptance criteria not met.',
+            'Requirement not met.',
+        ]
+        for v in abnormal:
+            status,_=ent.issue_db_recommended_status({
+                'action_5d':'Corrective action completed.',
+                'verification_6d':v
+            })
+            self.assertEqual(status,'open',msg=v)
+
+    def test_no_additional_abnormalities_is_not_misread_as_abnormal(self):
+        variants=[
+            'No additional abnormalities.',
+            'No additional abnormalities were observed.',
+            'No additional abnomalities were observed.',
+            'No further abnormalities were detected.',
+            'No abnormality occurred.',
+            'No abnormalities found.',
+        ]
+        for v in variants:
+            state,_=ent.weekly_verification_state(v)
+            self.assertEqual(state,'complete',msg=v)
+            status,_=ent.issue_db_recommended_status({
+                'action_5d':'Corrective action completed.',
+                'verification_6d':v
+            })
+            self.assertEqual(status,'close',msg=v)
+
     def test_weekly_english_pending_variants(self):
         pending=[
             'Verification in progress.',
