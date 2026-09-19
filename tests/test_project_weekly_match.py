@@ -31,6 +31,15 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
   self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
 
+ def test_detail_title_customer_project_is_not_prefixed_twice(self):
+  d={'customer':'MBAG','task_name':'MBAG_EB565M','issue_name':'MBAG_EB565M_Scratch'}
+  self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB565M')
+  self.assertEqual(w.s13.step4.step1._page1_issue(d),'Scratch')
+
+ def test_detail_title_repeated_customer_prefix_collapses(self):
+  d={'customer':'MBAG','task_name':'MBAG_MBAG_EB565M','issue_name':'MBAG_EB565M_Scratch'}
+  self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB565M')
+
  def test_issue_display_removes_8d_and_report_words(self):
   self.assertEqual(v319._clean_issue_label('8D_Report_Crack 발생'),'Crack 발생')
 
