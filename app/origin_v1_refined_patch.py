@@ -38,12 +38,13 @@ def _negated(q, term):
     t=_norm(term)
     if not t:
         return False
-    positions=[m.start() for m in re.finditer(re.escape(t),q)]
+    nq=_norm(q)
+    positions=[m.start() for m in re.finditer(re.escape(t),nq)]
     if not positions:
         return False
     for pos in positions:
         # Negation normally follows the subject phrase (e.g. 공정조건 문제없음).
-        after=q[pos+len(t):pos+len(t)+48]
+        after=nq[pos+len(t):pos+len(t)+48]
         if not any(n in after for n in NEGATIONS):
             return False
     return True
