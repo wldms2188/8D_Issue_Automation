@@ -22,11 +22,10 @@ class UIStateTests(unittest.TestCase):
         pct,label=v2.progress_state('COMPLETE · 선택한 자료의 업데이트가 완료되었습니다.',85)
         self.assertEqual((pct,label),(100,'업데이트 완료'))
 
-    def test_initial_window_uses_more_vertical_space(self):
+    def test_initial_window_keeps_compact_status_visible_size(self):
         w,h=v3.EnterpriseAppV3._initial_window_size(1920,1080)
-        self.assertGreaterEqual(w,1180)
-        self.assertGreaterEqual(h,900)
-        self.assertLessEqual(h,1080)
+        self.assertEqual((w,h),(1360,900))
+        self.assertLess(h,1000)
 
     def test_weekly_status_follows_agreed_6d_priority(self):
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':'검증 완료'}),'개선 완료')
