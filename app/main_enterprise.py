@@ -54,6 +54,30 @@ def apply_selected_customer_project(d,selected):
     if customer:
         d['customer']=customer
     return d
+
+def canonical_customer_project_from_8d(d):
+    """Return one canonical customer_project label from extracted 8D metadata."""
+    d=dict(d or {})
+    task=N(d.get('task_name'))
+    customer=N(d.get('customer'))
+    if task:
+        prefix,full=split_customer_project(task)
+        if prefix:
+            return full
+        if customer:
+            return customer+'_'+task
+        return task
+    return customer
+
+def _customer_project_key(value):
+    return re.sub(r'[^0-9A-Za-z가-힣]+','',N(value)).casefold()
+
+def customer_project_mismatch(extracted_d,selected_value):
+    extracted=canonical_customer_project_from_8d(extracted_d)
+    selected=N(selected_value)
+    if not extracted or not selected:
+        return False,extracted,selected
+    return _customer_project_key(extracted)!=_customer_project_key(selected),extracted,selected
 WEEKLY_PENDING_TERMS=(
     '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
     '예정','추정','계획','계획 중','계획중','미완료','완료 예정','추가 검토','모니터링 중','모니터링중',
@@ -77,6 +101,7 @@ WEEKLY_COMPLETE_TERMS=(
     'validated','verified','passed','pass','all tests passed','test passed',
     'acceptable','satisfactory','normal result','normal condition','result normal',
     'no abnormality','no abnormalities','no abnomality','no abnomalities',
+    'no additional abnormality','no additional abnormalities','no additional abnomality','no additional abnomalities',
     'without abnormality','without abnormalities','no issue','no issues',
     'no defect','no defects','no recurrence','no recurrence observed',
     'no abnormality observed','no abnormality detected','no abnormality found',
@@ -483,7 +508,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
     def _confirm_issue_db_status_v1(self,d):
-        """Show one explicit Issue DB open/close chooser when 5D or 6D exists."""
+        """V1-style yes/no confirmation; shown once whenever 5D or 6D exists."""
         if not issue_db_status_confirmation_required(d):
             return 'open'
 
@@ -493,21 +518,30 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         six=N(d.get('verification_6d')) or '(6D 내용 없음)'
         reason=issue_db_status_reason(d,recommended)
 
+        if recommended=='close':
+            prompt=(
+                '5D/6D 내용 기준으로 close를 추천합니다.\n\n'
+                f'판단 이유\n{reason}\n\n'
+                '[5D 개선대책]\n'
+                f'{five}\n\n'
+                '[6D 효과검증]\n'
+                f'{six}\n\n'
+                '이슈 상태를 close로 처리하시겠습니까?\n'
+                '아니오를 선택하면 open으로 처리합니다.'
+            )
+            return 'close' if messagebox.askyesno('Issue DB 상태 확인',prompt,parent=self) else 'open'
+
         prompt=(
-            f'추천 상태  : {recommended}\n'
-            f'판단 이유  : {reason}\n\n'
+            '5D/6D 내용 기준으로 open을 추천합니다.\n\n'
+            f'판단 이유\n{reason}\n\n'
             '[5D 개선대책]\n'
             f'{five}\n\n'
             '[6D 효과검증]\n'
             f'{six}\n\n'
-            'Issue DB에 반영할 최종 상태를 선택해 주세요.'
+            '이슈 상태를 open으로 처리하시겠습니까?\n'
+            '아니오를 선택하면 close로 처리합니다.'
         )
-        # Put the recommendation last so the recommended action is the blue button.
-        buttons=(('close','close'),('open','open')) if recommended=='open' else (('open','open'),('close','close'))
-        return ui.dialog(
-            self,'Issue DB 상태 확인',prompt,'question',
-            buttons,width=720,height=470,button_width=12
-        )
+        return 'open' if messagebox.askyesno('Issue DB 상태 확인',prompt,parent=self) else 'close'
 
     def _confirm_weekly_status_v1(self,d):
         """Show a separate weekly Signal chooser only when the Issue DB remains open."""
@@ -569,6 +603,21 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         try:
             self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip()
             if selected_task:
+                mismatch,extracted_task,entered_task=customer_project_mismatch(d,selected_task)
+                if mismatch:
+                    msg=(
+                        '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
+                        f'8D 확인값     : {extracted_task}\n'
+                        f'입력/선택값   : {entered_task}\n\n'
+                        '입력/선택한 고객사/과제명으로 계속 진행할까요?'
+                    )
+                    choice=ui.dialog(
+                        self,'고객사/과제명 확인',msg,'warning',
+                        (('취소',False),('입력값 사용',True)),
+                        width=620,height=330,button_width=13
+                    )
+                    if choice is not True:
+                        self.status_var.set('READY  ·  고객사/과제명 확인이 취소되었습니다.'); return
                 d=apply_selected_customer_project(d,selected_task)
             mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx); excel_row=None
             if do_weekly:
