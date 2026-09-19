@@ -576,6 +576,17 @@ def _d_regions_for_slide(sl,prs):
             })
     return regions
 
+def _image_region_overlap_fraction(ib,reg):
+    """Fraction of an image rectangle physically inside one D region."""
+    x,y,w,h=ib
+    if w<=0 or h<=0:
+        return 0.0
+    left=reg['left']; right=reg['right']; top=reg['top']; bottom=reg['bottom']
+    iw=max(0.0,min(x+w,right)-max(x,left))
+    ih=max(0.0,min(y+h,bottom)-max(y,top))
+    return (iw*ih)/max(float(w*h),1.0)
+
+
 def _english_section_images(path):
     """Map English-source pictures only to the D region that physically owns them.
 
@@ -626,17 +637,26 @@ def _english_section_images(path):
                 continue
 
             cx,cy=_center_box(ib)
-            candidates=[
-                r for r in regions
-                if r['top']<=cy<r['bottom']
-                and cx>=r['left']*0.90 and cx<r['right']
-            ]
-            if not candidates:
-                # Strict English behavior: no cross-D nearest-heading fallback.
-                continue
 
-            # When columns are close, choose the region whose marker/column is nearest.
-            reg=min(candidates,key=lambda r:abs(cx-r['cx']))
+            # Ownership is based on how much of the picture is physically inside
+            # each D region, not merely where its centre happens to land. A picture
+            # split almost evenly across two D regions is ambiguous and is ignored
+            # rather than being shown under the wrong D on the weekly page.
+            scored=[]
+            for r in regions:
+                frac=_image_region_overlap_fraction(ib,r)
+                if frac>0:
+                    scored.append((frac,r))
+            if not scored:
+                continue
+            scored.sort(key=lambda z:z[0],reverse=True)
+            best_frac,reg=scored[0]
+            second_frac=scored[1][0] if len(scored)>1 else 0.0
+            if best_frac<0.35:
+                continue
+            if second_frac>0 and second_frac>=best_frac*0.85:
+                # Nearly tied overlap across D boundaries: safer to omit than mix.
+                continue
             n=reg['n']
             if n in (2,3,5,6):
                 sec=f'{n}D'
