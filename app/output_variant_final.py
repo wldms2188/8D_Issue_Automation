@@ -160,8 +160,32 @@ def _focus_reduced_excel_view(wb,ws,updated_row=7):
         fp=ws.freeze_panes
         fp_row=getattr(fp,'row',None)
         if fp_row is None and isinstance(fp,str):
-            import re as _re
-            m=_re.search(r'(\d+)    """Create a true reduced Issue DB: rows 1-6 + only the updated data row(s).
+            m=re.search(r'(\d+)$',fp)
+            fp_row=int(m.group(1)) if m else None
+        if fp_row and int(fp_row)>=7:
+            top_cell='A7'
+    except Exception:
+        pass
+
+    try:ws.sheet_view.topLeftCell=top_cell
+    except Exception:pass
+
+    # Select the surviving updated row so Excel opens with the relevant record in focus.
+    target=f'A{max(7,int(updated_row or 7))}'
+    try:
+        sels=list(ws.sheet_view.selection or [])
+        if sels:
+            sels[0].activeCell=target
+            sels[0].sqref=target
+        else:
+            from openpyxl.worksheet.views import Selection
+            ws.sheet_view.selection=[Selection(activeCell=target,sqref=target)]
+    except Exception:
+        pass
+
+
+def _excel_update_only(source,saved,preferred_row=None):
+    """Create a true reduced Issue DB: rows 1-6 + only the updated data row(s).
 
     All other data rows and their floating representative images/charts are removed.
     The surviving updated row(s) are compacted to row 7 onward.
@@ -193,8 +217,7 @@ def _focus_reduced_excel_view(wb,ws,updated_row=7):
         if r not in keep:
             ws.delete_rows(r,1)
 
-    # The kept update row is compacted to row 7. Reset the saved workbook view
-    # so opening the reduced file never starts at the source workbook's old scroll position.
+    # Reset the saved workbook view so the updated row is immediately visible.
     _focus_reduced_excel_view(dst,ws,7)
 
     target=Path(saved).with_name(Path(saved).stem+'_업데이트사항만'+Path(saved).suffix)
