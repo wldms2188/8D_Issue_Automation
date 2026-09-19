@@ -13,6 +13,10 @@ class UIStateTests(unittest.TestCase):
         self.assertIn('8D 원본 선택 완료',s)
         self.assertNotIn('선택해 주세요',s)
 
+    def test_selected_8d_ready_message_is_explicit(self):
+        s=ent.target_ready_status('sample.pptx','READY  ·  8D 원본을 선택해 주세요.')
+        self.assertEqual(s,'READY  ·  8D 원본 선택 완료 · 미리보기 가능')
+
     def test_preview_complete_is_not_final_update_complete(self):
         pct,label=v2.progress_state('READY · 8D 추출 완료',15)
         self.assertEqual(pct,25)
