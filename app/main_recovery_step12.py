@@ -16,7 +16,12 @@ C=v310.C
 
 
 def _signal_status_from_g(d,g):
-    """Use the same final open/close decision chosen for Issue DB when available."""
+    """Use the independently confirmed weekly-meeting Signal when available."""
+    weekly=N(g.get('_weekly_status_selected'))
+    if weekly in ('원인/개선 미확인','개선 검증중','개선 완료'):
+        return weekly
+
+    # Backward-compatible fallback for older callers that only supply Issue DB status.
     selected=N(g.get('_issue_status_selected')).lower()
     if selected=='close':
         return '개선 완료'
@@ -107,7 +112,7 @@ def weekly_step12(src,out,d,g,mode):
     if origin:
         step8._set_origin_in_ppt(saved,origin)
 
-    return '주간회의 PPT 업데이트: '+base.status(d),saved
+    return '주간회의 PPT 업데이트: '+_signal_status_from_g(d,g),saved
 
 
 base.weekly=weekly_step12
