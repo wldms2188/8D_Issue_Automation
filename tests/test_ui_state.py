@@ -1,5 +1,8 @@
 import sys, unittest
 from pathlib import Path
+from pptx import Presentation
+from pptx.util import Inches
+from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 
 import main_enterprise as ent
@@ -7,6 +10,8 @@ import main_recovery_step12 as step12
 import main_enterprise_v2 as v2
 import main_enterprise_v3 as v3
 import main_recovery_step11 as step11
+import main_recovery_step4 as step4
+import main_v315 as v315
 import main_v310 as v310
 
 class UIStateTests(unittest.TestCase):
@@ -125,6 +130,67 @@ class UIStateTests(unittest.TestCase):
         state,_=ent.weekly_verification_state(text)
         self.assertEqual(state,'complete')
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료')
+
+    def test_selected_project_warns_when_8d_project_is_missing_or_slightly_different(self):
+        mismatch,extracted,selected=ent.customer_project_mismatch(
+            {'customer':'','task_name':''},'MBAG_EB565M'
+        )
+        self.assertTrue(mismatch)
+        self.assertEqual(extracted,'')
+        self.assertEqual(selected,'MBAG_EB565M')
+
+        mismatch,extracted,selected=ent.customer_project_mismatch(
+            {'customer':'MBAG','task_name':'EB-565M'},'MBAG_EB565M'
+        )
+        self.assertTrue(mismatch)
+        self.assertEqual(extracted,'MBAG_EB-565M')
+
+    def test_detail_title_drops_selected_project_prefix_when_owner_overlap_risk(self):
+        prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+        title=sl.shapes.add_textbox(Inches(.2),Inches(.10),Inches(2.0),Inches(.42))
+        title.text='과제명_이슈 제목'
+        owner=sl.shapes.add_textbox(Inches(2.45),Inches(.10),Inches(2.6),Inches(.42))
+        owner.text='00팀 담당자 : 이름'
+        d={
+            'customer':'MBAG',
+            'task_name':'MBAG_VERY_LONG_SELECTED_PROJECT_NAME',
+            'issue_name':'MBAG_EB565M_Scratch',
+            'problem':'Scratch',
+        }
+        g={'team':'Pack개발품질1팀','owner':'홍길동'}
+        step4._force_page2_header(sl,d,g)
+        self.assertNotIn('VERY_LONG_SELECTED_PROJECT_NAME',title.text)
+        self.assertIn('MBAG_EB565M_Scratch',title.text)
+
+    def test_4d_marker_and_title_are_grouped_and_follow_zone_positions(self):
+        prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+        for x,y in ((1.0,1.0),(7.0,1.0)):
+            marker=sl.shapes.add_shape(MSO_SHAPE.OVAL,Inches(x),Inches(y),Inches(.42),Inches(.42))
+            marker.text='4D'
+            title=sl.shapes.add_textbox(Inches(x+.48),Inches(y),Inches(1.2),Inches(.42))
+            title.text='원인 분석'
+        d={
+            'problem':'현상',
+            'temporary_action':'임시조치',
+            'cause_4d':'발생원인',
+            'leak_cause':'유출원인',
+            'system_cause':'',
+            'action_5d':'개선대책',
+            'verification_6d':'검증 완료',
+            '_section_images':{},
+        }
+        step12._update_page2_step12(sl,d,{},'existing')
+        units=v315._top_4d_units(sl)
+        self.assertEqual(len(units),2)
+        self.assertTrue(all(u.shape_type==MSO_SHAPE_TYPE.GROUP for u in units))
+        zones,_,_=step11._layout_with_4d_placeholders(d,{})
+        expected=[
+            (max(.10,zones['4D_CAUSE']['x']-.18),max(.10,zones['4D_CAUSE']['y']-.35)),
+            (max(.10,zones['4D_LEAK']['x']-.18),max(.10,zones['4D_LEAK']['y']-.35)),
+        ]
+        actual=sorted((round(float(u.left)/v310.EMU,2),round(float(u.top)/v310.EMU,2)) for u in units)
+        wanted=sorted((round(x,2),round(y,2)) for x,y in expected)
+        self.assertEqual(actual,wanted)
 
     def test_customer_project_mismatch_uses_canonical_8d_value(self):
         d={'customer':'MBAG','task_name':'EB565M'}
