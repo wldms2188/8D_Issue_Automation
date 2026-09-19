@@ -84,13 +84,20 @@ def canonical_customer_project_from_8d(d):
     return customer
 
 def _customer_project_key(value):
-    return re.sub(r'[^0-9A-Za-z가-힣]+','',N(value)).casefold()
+    """Comparison key that ignores spacing but preserves meaningful project punctuation."""
+    s=N(value).casefold()
+    s=(s.replace('＿','_').replace('－','-').replace('／','/').replace('（','(').replace('）',')'))
+    return re.sub(r'\s+','',s)
 
 def customer_project_mismatch(extracted_d,selected_value):
     extracted=canonical_customer_project_from_8d(extracted_d)
     selected=N(selected_value)
-    if not extracted or not selected:
+    if not selected:
         return False,extracted,selected
+    # A selected project with no project extracted from the 8D is also a mismatch:
+    # the user should explicitly confirm instead of silently overwriting metadata.
+    if not extracted:
+        return True,extracted,selected
     return _customer_project_key(extracted)!=_customer_project_key(selected),extracted,selected
 WEEKLY_PENDING_TERMS=(
     '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
@@ -980,7 +987,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 if mismatch:
                     msg=(
                         '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
-                        f'8D 확인값     : {extracted_task}\n'
+                        f'8D 확인값     : {extracted_task or "(과제명 추출 못함)"}\n'
                         f'입력/선택값   : {entered_task}\n\n'
                         '입력/선택한 고객사/과제명으로 계속 진행할까요?'
                     )
