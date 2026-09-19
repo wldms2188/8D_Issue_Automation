@@ -19,11 +19,10 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
 
     @staticmethod
     def _initial_window_size(sw,sh):
-        # Use most of the available desktop so the result/status area is visible
-        # at common Windows DPI settings, while keeping a small taskbar margin.
-        w=max(1000,min(1380,int(sw)-40))
-        # Taller default window, but keep normal windowed mode instead of maximizing.
-        h=max(820,min(1000,int(sh)-70))
+        # Match the validated compact view: large enough to show the bottom status/log
+        # area, but smaller than the previous near-full-screen startup size.
+        w=max(1100,min(1360,int(sw)-100))
+        h=max(800,min(900,int(sh)-140))
         return min(w,int(sw)),min(h,int(sh))
 
     def _compact_layout(self):
