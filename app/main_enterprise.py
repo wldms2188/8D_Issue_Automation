@@ -89,6 +89,18 @@ def _customer_project_key(value):
     s=(s.replace('＿','_').replace('－','-').replace('／','/').replace('（','(').replace('）',')'))
     return re.sub(r'\s+','',s)
 
+def _project_part_for_compare(value):
+    s=N(value)
+    depth=0
+    for i,ch in enumerate(s):
+        if ch=='(':
+            depth+=1
+        elif ch==')' and depth:
+            depth-=1
+        elif ch=='_' and depth==0:
+            return s[i+1:].strip()
+    return s
+
 def customer_project_mismatch(extracted_d,selected_value):
     extracted=canonical_customer_project_from_8d(extracted_d)
     selected=N(selected_value)
@@ -98,7 +110,15 @@ def customer_project_mismatch(extracted_d,selected_value):
     # the user should explicitly confirm instead of silently overwriting metadata.
     if not extracted:
         return True,extracted,selected
-    return _customer_project_key(extracted)!=_customer_project_key(selected),extracted,selected
+
+    selected_customer,_=split_customer_project(selected)
+    if selected_customer:
+        left,right=extracted,selected
+    else:
+        # Some catalog entries are project-only (no customer prefix). Compare just
+        # the project part so a matching project does not create a false warning.
+        left,right=_project_part_for_compare(extracted),selected
+    return _customer_project_key(left)!=_customer_project_key(right),extracted,selected
 WEEKLY_PENDING_TERMS=(
     '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
     '예정','추정','계획','계획 중','계획중','미완료','완료 예정','추가 검토','모니터링 중','모니터링중',
