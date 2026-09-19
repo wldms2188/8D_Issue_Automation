@@ -171,6 +171,23 @@ class English8DTests(unittest.TestCase):
   self.assertFalse(e._document_looks_english('A'*79+'가'*21))
   self.assertAlmostEqual(e.english_content_ratio('A'*80+'가'*20),80.0)
 
+ def test_single_4d_band_splits_side_by_side_root_and_escape_columns(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'four_columns.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   m=sl.shapes.add_textbox(Inches(0.1),Inches(0.5),Inches(0.4),Inches(0.3)); m.text='4D'
+   n=sl.shapes.add_textbox(Inches(0.1),Inches(3.2),Inches(0.4),Inches(0.3)); n.text='5D'
+   a=sl.shapes.add_textbox(Inches(0.9),Inches(0.7),Inches(2.8),Inches(0.4)); a.text='Root Cause'
+   b=sl.shapes.add_textbox(Inches(0.9),Inches(1.3),Inches(2.8),Inches(0.6)); b.text='Guide interference'
+   cc=sl.shapes.add_textbox(Inches(5.0),Inches(0.7),Inches(2.8),Inches(0.4)); cc.text='Escape Point'
+   dd=sl.shapes.add_textbox(Inches(5.0),Inches(1.3),Inches(2.8),Inches(0.6)); dd.text='Inspection gap'
+   prs.save(p)
+   blocks=e._spatial_section_blocks(p)
+   x,_=e._english_fields_from_spatial(blocks)
+   self.assertIn('Guide interference',x['cause_4d'])
+   self.assertNotIn('Inspection gap',x['cause_4d'])
+   self.assertIn('Inspection gap',x['leak_cause'])
+
  def test_translation_coverage_reports_partial_dictionary_conversion(self):
   x=e.enhance_dict({'problem':'Crack occurred after repeated vehicle evaluation.'})
   pct=e.translation_coverage(x)
