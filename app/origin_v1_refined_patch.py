@@ -135,8 +135,14 @@ def _hits_for_text(text):
     return evidence
 
 def _occurrence_site_prior(d):
-    """Return a weak prior from occurrence site; never override a clear 4D cause."""
-    site=_plain((d or {}).get('_origin_occurrence_site') or (d or {}).get('occurrence_site'))
+    """Return a weak prior from occurrence site; screen selection wins over PPT value.
+
+    _origin_occurrence_site is the value selected in the GUI.  Only when that
+    value is missing do we fall back to the occurrence site extracted from PPT.
+    """
+    selected=_plain((d or {}).get('_origin_occurrence_site'))
+    ppt_site=_plain((d or {}).get('occurrence_site'))
+    site=selected if selected else ppt_site
     compact=_norm(site)
     if not site:
         return None,None
@@ -149,10 +155,11 @@ def _occurrence_site_prior(d):
         '제품 생산','제품생산','product production','product manufacturing',
         'pack production','pack manufacturing','assembly production'
     )
+    source='화면 선택값' if selected else '8D 원문값'
     if any(_norm(x) in compact for x in part_sites):
-        return '부품',f'발생처가 "{site}"으로 선택되어 부품 기인 가능성을 보조 근거로 반영했습니다.'
+        return '부품',f'발생처 {source}이 "{site}"이므로 부품 기인 가능성을 보조 근거로 반영했습니다.'
     if any(_norm(x) in compact for x in product_sites):
-        return '공정',f'발생처가 "{site}"으로 선택되어 공정 기인 가능성을 보조 근거로 반영했습니다.'
+        return '공정',f'발생처 {source}이 "{site}"이므로 공정 기인 가능성을 보조 근거로 반영했습니다.'
     return None,None
 
 def _decide_with_site_prior(evidence,text,d):
