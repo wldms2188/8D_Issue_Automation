@@ -589,7 +589,8 @@ def _english_section_images(path):
 
     # User rule: ONLY source 8D page 1 supplies Issue DB / weekly images.
     # Never borrow or mix pictures from later source pages.
-    for si,sl in enumerate(prs.slides[:1]):
+    for si in range(min(1,len(prs.slides))):
+        sl=prs.slides[si]
         regions=_d_regions_for_slide(sl,prs)
         if not regions:
             continue
