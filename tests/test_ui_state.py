@@ -28,10 +28,13 @@ class UIStateTests(unittest.TestCase):
         self.assertGreaterEqual(h,900)
         self.assertLessEqual(h,1080)
 
-    def test_weekly_status_follows_final_choice(self):
-        d={'action_5d':'fix','verification_6d':'DV abnormal'}
-        self.assertEqual(ent.weekly_status_from_choice(d,'open'),'개선 검증중')
-        self.assertEqual(ent.weekly_status_from_choice(d,'close'),'개선 완료')
+    def test_weekly_status_follows_agreed_6d_priority(self):
+        self.assertEqual(ent.weekly_recommended_status({'verification_6d':'검증 완료'}),'개선 완료')
+        self.assertEqual(ent.weekly_recommended_status({'verification_6d':'완료 예정'}),'개선 검증중')
+        self.assertEqual(ent.weekly_recommended_status({'verification_6d':'Validation in progress.'}),'개선 검증중')
+        self.assertEqual(ent.weekly_recommended_status({'cause_4d':'원인 확인','action_5d':''}),'개선 검증중')
+        self.assertEqual(ent.weekly_recommended_status({'cause_4d':'','action_5d':'','verification_6d':''}),'원인/개선 미확인')
+        self.assertEqual(ent.weekly_status_from_choice({'verification_6d':'DV abnormal'},'close'),'개선 완료')
 
     def test_weekly_popup_only_for_final_open_issue_db(self):
         self.assertTrue(ent.weekly_status_confirmation_required('open'))
@@ -48,7 +51,7 @@ class UIStateTests(unittest.TestCase):
         db_reason=ent.issue_db_status_reason(d,'open')
         weekly_reason=ent.weekly_status_reason(d,'개선 검증중')
         self.assertIn('진행 중',db_reason)
-        self.assertIn('완료가 확정되지 않은',weekly_reason)
+        self.assertIn('진행 중',weekly_reason)
 
 if __name__=='__main__':
     unittest.main()
