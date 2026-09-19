@@ -91,8 +91,9 @@ def _negated(text,term):
     negs=tuple(_plain(n) for n in NEGATIONS)
     for a,b in positions:
         before=q[max(0,a-55):a]
+        term_text=q[a:b]
         after=q[b:b+55]
-        local=(before+' '+after).strip()
+        local=(before+' '+term_text+' '+after).strip()
         # Common grammar: "not caused by X", "X was ruled out",
         # "no issue with X", "X within specification".
         if not any(n in local for n in negs):
