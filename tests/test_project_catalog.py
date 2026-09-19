@@ -21,6 +21,21 @@ class ProjectCatalogTests(unittest.TestCase):
  def test_parenthesis_variants_are_suggested(self):
   xs=p.canonical_candidates('EB-L','원통형Pack개발품질팀')
   self.assertIn('MBAG_EB-L(EU)',xs); self.assertIn('MBAG_EB-L(US)',xs)
+ def test_filename_exact_project_match_uses_existing_catalog(self):
+  xs=p.filename_project_candidates(r'C:\\tmp\\8D_Report_MBAG_EB565M_Scratch.pptx')
+  self.assertEqual(xs,['MBAG_EB565M'])
+
+ def test_filename_shared_model_word_surfaces_multiple_projects(self):
+  xs=p.filename_project_candidates(r'C:\\tmp\\8D_Report_EB-L_issue.pptx','원통형Pack개발품질팀')
+  self.assertIn('MBAG_EB-L(EU)',xs)
+  self.assertIn('MBAG_EB-L(US)',xs)
+
+ def test_filename_shared_vda_word_surfaces_relevant_variants(self):
+  xs=p.filename_project_candidates(r'C:\\tmp\\8D_STLA_VDA590_issue.pptx','파우치형Pack개발품질2팀')
+  self.assertIn('STLA_VDA590_2P8S',xs)
+  self.assertIn('STLA_VDA590_1P16S',xs)
+  self.assertNotIn('STLA_VDA355',xs)
+
  def test_team_filter(self):
   xs=p.canonical_candidates('V710','파우치형Pack개발품질1팀')
   self.assertEqual(xs,['Ford_V710'])
