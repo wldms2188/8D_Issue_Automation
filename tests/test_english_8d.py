@@ -69,6 +69,9 @@ class English8DTests(unittest.TestCase):
 
    add_pic(1.2,1.25,1)  # 2D
    add_pic(1.2,3.25,2)  # 3D
+   # Deliberately straddles the midpoint between 2D and 3D. It is ambiguous
+   # and must not be assigned to either section.
+   add_pic(1.2,1.80,7)
    add_pic(1.2,5.15,3)  # 4D cause
    add_pic(7.2,1.25,4)  # 4D escape
    add_pic(7.2,3.25,5)  # 5D
