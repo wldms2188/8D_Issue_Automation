@@ -90,7 +90,11 @@ class DropZone(tk.Frame):
         tk.Button(bottom,text='찾기',command=lambda:on_browse(key),bg='#E8EFF5',fg=NAVY,bd=0,font=('Malgun Gothic',8,'bold'),padx=10,pady=3,cursor='hand2').pack(side='right',padx=(0,5))
         self.name.bind('<Button-1>',lambda e:on_browse(key)); self.bind('<Button-1>',lambda e:on_browse(key))
         enable_drop(self,self._drop); enable_drop(self.name,self._drop)
-        var.trace_add('write',lambda *_:self.refresh()); self.refresh()
+        var.trace_add('write',lambda *_:self._var_changed()); self.refresh()
+    def _var_changed(self):
+        self.refresh()
+        try:self.on_change()
+        except Exception:pass
     def _drop(self,paths):
         if not paths:return
         path=paths[0]
