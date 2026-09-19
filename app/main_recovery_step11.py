@@ -41,6 +41,46 @@ def _layout_with_4d_placeholders(d, imgs):
     return {**lz,**rz},texts,{**lf,**rf}
 
 
+def _english_template_anchored_layout(d,imgs):
+    """Keep the weekly template's native D regions as hard boundaries for English text.
+
+    English sentences can be much longer than Korean.  Use each native zone's
+    original top position, allow the text box to grow only into the existing gap
+    before the next D zone, and never cross that next zone.  PowerPoint auto-fit
+    handles any remaining excess text inside the assigned region.
+    """
+    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    if not N(d.get('cause_4d')):
+        texts['4D_CAUSE']='검토 중'
+    if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
+        texts['4D_LEAK']='검토 중'
+
+    chains=(('2D','3D','4D_CAUSE'),('4D_LEAK','5D','6D'))
+    zones={}
+    fonts={}
+    bottom=v319.BOTTOM
+    safe_gap=.12
+
+    for keys in chains:
+        for i,key in enumerate(keys):
+            z0=dict(v310.ZONES[key])
+            next_y=(v310.ZONES[keys[i+1]]['y'] if i+1<len(keys) else bottom)
+            max_h=max(.35,next_y-z0['y']-safe_gap)
+
+            font=v319.MAX_FONT
+            need=v319._need_h(key,texts[key],bool(imgs.get(key)),font)
+            # Try reducing only this section's font before constraining height.
+            while need>max_h and font>6.0:
+                font=max(6.0,font-.5)
+                need=v319._need_h(key,texts[key],bool(imgs.get(key)),font)
+
+            z0['h']=min(max(z0['h'],need),max_h)
+            zones[key]=z0
+            fonts[key]=font
+
+    return zones,texts,fonts
+
+
 def _restore_missing_4d_unit(sl, zones):
     """Never delete a 4D marker/title. If one native unit remains, clone it only when needed.
     No fallback rectangle is created.
