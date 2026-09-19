@@ -295,7 +295,7 @@ class UIStateTests(unittest.TestCase):
         units=v315._top_4d_units(sl)
         self.assertEqual(len(units),2)
         self.assertTrue(all(u.shape_type==MSO_SHAPE_TYPE.GROUP for u in units))
-        zones,_,_=step11._layout_with_4d_placeholders(d,{})
+        zones,_,_=step11._strict_template_layout(d,{})
         expected=[
             (max(.10,zones['4D_CAUSE']['x']-.18),max(.10,zones['4D_CAUSE']['y']-.35)),
             (max(.10,zones['4D_LEAK']['x']-.18),max(.10,zones['4D_LEAK']['y']-.35)),
