@@ -27,5 +27,10 @@ class UIStateTests(unittest.TestCase):
         self.assertGreaterEqual(h,900)
         self.assertLessEqual(h,1080)
 
+    def test_weekly_status_follows_final_choice(self):
+        d={'action_5d':'fix','verification_6d':'DV abnormal'}
+        self.assertEqual(ent.weekly_status_from_choice(d,'open'),'개선 검증중')
+        self.assertEqual(ent.weekly_status_from_choice(d,'close'),'개선 완료')
+
 if __name__=='__main__':
     unittest.main()
