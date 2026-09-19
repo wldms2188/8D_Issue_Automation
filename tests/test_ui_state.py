@@ -39,6 +39,20 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(ent.weekly_recommended_status({'cause_4d':'','action_5d':'','verification_6d':''}),'원인/개선 미확인')
         self.assertEqual(ent.weekly_status_from_choice({'verification_6d':'DV abnormal'},'close'),'개선 완료')
 
+    def test_no_additional_abnomalities_is_complete(self):
+        text='No additional abnomalities were observed after the verification.'
+        state,_=ent.weekly_verification_state(text)
+        self.assertEqual(state,'complete')
+        self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료')
+
+    def test_customer_project_mismatch_uses_canonical_8d_value(self):
+        d={'customer':'MBAG','task_name':'EB565M'}
+        mismatch,extracted,selected=ent.customer_project_mismatch(d,'MBAG_EB565M')
+        self.assertFalse(mismatch)
+        self.assertEqual(extracted,'MBAG_EB565M')
+        mismatch,_,_=ent.customer_project_mismatch(d,'GM_A1')
+        self.assertTrue(mismatch)
+
     def test_weekly_english_completion_variants(self):
         completed=[
             'Verification completed.',
