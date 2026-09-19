@@ -1,7 +1,8 @@
-import sys,unittest,tempfile
+import sys,unittest,tempfile,io
 from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches
+from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import english_8d_final as e
 
@@ -45,6 +46,43 @@ class English8DTests(unittest.TestCase):
   self.assertIn('DV test passed',x['verification_6d'])
   self.assertNotIn('7D',x['verification_6d'])
   self.assertNotIn('Closure',x['verification_6d'])
+
+ def test_english_images_follow_strict_d_regions(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'english_images_by_d.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+
+   # Two-column D layout similar to the real 8D structure.
+   for label,x,y in [
+    ('2D',0.2,1.0),('3D',0.2,3.0),('4D',0.2,5.0),
+    ('4D',6.0,1.0),('5D',6.0,3.0),('6D',6.0,5.0),
+   ]:
+    sh=sl.shapes.add_textbox(Inches(x),Inches(y),Inches(.55),Inches(.3)); sh.text=label
+
+   # Clarify the right-side 4D ownership.
+   h=sl.shapes.add_textbox(Inches(6.8),Inches(1.0),Inches(1.5),Inches(.3)); h.text='Escape Cause'
+
+   def add_pic(x,y,seed):
+    im=Image.new('RGB',(180,100),(20*seed%255,40*seed%255,60*seed%255))
+    b=io.BytesIO(); im.save(b,'PNG'); b.seek(0)
+    sl.shapes.add_picture(b,Inches(x),Inches(y),Inches(1.2),Inches(.7))
+
+   add_pic(1.2,1.25,1)  # 2D
+   add_pic(1.2,3.25,2)  # 3D
+   add_pic(1.2,5.15,3)  # 4D cause
+   add_pic(7.2,1.25,4)  # 4D escape
+   add_pic(7.2,3.25,5)  # 5D
+   add_pic(7.2,5.15,6)  # 6D
+   prs.save(p)
+
+   imgs=e._english_section_images(p)
+   for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
+    self.assertEqual(len(imgs[key]),1,msg=(key,{k:len(v) for k,v in imgs.items()}))
+
+   # The 2D picture must never leak into 3D and vice versa.
+   self.assertLess(imgs['2D'][0][1][1],imgs['3D'][0][1][1])
+   self.assertLess(imgs['4D_LEAK'][0][1][1],imgs['5D'][0][1][1])
+   self.assertLess(imgs['5D'][0][1][1],imgs['6D'][0][1][1])
 
  def test_unsplit_4d_defaults_to_occurrence_cause(self):
   x=e.extract_sections_from_blocks(['4D','Root cause item A','Root cause item B','5D','Action'])
