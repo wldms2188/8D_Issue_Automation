@@ -2,6 +2,8 @@ import sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import project_weekly_match_final as w
+import main_recovery_step14_fix2 as core
+import main_v319 as v319
 
 class ProjectWeeklyMatchTests(unittest.TestCase):
  def test_customer_prefix_is_ignored(self):
@@ -21,5 +23,8 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   d={'customer':'MBAG','task_name':'MBAG_MBAG_EB-L(EU)'}
   self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
   self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
+
+ def test_issue_display_removes_8d_and_report_words(self):
+  self.assertEqual(v319._clean_issue_label('8D_Report_Crack 발생'),'Crack 발생')
 
 if __name__=='__main__':unittest.main()
