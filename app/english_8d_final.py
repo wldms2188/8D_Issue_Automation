@@ -379,7 +379,7 @@ def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
                 d[key]=val
     source='\n'.join(str(d.get(k) or '') for k in FIELD_LABELS)
     source=(source+'\n'+str(raw_text or '')).strip()
-    occ=_occurrence_date_from_blocks(section_blocks if section_blocks is not None else str(raw_text or '').splitlines())
+    occ=_occurrence_date_from_blocks(str(raw_text or '').splitlines())
     if occ:
         d['occurrence_date']=occ
     for key,labels in FIELD_LABELS.items():
