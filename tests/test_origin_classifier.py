@@ -54,4 +54,19 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         rec,_=clf.recommend_origin({'cause_4d':'공정조건 문제없음. 설계마진 부족 확인'})
         self.assertEqual(rec,'설계')
 
+    def test_english_causes_use_same_categories(self):
+        cases={
+            '부품':'Supplier component defect due to material variation',
+            '설계':'Insufficient design margin and tolerance interference',
+            '공정':'Assembly process condition caused torque variation',
+            '기타':'External impact during transport and storage',
+        }
+        for expected,text in cases.items():
+            rec,_=clf.recommend_origin({'cause_4d':text})
+            self.assertEqual(rec,expected,msg=(expected,rec,text))
+
+    def test_english_negation(self):
+        rec,_=clf.recommend_origin({'cause_4d':'Process condition no issue. Design margin insufficient.'})
+        self.assertEqual(rec,'설계')
+
 if __name__=='__main__': unittest.main()
