@@ -43,11 +43,11 @@ SECTION_FIELDS={
 SEMANTIC_MARKERS=(
  ('4D_LEAK',('escape root cause','escape cause','non detection cause','non-detection cause','detection cause','유출 원인','유출원인')),
  ('4D_SYSTEM',('systemic cause','system cause','시스템 원인','시스템원인')),
- ('3D',('interim containment action','containment action','containment','temporary action','임시 조치','임시조치','임시 대책','임시대책')),
- ('5D',('permanent corrective action','corrective actions','corrective action','개선 대책','개선대책','개선 사항','개선사항')),
- ('6D',('effectiveness verification','verification result','validation result','verification','validation','효과 검증','효과검증','유효성 검증','유효성검증')),
- ('4D',('root cause analysis','cause analysis','occurrence cause','cause of occurrence','root cause','발생 원인','발생원인','원인 분석','원인분석')),
- ('2D',('problem description','problem statement','problem symptom','failure description','problem','symptom','문제 현황','문제현황','불량 현상','불량현상')),
+ ('3D',('interim containment action','interim containment','containment action','containment actions','containment','temporary action','temporary actions','immediate action','immediate actions','short term action','short-term action','short term corrective action','interim action','interim actions','protective action','sorting action','customer protection','임시 조치','임시조치','임시 대책','임시대책')),
+ ('5D',('permanent corrective action','permanent corrective actions','permanent action','corrective actions','corrective action','countermeasure','countermeasures','corrective measure','corrective measures','solution','solutions','improvement action','improvement actions','개선 대책','개선대책','개선 사항','개선사항')),
+ ('6D',('effectiveness verification','effectiveness validation','verification result','verification results','validation result','validation results','verification','validation','effectiveness check','effectiveness confirmation','effect confirmation','result confirmation','confirm effectiveness','효과 검증','효과검증','유효성 검증','유효성검증')),
+ ('4D',('root cause analysis','root cause investigation','cause analysis','cause investigation','occurrence cause','cause of occurrence','cause of defect','failure cause','defect cause','root cause','why analysis','5 why','5why','발생 원인','발생원인','원인 분석','원인분석')),
+ ('2D',('problem description','problem definition','problem statement','problem symptom','failure description','failure phenomenon','defect description','defect phenomenon','issue description','issue phenomenon','phenomenon','problem','symptom','문제 현황','문제현황','불량 현상','불량현상')),
 )
 
 def looks_english(s):
