@@ -2,6 +2,7 @@ import datetime
 from pathlib import Path
 
 from pptx import Presentation
+from pptx.enum.text import MSO_AUTO_SIZE
 
 import main_recovery_step11 as step11
 import main_recovery_step10 as step10
@@ -65,7 +66,11 @@ def _labeled_4d_text(d,key):
 def _update_page2_step12(sl,d,g,mode):
     v310.remove_previous_auto(sl)
     imgs=d.get('_section_images',{}) or {}
-    zones,texts,fonts=step11._layout_with_4d_placeholders(d,imgs)
+    english_mode=bool(d.get('_english_mode'))
+    if english_mode:
+        zones,texts,fonts=step11._english_template_anchored_layout(d,imgs)
+    else:
+        zones,texts,fonts=step11._layout_with_4d_placeholders(d,imgs)
 
     texts['4D_CAUSE']=_labeled_4d_text(d,'4D_CAUSE')
     texts['4D_LEAK']=_labeled_4d_text(d,'4D_LEAK')
@@ -77,6 +82,18 @@ def _update_page2_step12(sl,d,g,mode):
 
     for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
         v319._render(sl,key,zones[key],texts[key],imgs.get(key,[]),fonts[key])
+
+    if english_mode:
+        # Prevent visual text overflow beyond the geometry even when the source
+        # contains exceptionally long English sentences.
+        for sh in sl.shapes:
+            name=str(getattr(sh,'name',''))
+            if name.startswith('AUTO_8D_TEXT_') and hasattr(sh,'text_frame'):
+                try:
+                    sh.text_frame.word_wrap=True
+                    sh.text_frame.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                except Exception:
+                    pass
 
     v319._page2_meta(sl,d,g)
     step11._restore_missing_4d_unit(sl,zones)
