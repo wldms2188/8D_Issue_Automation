@@ -515,6 +515,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         judged,_reason=legacy.step9._judge_issue_status(d)
         recommended='close' if str(judged).lower()=='close' else 'open'
         other='open' if recommended=='close' else 'close'
+        five=N(d.get('action_5d')) or '(5D 내용 없음)'
         six=N(d.get('verification_6d')) or '(6D 내용 없음)'
         result={'value':None}
 
@@ -556,7 +557,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         content.pack(fill='both',expand=True,padx=(58,0))
 
         tk.Label(
-            content,text='판단 이유(6D 원문)',
+            content,text='판단 이유 [5D/6D 원문]',
             bg='white',fg=ui.TEXT,
             font=('Malgun Gothic',10,'bold')
         ).pack(anchor='w',pady=(0,6))
@@ -576,7 +577,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         six_box.configure(yscrollcommand=six_scroll.set)
         six_scroll.pack(side='right',fill='y')
         six_box.pack(side='left',fill='both',expand=True)
-        six_box.insert('1.0',six)
+        six_box.insert('1.0',f'[5D 개선대책]\n{five}\n\n[6D 효과검증]\n{six}')
         six_box.configure(state='disabled')
 
         tk.Frame(content,bg='#8E9AA5',height=1).pack(fill='x',pady=(7,12))
