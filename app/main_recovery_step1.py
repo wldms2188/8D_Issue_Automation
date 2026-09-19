@@ -42,22 +42,27 @@ def _event_name(d):
 
 
 def _page1_issue(d):
-    """Remove customer_task prefix and document-type words from page-1 issue."""
-    issue=N(d.get('issue_name')); customer=N(d.get('customer')); task=N(d.get('task_name'))
+    """Remove one canonical customer_project prefix from the page-1 issue."""
+    issue=N(d.get('issue_name'))
     if not issue:
         return ''
     result=issue
-    toks=[x.strip() for x in issue.split('_') if x.strip()]
-    if customer and task:
-        for i in range(len(toks)-1):
-            if C(toks[i])==C(customer) and C(toks[i+1])==C(task):
-                rest=toks[i+2:]
-                result='_'.join(rest) if rest else issue
-                break
+    canonical=N(v319._weekly_task(d))
+
+    if canonical:
+        issue_toks=[x.strip() for x in re.split(r'[_/|]+',issue) if x.strip()]
+        prefix_toks=[x.strip() for x in re.split(r'[_/|]+',canonical) if x.strip()]
+        n=len(prefix_toks)
+        if n and len(issue_toks)>=n and all(C(issue_toks[i])==C(prefix_toks[i]) for i in range(n)):
+            rest=issue_toks[n:]
+            result='_'.join(rest) if rest else issue
         else:
-            prefix=f'{customer}_{task}_'
-            if C(issue).startswith(C(prefix)):
-                result=issue[len(prefix):].lstrip('_ ')
+            # Separator-tolerant fallback for titles without clean underscore tokens.
+            pat=r'^\s*'+r'\s*[_/|:-]\s*'.join(re.escape(x) for x in prefix_toks)+r'\s*[_/|:-]*\s*'
+            m=re.match(pat,issue,re.I)
+            if m:
+                result=issue[m.end():].lstrip('_ /|:-')
+
     return v319._clean_issue_label(result)
 
 
