@@ -655,8 +655,16 @@ def _english_section_images(path):
             if best_frac<0.35:
                 continue
             if second_frac>0 and second_frac>=best_frac*0.85:
-                # Nearly tied overlap across D boundaries: safer to omit than mix.
-                continue
+                # User rule: if an image is almost evenly split between 2D and 3D,
+                # prefer 2D because phenomenon photos are more common than interim-
+                # containment photos. Other cross-D near-ties remain excluded.
+                tied=scored[:2]
+                tied_ns={item[1]['n'] for item in tied}
+                if tied_ns=={2,3}:
+                    reg=next(item[1] for item in tied if item[1]['n']==2)
+                    best_frac=_image_region_overlap_fraction(ib,reg)
+                else:
+                    continue
             n=reg['n']
             if n in (2,3,5,6):
                 sec=f'{n}D'
