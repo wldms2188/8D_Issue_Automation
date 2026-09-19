@@ -72,6 +72,32 @@ class OutputVersionTests(unittest.TestCase):
    self.assertEqual(rw.cell(7,10).value,'A_NEWPROJECT')
    self.assertEqual(rw.cell(7,14).value,'new issue')
 
+ def test_excel_reduced_opens_at_top_with_updated_row_selected(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td); src=p/'issue_view.xlsx'; dst=p/'issue_view_v0.1.xlsx'
+   wb=Workbook(); ws=wb.active; ws.title='Sheet1'
+   for r in range(1,7): ws.cell(r,1).value=f'H{r}'
+   ws.cell(7,10).value='OLD1'; ws.cell(8,10).value='OLD2'
+   ws.freeze_panes='A7'
+   ws.sheet_view.topLeftCell='A250'
+   ws.sheet_view.selection[0].activeCell='A250'
+   ws.sheet_view.selection[0].sqref='A250'
+   wb.save(src)
+
+   full=load_workbook(src); fw=full['Sheet1']
+   fw.cell(8,10).value='UPDATED'
+   fw.sheet_view.topLeftCell='A250'
+   full.save(dst)
+
+   reduced,n=o._excel_update_only(src,dst,preferred_row=8)
+   self.assertEqual(n,1)
+   rwbook=load_workbook(reduced)
+   rw=rwbook['Sheet1']
+   self.assertEqual(rw.sheet_view.topLeftCell,'A7')
+   self.assertEqual(rw.sheet_view.selection[0].activeCell,'A7')
+   self.assertEqual(rw.sheet_view.selection[0].sqref,'A7')
+   self.assertIs(rwbook.active,rw)
+
  def test_excel_reduced_removes_other_row_images_and_keeps_newest_updated_image(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td); src=p/'issue_img.xlsx'; dst=p/'issue_img_v0.1.xlsx'
