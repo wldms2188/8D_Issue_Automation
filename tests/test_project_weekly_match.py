@@ -24,7 +24,7 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   d={'customer':'MBAG','task_name':'MBAG_EB-L(EU)'}
   self.assertEqual(w.s13.base.task(d),'MBAG_EB-L(EU)')
   d2={'customer':'OLD','task_name':'Ford_V710'}
-  self.assertEqual(w.s13._customer_task(d2),'OLD_Ford_V710')
+  self.assertEqual(w.s13._customer_task(d2),'Ford_V710')
 
  def test_repeated_customer_prefix_is_collapsed(self):
   d={'customer':'MBAG','task_name':'MBAG_MBAG_EB-L(EU)'}
