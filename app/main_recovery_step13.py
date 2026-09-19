@@ -162,7 +162,21 @@ base.update_excel=update_excel_step13
 # -----------------------------------------------------------------------------
 # Weekly PPT helpers
 # -----------------------------------------------------------------------------
+_SLIDE_TEXT_CACHE={}
+
+def _clear_slide_text_cache(sl=None):
+    """Clear cached weekly slide text globally or for one slide after mutation."""
+    if sl is None:
+        _SLIDE_TEXT_CACHE.clear()
+        return
+    try:_SLIDE_TEXT_CACHE.pop(id(sl._element),None)
+    except Exception:pass
+
 def _slide_text(sl):
+    key=id(sl._element)
+    cached=_SLIDE_TEXT_CACHE.get(key)
+    if cached is not None:
+        return cached
     parts=[]
     for sh in v310.walk(sl):
         t=N(getattr(sh,'text',''))
@@ -175,7 +189,9 @@ def _slide_text(sl):
                     v=N(tb.cell(r,c).text)
                     if v:
                         parts.append(v)
-    return '\n'.join(parts)
+    value='\n'.join(parts)
+    _SLIDE_TEXT_CACHE[key]=value
+    return value
 
 
 def _detail_structure_score(sl):
