@@ -4,6 +4,8 @@ Identifiers, numbers, units, model/project names are preserved. No network/API r
 """
 import re
 import main_v310 as v310
+import main_enterprise_v3 as v3
+import ui_enterprise as ui
 from pptx import Presentation
 
 FIELD_LABELS={
@@ -104,3 +106,43 @@ def extract(path):
     d=_original(path)
     return enhance_dict(d,_ppt_text(path))
 v310.base.extract=extract
+
+
+def apply_english_choice(d,use_original):
+    """Use either all original English fields or the conservative Korean translation."""
+    d=dict(d or {})
+    if use_original:
+        for key in FIELD_LABELS:
+            original=d.get(key+'_en_original')
+            if original:
+                d[key]=original
+    return d
+
+_original_run=v3.EnterpriseAppV3.run
+def _run_with_translation_confirmation(self):
+    # Ask once before output generation. The subsequent base.extract call receives
+    # the same choice through this temporary wrapper, so Excel/PPT use one language consistently.
+    g=self.gui()
+    path=g.get('ppt8d','').strip()
+    if path:
+        probe=extract(path)
+        if probe.get('_english_translation_incomplete'):
+            use_original=ui.ask_yes_no(
+                self,
+                '영문 번역 확인',
+                '일부 영문 표현으로 인해 영문 전체가 번역되지는 못했습니다.\n\n'
+                '전체 영문 내용으로 입력하시겠습니까?\n\n'
+                '예: 전체 영문 원문으로 입력\n'
+                '아니오: 자동 번역된 한글 내용으로 입력'
+            )
+            original_extract=v310.base.extract
+            def chosen_extract(p):
+                return apply_english_choice(original_extract(p),use_original)
+            v310.base.extract=chosen_extract
+            try:
+                return _original_run(self)
+            finally:
+                v310.base.extract=original_extract
+    return _original_run(self)
+
+v3.EnterpriseAppV3.run=_run_with_translation_confirmation
