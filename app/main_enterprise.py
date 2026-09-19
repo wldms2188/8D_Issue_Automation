@@ -26,12 +26,46 @@ def target_ready_status(ppt8d,current):
     if not ppt8d and current.startswith('READY'):
         return 'READY  ·  8D 원본을 선택해 주세요.'
     return current
-def weekly_status_from_choice(d,choice):
-    if str(choice or '').lower()=='close':
+def weekly_recommended_status(d):
+    """Previously agreed weekly Signal logic.
+
+    Priority:
+    1) 6D completion wording -> 개선 완료
+    2) 6D pending/verification/planned/abnormal wording -> 개선 검증중
+    3) Any progress in 4D/5D/6D -> 개선 검증중
+    4) No 4D/5D/6D progress -> 원인/개선 미확인
+    """
+    cause=N(d.get('cause_4d'))
+    action=N(d.get('action_5d'))
+    verify=N(d.get('verification_6d'))
+    q=re.sub(r'\s+',' ',verify).casefold()
+
+    pending=(
+        '진행 중','진행중','검증 중','검증중','예정','추정','완료 예정','계획','확인 중','확인중',
+        'in progress','ongoing','under verification','under validation','pending','planned','scheduled','tbd',
+        'to be verified','not completed','abnormal','abnomal','failed','failure','ng','nok','oos','재발','불량'
+    )
+    complete=(
+        '검증 완료','검증완료','개선 완료','개선완료','이상 없음','이상없음','정상',
+        'verification complete','verification completed','effectiveness confirmed',
+        'validated','verified','completed','passed','no abnormality','normal result'
+    )
+
+    # "완료 예정" must remain yellow, so pending is checked before completion.
+    if verify and any(x.casefold() in q for x in pending):
+        return '개선 검증중'
+    if verify and any(x.casefold() in q for x in complete):
         return '개선 완료'
-    if N(d.get('action_5d')) or N(d.get('verification_6d')):
+    if cause or action or verify:
         return '개선 검증중'
     return '원인/개선 미확인'
+
+def weekly_status_from_choice(d,choice):
+    # Kept for compatibility with older callers. Close still forces green;
+    # open uses the agreed 8D-content recommendation logic.
+    if str(choice or '').lower()=='close':
+        return '개선 완료'
+    return weekly_recommended_status(d)
 
 def weekly_status_confirmation_required(issue_db_status):
     """Only a final open Issue DB status needs a separate weekly Signal choice."""
@@ -55,15 +89,25 @@ def issue_db_status_reason(d,judged):
     return '6D에 완료를 확정할 표현이 명확하지 않습니다.'
 
 def weekly_status_reason(d,weekly_status):
-    """Human-readable reason for the weekly-meeting Signal proposal."""
     st=N(weekly_status)
+    cause=N(d.get('cause_4d')); action=N(d.get('action_5d')); verify=N(d.get('verification_6d'))
+    q=re.sub(r'\s+',' ',verify).casefold()
     if st=='개선 완료':
-        return '6D 효과검증에서 완료 상태를 의미하는 내용이 확인되었습니다.'
+        return '6D 효과검증에서 검증 완료·완료·정상 의미의 표현이 확인되었습니다.'
     if st=='개선 검증중':
-        if N(d.get('verification_6d')):
-            return '6D 효과검증 내용은 있으나 완료가 확정되지 않은 상태로 보입니다.'
-        return '5D 개선대책은 있으나 6D의 완료 검증은 아직 확인되지 않았습니다.'
-    return '5D 개선대책과 6D 효과검증 내용이 아직 확인되지 않았습니다.'
+        pending=('진행 중','진행중','검증 중','검증중','예정','추정','완료 예정','계획','확인 중','확인중',
+                 'in progress','ongoing','pending','planned','scheduled','under verification','under validation',
+                 'abnormal','abnomal','failed','failure','ng','nok','oos','재발','불량')
+        if verify and any(x.casefold() in q for x in pending):
+            return '6D에서 진행 중·검증 중·예정·추정 또는 미완료/이상 상태를 의미하는 표현이 확인되었습니다.'
+        if verify:
+            return '6D 내용은 있으나 검증 완료가 명확히 확인되지 않아 개선 검증 중으로 추천합니다.'
+        if action:
+            return '5D 개선대책은 작성되어 있으나 6D 완료 검증이 아직 없어 개선 검증 중으로 추천합니다.'
+        if cause:
+            return '4D 원인 내용은 확인되지만 개선 완료 단계는 아니므로 개선 검증 중으로 추천합니다.'
+    return '4D 원인, 5D 개선대책, 6D 효과검증 내용이 모두 확인되지 않아 원인/개선 미확인으로 추천합니다.'
+
 
 
 
@@ -326,7 +370,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
 
     def _confirm_weekly_status_v1(self,d):
         """Show a separate weekly Signal chooser only when the Issue DB remains open."""
-        recommended=weekly_status_from_choice(d,'open')
+        recommended=weekly_recommended_status(d)
         dlg=EnterpriseWeeklyStatusDialog(self,d,recommended)
         return dlg.result
 
@@ -424,7 +468,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                     # Weekly-only execution has no "final Issue DB" state, so no extra
                     # confirmation popup is shown; use the conservative automatic Signal.
                     judged,_reason=legacy.step9._judge_issue_status(d)
-                    weekly_status=weekly_status_from_choice(d,judged)
+                    weekly_status=weekly_recommended_status(d)
                 g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
             if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
