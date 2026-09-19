@@ -15,4 +15,11 @@ class English8DTests(unittest.TestCase):
   s='체결토크 산포로 조립불량 발생'; self.assertEqual(e.enhance_dict({'cause_4d':s})['cause_4d'],s)
  def test_mixed_preserves_model(self):
   s='Root cause: torque 산포 at BDI_BOLT'; x=e.enhance_dict({'cause_4d':s}); self.assertIn('BDI_BOLT',x['cause_4d'])
+ def test_incomplete_translation_is_flagged(self):
+  x=e.enhance_dict({'problem':'Unexpected electrical behavior remained after repeated vehicle evaluation.'})
+  self.assertTrue(x['_english_translation_incomplete'])
+  self.assertEqual(e.apply_english_choice(x,True)['problem'],'Unexpected electrical behavior remained after repeated vehicle evaluation.')
+ def test_technical_identifiers_do_not_trigger_failure(self):
+  x=e.enhance_dict({'problem':'Crack occurred at MBAG_EB-L(EU) DUT3.'})
+  self.assertFalse(x['_english_translation_incomplete'])
 if __name__=='__main__':unittest.main()
