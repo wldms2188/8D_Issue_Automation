@@ -197,6 +197,31 @@ class English8DTests(unittest.TestCase):
   self.assertFalse(e._document_looks_english('A'*79+'가'*21))
   self.assertAlmostEqual(e.english_content_ratio('A'*80+'가'*20),80.0)
 
+ def test_unrelated_table_outside_4d_region_is_not_extracted(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'scoped_4d.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+
+   # Unrelated table above the real 4D area. It deliberately contains the same
+   # semantic label and must never win just because the wording matches.
+   bad=sl.shapes.add_table(1,2,Inches(1.0),Inches(0.4),Inches(6.5),Inches(0.7)).table
+   bad.cell(0,0).text='Root Cause'
+   bad.cell(0,1).text='WRONG OTHER TABLE CAUSE'
+
+   # 4D/5D markers define the real allowed 4D band.
+   m4=sl.shapes.add_textbox(Inches(0.1),Inches(2.0),Inches(0.5),Inches(0.3)); m4.text='4D'
+   m5=sl.shapes.add_textbox(Inches(0.1),Inches(5.0),Inches(0.5),Inches(0.3)); m5.text='5D'
+
+   good=sl.shapes.add_table(1,2,Inches(1.0),Inches(2.4),Inches(6.5),Inches(1.0)).table
+   good.cell(0,0).text='Root Cause'
+   good.cell(0,1).text='CORRECT 4D GUIDE INTERFERENCE'
+   prs.save(p)
+
+   x=e.extract(p)
+   original=x.get('cause_4d_en_original') or x.get('cause_4d','')
+   self.assertIn('CORRECT 4D GUIDE INTERFERENCE',original)
+   self.assertNotIn('WRONG OTHER TABLE CAUSE',original)
+
  def test_single_4d_band_splits_side_by_side_root_and_escape_columns(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td)/'four_columns.pptx'
