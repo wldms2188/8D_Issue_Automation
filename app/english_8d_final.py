@@ -5,6 +5,7 @@ source order so section contents are not lost when a template uses English label
 or only a D-number marker. 7D/8D are boundaries, not 6D content.
 """
 import re
+from pathlib import Path
 import main_v310 as v310
 import main_enterprise_v3 as v3
 import ui_enterprise as ui
@@ -191,13 +192,15 @@ def _semantic_section_for_text(text):
     return sec
 
 def _spatial_section_blocks(path,return_detected=False):
-    """Map 2D~6D from D-marker geometry at cell/shape level.
+    """Map 2D~6D using geometry, but let explicit section headings correct row offsets.
 
-    D-marker columns define horizontal regions from one marker column to the next.
-    This matches common 8D sheets where each D marker sits at the left edge of its
-    table region, so a wide table is not incorrectly split at the midpoint.
+    Some company 8D templates place the D-number marker one visual row above the
+    actual content. In that layout, pure geometry shifts 3D into 2D, 4D into 3D,
+    etc. An explicit heading such as "Containment" or "Root Cause" is therefore
+    authoritative for that content and all following lines in the same region.
     """
     prs=Presentation(path); blocks=[]; detected=set()
+    valid_sections=set(SECTION_FIELDS) | {'7D','8D'}
     for sl in prs.slides:
         units=_positioned_units(sl)
         markers=[]
@@ -208,7 +211,6 @@ def _spatial_section_blocks(path,return_detected=False):
                 markers.append({'n':n,'u':u,'cx':cx,'cy':cy})
         if not markers:continue
 
-        # Cluster marker x positions into D columns.
         tol=float(prs.slide_width)*0.06
         cols=[]
         for m in sorted(markers,key=lambda z:z['cx']):
@@ -224,35 +226,53 @@ def _spatial_section_blocks(path,return_detected=False):
             for i,m in enumerate(ms):
                 n=m['n']; mu=m['u']
                 if n<2 or n>6:continue
-                key=SECTION_FIELDS.get(str(n)+'D')
-                if key:detected.add(key)
+                default_sec=str(n)+'D'
+                default_key=SECTION_FIELDS.get(default_sec)
+                if default_key:detected.add(default_key)
+
                 top=m['cy']
                 bottom=ms[i+1]['cy'] if i+1<len(ms) else float('inf')
                 mx,my,mw,mh=mu['box']; mright=mx+mw
-                vals=[]
+
+                region=[]
                 for u in units:
                     if u is mu or _d_marker_number(u['text']):continue
                     ux,uy,uw,uh=u['box']; cx2,cy2=_center_box(u['box'])
                     if cy2<top or cy2>=bottom:continue
-                    # Content must be to the right of this D marker and before the next D column.
                     if ux+uw<=mright*1.02 or ux>=next_col_x:continue
-                    for line in u['text'].replace('\r','\n').splitlines():
-                        line=_norm_line(line)
+                    region.append((uy,ux,u['order'],u))
+                region.sort(key=lambda z:(z[0],z[1],z[2]))
+
+                local_sec=default_sec
+                emitted_sec=None
+
+                def ensure_section(sec):
+                    nonlocal emitted_sec
+                    if sec!=emitted_sec:
+                        blocks.append(sec)
+                        emitted_sec=sec
+
+                for _uy,_ux,_order,u in region:
+                    for raw in u['text'].replace('\r','\n').splitlines():
+                        line=_norm_line(raw)
                         if not line or _is_photo_caption(line):continue
                         sem,rest=_marker(line)
-                        current=str(n)+'D'
-                        # Other D headings are guards, never content.
-                        if sem in ('1D','2D','3D','4D','5D','6D','7D','8D') and sem!=current:
-                            continue
-                        # Same-section heading is metadata; keep only inline payload after ':'/'-'.
-                        if sem==current:
+                        if sem in valid_sections:
+                            # Explicit semantic/D heading wins over a geometrically shifted marker.
+                            local_sec=sem
+                            key=SECTION_FIELDS.get(sem)
+                            if key:detected.add(key)
+                            ensure_section(sem)
                             if rest:
-                                vals.append((uy,ux,u['order'],rest))
+                                nested,nested_rest=_marker(rest)
+                                if nested==sem:
+                                    rest=nested_rest
+                                if rest and not _is_photo_caption(rest):
+                                    blocks.append(rest)
                             continue
-                        vals.append((uy,ux,u['order'],line))
-                vals.sort(key=lambda z:(z[0],z[1],z[2]))
-                blocks.append(str(n)+'D')
-                blocks.extend(v[3] for v in vals)
+
+                        ensure_section(local_sec)
+                        blocks.append(line)
     return (blocks,detected) if return_detected else blocks
 
 def extract_sections_from_blocks(blocks):
@@ -420,6 +440,51 @@ def apply_english_choice(d,use_original):
             if original:d[key]=original
     return d
 
+def _count_translatable_english_words(text):
+    """Count ordinary English words while ignoring technical IDs/model tokens."""
+    s=str(text or '')
+    s=re.sub(r'\b[A-Z0-9][A-Z0-9_.+\\-/()]*\b',' ',s)
+    return len(re.findall(r'[A-Za-z]{2,}',s))
+
+def translation_coverage(d):
+    """Estimated dictionary-based Korean conversion coverage for detected English fields."""
+    total=0; remaining=0
+    for key in FIELD_LABELS:
+        original=str(d.get(key+'_en_original') or '')
+        if not original:continue
+        translated=str(d.get(key) or '')
+        total+=_count_translatable_english_words(original)
+        remaining+=_count_translatable_english_words(translated)
+    if total<=0:
+        return 100 if d.get('_english_detected') else 0
+    converted=max(0,total-remaining)
+    return max(0,min(100,int(round(converted*100.0/total))))
+
+def _ask_translation_choice(self,d,path):
+    """Ask at preview-time whether to view/use the dictionary-translated Korean text."""
+    if not d.get('_english_detected'):
+        self._english_preview_choice=(str(path),False)
+        return False
+    pct=translation_coverage(d)
+    msg=(
+        '영문 8D를 감지했습니다.\n\n'
+        f'현재 자동 한글 번역률은 약 {pct}%입니다.\n'
+        '한글로 변환된 내용을 기준으로 미리보기할까요?\n\n'
+        '· 한글 번역 : 자동 변환된 한글 내용 사용\n'
+        '· 영문 원문 : 원문 그대로 사용'
+    )
+    choice=ui.dialog(
+        self,'영문 8D 번역 선택',msg,'question',
+        (('영문 원문',False),('한글 번역',True)),
+        width=560,height=330
+    )
+    if choice is None:
+        return None
+    use_original=not bool(choice)
+    self._english_preview_choice=(str(path),use_original)
+    self._english_translation_percent=pct
+    return use_original
+
 # Korean/English 6D status terms use one decision engine for Issue DB and weekly Signal.
 _original_status=v310.base.status
 
@@ -474,23 +539,69 @@ def judge_status_bilingual(d):
     return decision,text
 step9._judge_issue_status=judge_status_bilingual
 
+_original_preview=v3.EnterpriseAppV3.preview
 _original_run=v3.EnterpriseAppV3.run
+
+def _preview_with_translation_choice(self):
+    g=self.gui(); path=g.get('ppt8d','').strip()
+    if not path:
+        return ui.warning(self,'입력 확인','8D 원본 PPT를 선택해 주세요.')
+    try:
+        self.status_var.set('ANALYZING · 8D 내용을 추출하고 있습니다...')
+        self._set_progress(15,'8D 내용 추출 중')
+        d=extract(path)
+        use_original=_ask_translation_choice(self,d,path)
+        if use_original is None:
+            self.status_var.set('READY · 미리보기가 취소되었습니다.')
+            return
+        d=apply_english_choice(d,use_original)
+        self._last_preview_path=path
+        self.log.delete('1.0','end')
+        self.log.insert('end','[ 8D 추출 완료 ]\n'+'─'*72+'\n')
+        self.log.insert('end',f'원본 파일       : {Path(path).name}\n')
+        if d.get('_english_detected'):
+            pct=getattr(self,'_english_translation_percent',translation_coverage(d))
+            mode='영문 원문' if use_original else '한글 번역'
+            self.log.insert('end',f'영문 처리       : {mode} 선택 · 자동 한글 번역률 약 {pct}%\n')
+        self.log.insert('end','상태            : 8D 내용 추출 완료 · 미리보기 확인 가능\n')
+        self.log.insert('end','※ 아래 [8D 내용 미리보기] 창에서 2D~8D 추출 내용을 확인해 주세요.\n')
+        self.status_var.set('READY · 8D 추출 완료')
+        self._show_preview_window(d)
+    except Exception as e:
+        self.status_var.set('ERROR · 추출 실패')
+        ui.error(self,'미리보기 오류',repr(e))
+
 def _run_with_translation_confirmation(self):
     g=self.gui(); path=g.get('ppt8d','').strip()
-    if path:
-        probe=extract(path)
-        if probe.get('_english_translation_incomplete'):
-            use_original=ui.ask_yes_no(
-                self,'영문 번역 확인',
-                '일부 영문 표현으로 인해 영문 전체가 번역되지는 못했습니다.\n\n'
-                '전체 영문 내용으로 입력하시겠습니까?\n\n'
-                '예: 전체 영문 원문으로 입력\n'
-                '아니오: 자동 번역된 한글 내용으로 입력')
-            original_extract=v310.base.extract
-            def chosen_extract(p):
-                return apply_english_choice(original_extract(p),use_original)
-            v310.base.extract=chosen_extract
-            try:return _original_run(self)
-            finally:v310.base.extract=original_extract
-    return _original_run(self)
+    if not path:
+        return _original_run(self)
+
+    probe=extract(path)
+    cached=getattr(self,'_english_preview_choice',None)
+    use_original=None
+    if cached and cached[0]==str(path):
+        use_original=bool(cached[1])
+    elif probe.get('_english_detected'):
+        use_original=_ask_translation_choice(self,probe,path)
+        if use_original is None:
+            self.status_var.set('READY · 실행이 취소되었습니다.')
+            return
+
+    if use_original is None:
+        return _original_run(self)
+
+    original_extract=v310.base.extract
+    def chosen_extract(p):
+        result=original_extract(p)
+        if str(p)==str(path):
+            return apply_english_choice(result,use_original)
+        return result
+    v310.base.extract=chosen_extract
+    try:
+        return _original_run(self)
+    finally:
+        v310.base.extract=original_extract
+
+v3.EnterpriseAppV3.preview=_preview_with_translation_choice
 v3.EnterpriseAppV3.run=_run_with_translation_confirmation
+
