@@ -163,7 +163,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         g=self.gui()
         if not g.get('ppt8d'): return ui.warning(self,'입력 확인','8D 원본 PPT를 선택해 주세요.')
         try:
-            self.status_var.set('ANALYZING  ·  8D 내용을 추출하고 있습니다...'); self.update_idletasks(); d=base.extract(g['ppt8d']); labels=[('이슈명','issue_name'),('과제명','task_name'),('고객사','customer'),('발생일자','occurrence_date'),('현상','problem'),('3D 임시조치','temporary_action'),('4D 발생원인','cause_4d'),('4D 유출원인','leak_cause'),('5D 개선대책','action_5d'),('6D 효과검증','verification_6d')]; self.log.delete('1.0','end'); self.log.insert('end','[ 8D 추출 결과 ]\n'+'─'*72+'\n')
+            self.status_var.set('ANALYZING  ·  8D 내용을 추출하고 있습니다...'); self.update_idletasks(); d=base.extract(g['ppt8d']); labels=[('이슈명','issue_name'),('과제명','task_name'),('고객사','customer'),('발생일자','occurrence_date'),('2D 현상','problem'),('3D 임시조치','temporary_action'),('4D 발생원인','cause_4d'),('4D 유출원인','leak_cause'),('5D 개선대책','action_5d'),('6D 효과검증','verification_6d')]; self.log.delete('1.0','end'); self.log.insert('end','[ 8D 추출 결과 ]\n'+'─'*72+'\n')
             for label,key in labels: self.log.insert('end',f'{label:<12} : {N(d.get(key)) or "-"}\n')
             self.status_var.set('READY  ·  8D 추출 완료')
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
