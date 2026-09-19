@@ -271,6 +271,53 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         self.assertEqual(rec,'부품')
         self.assertIn('보조',reason)
 
+    def test_5d_prevents_discussion_needed_and_uses_korean_action_clue(self):
+        d={
+            'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향',
+            'action_5d':'체결 토크 관리 기준 개정 및 작업표준 반영 완료',
+        }
+        rec,reason=clf.recommend_origin(d)
+        self.assertEqual(rec,'공정')
+        self.assertNotEqual(rec,'논의 중')
+        self.assertIn('5D',reason)
+
+    def test_5d_prevents_discussion_needed_and_uses_english_action_clue(self):
+        d={
+            'cause_4d':'Design tolerance and assembly torque both contributed to the issue.',
+            'action_5d':'Drawing tolerance and design specification were revised and released.',
+        }
+        rec,reason=clf.recommend_origin(d)
+        self.assertEqual(rec,'설계')
+        self.assertNotEqual(rec,'논의 중')
+        self.assertIn('5D',reason)
+
+    def test_5d_present_but_no_classifiable_clue_falls_back_to_other(self):
+        cases=[
+            {
+                'cause_4d':'원인 추가 검토 필요',
+                'action_5d':'개선대책 완료 및 현장 반영 완료',
+            },
+            {
+                'cause_4d':'Root cause requires additional review.',
+                'action_5d':'Corrective action completed and released.',
+            },
+            {
+                'cause_4d':'',
+                'action_5d':'Action completed.',
+            },
+        ]
+        for d in cases:
+            rec,reason=clf.recommend_origin(d)
+            self.assertEqual(rec,'기타',msg=(rec,reason,d))
+            self.assertNotEqual(rec,'논의 중',msg=d)
+
+    def test_without_5d_ambiguous_case_can_still_be_discussion_needed(self):
+        rec,_=clf.recommend_origin({
+            'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향',
+            'action_5d':'',
+        })
+        self.assertEqual(rec,'논의 중')
+
     def test_ambiguous_design_process_is_not_forced(self):
         rec,_=clf.recommend_origin({'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향'})
         self.assertEqual(rec,'논의 중')
