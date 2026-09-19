@@ -61,6 +61,17 @@ class English8DTests(unittest.TestCase):
   self.assertEqual(decision,'close')
   self.assertTrue(text)
 
+ def test_english_completed_action_plus_no_additional_abnormalities_is_close(self):
+  cases=[
+   ('Corrective action completed.','No additional abnormalities were observed.'),
+   ('Countermeasure implemented.','No additional abnomalities were observed.'),
+   ('Design revision completed.','No further abnormalities detected.'),
+   ('Process update completed.','No recurrence observed.'),
+  ]
+  for action,verify in cases:
+   decision,_=e.judge_status_bilingual({'action_5d':action,'verification_6d':verify})
+   self.assertEqual(decision,'close',msg=(action,verify))
+
  def test_english_no_abnomality_and_completed_are_close(self):
   for text in [
    'No abnomality observed.',
