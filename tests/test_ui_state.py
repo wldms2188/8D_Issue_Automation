@@ -39,6 +39,48 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(ent.weekly_recommended_status({'cause_4d':'','action_5d':'','verification_6d':''}),'원인/개선 미확인')
         self.assertEqual(ent.weekly_status_from_choice({'verification_6d':'DV abnormal'},'close'),'개선 완료')
 
+    def test_explicit_result_after_progress_label_has_priority(self):
+        completed=[
+            '진행 : 이상없음',
+            '진행 중 : 이상 없음',
+            '검증 진행 : 정상',
+            '평가 진행 : 문제 없음',
+            'Progress: No abnormalities',
+            'Validation in progress: No additional abnormalities',
+            'Verification ongoing: Result normal',
+            'Test progress: All tests passed',
+        ]
+        for text in completed:
+            state,_=ent.weekly_verification_state(text)
+            self.assertEqual(state,'complete',msg=text)
+            status,_=ent.issue_db_recommended_status({
+                'action_5d':'Corrective action completed.',
+                'verification_6d':text,
+            })
+            self.assertEqual(status,'close',msg=text)
+
+    def test_explicit_result_abnormal_or_pending_still_wins(self):
+        cases=[
+            ('진행 중 : 이상 발생','abnormal'),
+            ('검증 진행 : NG','abnormal'),
+            ('Progress: Final result failed','abnormal'),
+            ('진행 : 추가 검증 예정','pending'),
+            ('Progress: Additional validation required','pending'),
+        ]
+        for text,expected in cases:
+            state,_=ent.weekly_verification_state(text)
+            self.assertEqual(state,expected,msg=text)
+
+    def test_so_far_no_abnormality_remains_provisional(self):
+        provisional=[
+            '진행 중 : 현재까지 이상 없음',
+            'Validation in progress: No abnormalities so far',
+            'Verification ongoing: No abnormality to date',
+        ]
+        for text in provisional:
+            state,_=ent.weekly_verification_state(text)
+            self.assertEqual(state,'pending',msg=text)
+
     def test_no_additional_abnomalities_is_complete(self):
         text='No additional abnomalities were observed after the verification.'
         state,_=ent.weekly_verification_state(text)
