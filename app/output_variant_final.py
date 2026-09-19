@@ -146,42 +146,36 @@ def _detect_changed_rows(ws0,ws):
     return changed
 
 def _focus_reduced_excel_view(wb,ws,updated_row=7):
-    """Open the reduced Issue DB at the top with the updated row immediately visible."""
+    """Open the reduced Issue DB from row 1, with the updated row selected."""
     try:
         wb.active=ws
     except Exception:
         try:wb.active=wb.index(ws)
         except Exception:pass
 
-    # Keep the workbook scrolled to the top. If rows 1-6 are frozen, A7 is the
-    # first scrollable cell and places the updated row directly under the headers.
-    top_cell='A1'
-    try:
-        fp=ws.freeze_panes
-        fp_row=getattr(fp,'row',None)
-        if fp_row is None and isinstance(fp,str):
-            m=re.search(r'(\d+)$',fp)
-            fp_row=int(m.group(1)) if m else None
-        if fp_row and int(fp_row)>=7:
-            top_cell='A7'
-    except Exception:
-        pass
-
-    try:ws.sheet_view.topLeftCell=top_cell
+    # Reduced output must not inherit the source workbook's freeze/split state.
+    # Otherwise Excel can keep row 7 as the first scrollable row and prevent the
+    # user from scrolling back up to rows 1-6.
+    try:ws.freeze_panes=None
+    except Exception:pass
+    try:ws.sheet_view.pane=None
+    except Exception:pass
+    try:ws.sheet_view.topLeftCell='A1'
     except Exception:pass
 
-    # Select the surviving updated row so Excel opens with the relevant record in focus.
+    # Start at the very top, but keep the actual updated record selected.
     target=f'A{max(7,int(updated_row or 7))}'
     try:
-        sels=list(ws.sheet_view.selection or [])
-        if sels:
-            sels[0].activeCell=target
-            sels[0].sqref=target
-        else:
-            from openpyxl.worksheet.views import Selection
-            ws.sheet_view.selection=[Selection(activeCell=target,sqref=target)]
+        from openpyxl.worksheet.views import Selection
+        ws.sheet_view.selection=[Selection(activeCell=target,sqref=target)]
     except Exception:
-        pass
+        try:
+            sels=list(ws.sheet_view.selection or [])
+            if sels:
+                sels[0].activeCell=target
+                sels[0].sqref=target
+        except Exception:
+            pass
 
 
 def _excel_update_only(source,saved,preferred_row=None):
