@@ -424,7 +424,11 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
     def _section_title(self,parent,no,title,sub):
         f=tk.Frame(parent,bg='white'); f.pack(fill='x',padx=18,pady=(15,10)); tk.Label(f,text=no,bg=ui.NAVY,fg='white',font=('Segoe UI',8,'bold'),width=3,pady=3).pack(side='left'); tk.Label(f,text=title,bg='white',fg=ui.NAVY,font=('Malgun Gothic',11,'bold')).pack(side='left',padx=9); tk.Label(f,text=sub,bg='white',fg=ui.MUTED,font=('Malgun Gothic',8)).pack(side='right')
     def _enterprise_entry(self,parent,label,key,hint):
-        row=tk.Frame(parent,bg='white'); row.pack(fill='x',pady=4); tk.Label(row,text=label,bg='white',fg=ui.TEXT,font=('Malgun Gothic',9),width=17,anchor='w').pack(side='left'); ttk.Entry(row,textvariable=self.vars[key]).pack(side='left',fill='x',expand=True); tk.Label(parent,text=hint,bg='white',fg='#98A3AD',font=('Malgun Gothic',7)).pack(anchor='e')
+        row=tk.Frame(parent,bg='white'); row.pack(fill='x',pady=4)
+        tk.Label(row,text=label,bg='white',fg=ui.TEXT,font=('Malgun Gothic',9),width=17,anchor='w').pack(side='left')
+        wrap=tk.Frame(row,bg='white'); wrap.pack(side='left',fill='x',expand=True)
+        ttk.Entry(wrap,textvariable=self.vars[key]).pack(fill='x')
+        tk.Label(wrap,text=hint,bg='white',fg='#98A3AD',font=('Malgun Gothic',7),anchor='e').pack(fill='x',anchor='e')
     def _enterprise_combo(self,parent,label,key,values):
         row=tk.Frame(parent,bg='white'); row.pack(fill='x',pady=5); tk.Label(row,text=label,bg='white',fg=ui.TEXT,font=('Malgun Gothic',9),width=17,anchor='w').pack(side='left'); ttk.Combobox(row,textvariable=self.vars[key],values=values,state='readonly').pack(side='left',fill='x',expand=True)
     def _file_selection_changed(self,key):
