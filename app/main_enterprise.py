@@ -20,6 +20,20 @@ except Exception:
 
 base=legacy.base; N=legacy.N
 
+_EXCEL_ILLEGAL_CONTROL_RE=re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
+
+def excel_safe_payload(value):
+    """Recursively remove only control characters Excel/openpyxl cannot store."""
+    if isinstance(value,str):
+        return _EXCEL_ILLEGAL_CONTROL_RE.sub('',value)
+    if isinstance(value,dict):
+        return {k:excel_safe_payload(v) for k,v in value.items()}
+    if isinstance(value,list):
+        return [excel_safe_payload(v) for v in value]
+    if isinstance(value,tuple):
+        return tuple(excel_safe_payload(v) for v in value)
+    return value
+
 def target_ready_status(ppt8d,current):
     current=str(current or '').strip()
     if ppt8d and ('8D 원본을 선택' in current or not current):
@@ -1029,7 +1043,9 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             if do_excel:
                 self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks()
                 xo=out/(Path(xlsx).stem+'_업데이트.xlsx')
-                a,xsaved=base.update_excel(xlsx,xo,d,g,new=(mode=='new'))
+                excel_d=excel_safe_payload(d)
+                excel_g=excel_safe_payload(g)
+                a,xsaved=base.update_excel(xlsx,xo,excel_d,excel_g,new=(mode=='new'))
                 self._last_saved_outputs['excel']=str(xsaved)
                 mrow=re.search(r'row\s+(\d+)',str(a),re.I)
                 self._last_excel_updated_row=int(mrow.group(1)) if mrow else None
