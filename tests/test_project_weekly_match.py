@@ -12,4 +12,14 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertEqual(w._project_key('Model Care 25'),'modelcare25')
  def test_underscore_inside_parentheses_is_not_customer_split(self):
   self.assertEqual(w._project_key('JF2S Delta (Set_Biz)'),'jf2sdeltasetbiz')
+ def test_customer_project_is_not_prefixed_twice(self):
+  d={'customer':'MBAG','task_name':'MBAG_EB-L(EU)'}
+  self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
+  self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
+
+ def test_repeated_customer_prefix_is_collapsed(self):
+  d={'customer':'MBAG','task_name':'MBAG_MBAG_EB-L(EU)'}
+  self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
+  self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
+
 if __name__=='__main__':unittest.main()
