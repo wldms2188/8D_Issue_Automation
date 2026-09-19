@@ -41,6 +41,32 @@ def _layout_with_4d_placeholders(d, imgs):
     return {**lz,**rz},texts,{**lf,**rf}
 
 
+def _strict_template_layout(d,imgs):
+    """Keep every D inside its original weekly-template content rectangle.
+
+    The previous dynamic layout could enlarge 2D downward when its text/image was
+    long, while the 3D marker/title stayed at the template position.  Visually this
+    made a genuine 2D image look as if it belonged to 3D.  This layout never lets a
+    section borrow vertical space from the next D section.
+    """
+    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    if not N(d.get('cause_4d')):
+        texts['4D_CAUSE']='검토 중'
+    if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
+        texts['4D_LEAK']='검토 중'
+
+    zones={k:dict(v310.ZONES[k]) for k in v310.ZONES}
+    fonts={}
+    for key,z in zones.items():
+        font=v319.MAX_FONT
+        need=v319._need_h(key,texts[key],bool(imgs.get(key)),font)
+        while need>z['h'] and font>6.0:
+            font=max(6.0,font-.5)
+            need=v319._need_h(key,texts[key],bool(imgs.get(key)),font)
+        fonts[key]=font
+    return zones,texts,fonts
+
+
 def _english_template_anchored_layout(d,imgs):
     """Keep the weekly template's native D regions as hard boundaries for English text.
 
