@@ -145,6 +145,27 @@ class UIStateTests(unittest.TestCase):
             '(과제명 추출 못함)'
         )
 
+    def test_filename_catalog_confirmation_exact_match_needs_no_warning(self):
+        mismatch,candidates=ent.project_confirmation_mismatch(
+            {'customer':'','task_name':''},
+            'MBAG_EB565M',
+            r'C:\\tmp\\8D_Report_MBAG_EB565M_Scratch.pptx',
+            '파우치형Pack개발품질1팀'
+        )
+        self.assertFalse(mismatch)
+        self.assertEqual(candidates,['MBAG_EB565M'])
+
+    def test_filename_catalog_confirmation_shared_word_shows_candidates(self):
+        mismatch,candidates=ent.project_confirmation_mismatch(
+            {'customer':'','task_name':''},
+            'MBAG_EB-L(EU)',
+            r'C:\\tmp\\8D_Report_EB-L_issue.pptx',
+            '원통형Pack개발품질팀'
+        )
+        self.assertTrue(mismatch)
+        self.assertIn('MBAG_EB-L(EU)',candidates)
+        self.assertIn('MBAG_EB-L(US)',candidates)
+
     def test_project_match_in_8d_filename_returns_literal_match(self):
         self.assertEqual(
             ent.project_match_in_8d_filename(
