@@ -327,6 +327,26 @@ finally {{
         break
     raise RuntimeError('8D 유첨 페이지 자동 복사 실패: '+last_detail[-800:])
 
+def _clean_updated_summary_placeholder(prs,summary_index):
+    """Remove empty content placeholders only on the summary page we just touched."""
+    if summary_index is None or summary_index<0 or summary_index>=len(prs.slides):
+        return False
+    changed=False
+    sl=prs.slides[summary_index]
+    for sh in list(sl.shapes):
+        try:
+            if sh.shape_type!=MSO_SHAPE_TYPE.PLACEHOLDER:
+                continue
+            if getattr(sh,'has_table',False):
+                continue
+            if str(getattr(sh,'text','') or '').strip():
+                continue
+            sh._element.getparent().remove(sh._element)
+            changed=True
+        except Exception:
+            pass
+    return changed
+
 def _weekly_progress(g,text):
     cb=(g or {}).get('_weekly_progress_callback')
     if callable(cb):
@@ -347,7 +367,7 @@ def weekly_fix5(src,out,d,g,mode):
     prs=Presentation(src)
 
     _weekly_progress(g,'주간회의 요약 페이지를 확인하는 중...')
-    _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
+    summary_index,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
 
     _weekly_progress(g,'상세 페이지 위치를 확인하는 중...')
     matched_section=_selected_section(prs,d,g)
@@ -394,6 +414,14 @@ def weekly_fix5(src,out,d,g,mode):
     s13._update_detail_slide(prs.slides[target],d,g,mode)
     try:s13._clear_slide_text_cache(prs.slides[target])
     except Exception:pass
+    # Remove placeholder UI artifacts before the first save. This avoids the
+    # expensive post-save reopen/resave pass on large weekly decks.
+    if _clean_updated_summary_placeholder(prs,summary_index):
+        g['_weekly_placeholder_cleaned']='1'
+    else:
+        # The page was inspected even if it had nothing to remove.
+        g['_weekly_placeholder_cleaned']='1'
+
     Path(out).parent.mkdir(parents=True,exist_ok=True)
     _weekly_progress(g,'주간회의 파일을 저장하는 중...')
     try:prs.save(out); saved=out
