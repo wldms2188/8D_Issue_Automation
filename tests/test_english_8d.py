@@ -69,8 +69,8 @@ class English8DTests(unittest.TestCase):
 
    add_pic(1.2,1.25,1)  # 2D
    add_pic(1.2,3.25,2)  # 3D
-   # Deliberately straddles the midpoint between 2D and 3D. It is ambiguous
-   # and must not be assigned to either section.
+   # Deliberately straddles the midpoint between 2D and 3D. Near-even overlap
+   # follows the user rule and is assigned to 2D.
    add_pic(1.2,1.80,7)
    add_pic(1.2,5.15,3)  # 4D cause
    add_pic(7.2,1.25,4)  # 4D escape
@@ -92,8 +92,10 @@ class English8DTests(unittest.TestCase):
    prs.save(p)
 
    imgs=e._english_section_images(p)
-   for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
+   self.assertEqual(len(imgs['2D']),2,msg={k:len(v) for k,v in imgs.items()})
+   for key in ('3D','4D_CAUSE','4D_LEAK','5D','6D'):
     self.assertEqual(len(imgs[key]),1,msg=(key,{k:len(v) for k,v in imgs.items()}))
+   for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
     self.assertTrue(all(item[2]==0 for item in imgs[key]),msg=(key,imgs[key]))
 
    # The 2D picture must never leak into 3D and vice versa.
