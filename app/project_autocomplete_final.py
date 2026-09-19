@@ -1,6 +1,7 @@
 """Customer-project autocomplete linked to 담당팀, plus canonical project selection."""
 import re
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 import main_enterprise_v3 as v3
 import ui_enterprise as ui
@@ -39,6 +40,74 @@ def project_part(value):
 def project_key(value,drop_parentheses=False):
     task=project_part(value)
     return _no_paren(task) if drop_parentheses else _norm(task)
+
+_FILENAME_STOP_WORDS={
+    '8d','report','issue','final','rev','revision','update','updated','ppt','pptx',
+    'pack','system','quality','claim','problem'
+}
+
+def _filename_words(value):
+    words=re.findall(r'[0-9A-Za-z가-힣]+',str(value or '').casefold())
+    return [w for w in words if len(w)>=2 and w not in _FILENAME_STOP_WORDS]
+
+def filename_project_candidates(path,team=""):
+    """Find catalog projects whose name/meaningful words overlap the 8D filename.
+
+    Exact project-name/project-part matches win. If no exact match exists, return
+    meaningful word-overlap candidates in best-match order.
+    """
+    try:
+        stem=Path(path).stem
+    except Exception:
+        stem=str(path or '')
+    if not stem:
+        return []
+
+    pool=PROJECTS.get(team,()) or _all_projects()
+    stem_norm=_norm(stem)
+    stem_words=set(_filename_words(stem))
+    exact=[]; overlap=[]
+
+    for project in pool:
+        full_norm=_norm(project)
+        part=project_part(project)
+        part_norm=_norm(part)
+
+        # Full catalog phrase or project-only phrase appears in the filename.
+        if (full_norm and full_norm in stem_norm) or (part_norm and len(part_norm)>=4 and part_norm in stem_norm):
+            exact.append(project)
+            continue
+
+        terms=_filename_words(part)
+        if not terms:
+            continue
+        matched=[]
+        for term in terms:
+            # Token match first; allow compact filename matches for long/model-like tokens.
+            if term in stem_words or (len(term)>=4 and _norm(term) in stem_norm):
+                matched.append(term)
+        if not matched:
+            continue
+
+        # A single very short/common token is too weak (e.g. JF1); otherwise keep
+        # the candidate so shared model words can surface more than one project.
+        strongest=max((len(x) for x in matched),default=0)
+        if len(matched)==1 and strongest<4:
+            continue
+        ratio=len(matched)/max(1,len(terms))
+        weight=sum(len(x) for x in matched)
+        overlap.append((ratio,weight,len(matched),project))
+
+    if exact:
+        # Preserve catalog order and de-duplicate.
+        seen=set(); out=[]
+        for x in exact:
+            if x not in seen:
+                seen.add(x); out.append(x)
+        return out
+
+    overlap.sort(key=lambda z:(-z[0],-z[1],-z[2],z[3].casefold()))
+    return [x[3] for x in overlap[:8]]
 
 def canonical_candidates(value,team=""):
     q=project_key(value); qp=project_key(value,True)
