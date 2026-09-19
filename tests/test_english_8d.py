@@ -146,4 +146,34 @@ class English8DTests(unittest.TestCase):
    '5D','Corrective Action: Guide revised','Guide revised','6D','Validation'])
   self.assertEqual(x['action_5d'],'Guide revised')
 
+ def test_occurrence_date_accepts_korean_short_label_and_range(self):
+  self.assertEqual(e._occurrence_date_from_blocks(['발생',"'26.8/27~28"]),"'26.8/27~28")
+  self.assertEqual(e.parse_year_month_extended("'26.8/27~28"),('2026','8'))
+
+ def test_occurrence_date_accepts_english_and_common_misspelling(self):
+  self.assertEqual(e._occurrence_date_from_blocks(['Occurrence',"'26.8/27~28"]),"'26.8/27~28")
+  self.assertEqual(e._occurrence_date_from_blocks(['Occurence: 2026.09.03']),'2026.09.03')
+
+ def test_enhance_dict_updates_occurrence_date_from_full_metadata(self):
+  x=e.enhance_dict({'occurrence_date':''},raw_text="Customer\nABC\n발생\n'26.8/27~28")
+  self.assertEqual(x['occurrence_date'],"'26.8/27~28")
+
+ def test_abnormal_and_abnomal_6d_are_open(self):
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'DV result abnormal.'})[0],'open')
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'Validation result abnomal.'})[0],'open')
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'DV result NG / failed.'})[0],'open')
+
+ def test_normal_passed_6d_is_close(self):
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'DV result normal and passed.'})[0],'close')
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'No abnormality after DV.'})[0],'close')
+
+ def test_issue_db_year_month_uses_extended_date(self):
+  from openpyxl import Workbook
+  ws=Workbook().active
+  g={'plm_no':'P1','form_factor':'파우치형','product_type':'EV Pack','team':'T','owner':'O','sample':'S','stage':'DV','occurrence_site':'etc.'}
+  d={'occurrence_date':"'26.8/27~28",'problem':'p','cause_4d':'c','action_5d':'a','verification_6d':'Validation in progress.'}
+  e.v310.base.write_row(ws,1,d,g)
+  self.assertEqual(str(ws.cell(1,6).value),'2026')
+  self.assertEqual(str(ws.cell(1,7).value),'8')
+
 if __name__=='__main__':unittest.main()
