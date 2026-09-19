@@ -211,17 +211,54 @@ def _decide_from_evidence(evidence,text):
         return '논의 중',f'원인 내용에 {cats} 범주의 단서가 함께 있어 추가 논의가 필요합니다.'
     return top_cat, f"8D 원인 내용에서 {', '.join(top_hits[:3])} 관련 표현이 상대적으로 명확하여 {top_cat}을(를) 추천합니다."
 
+def _finalize_with_5d(rec,reason,d):
+    """When 5D exists, never leave the recommendation as 논의 중/TBD.
+
+    4D remains primary.  If 4D is ambiguous or not classifiable, use concrete
+    5D corrective-action wording as secondary evidence, then occurrence site.
+    If no category can still be inferred, recommend 기타 rather than 논의 중.
+    """
+    action=str((d or {}).get('action_5d') or '').strip()
+    if not action:
+        return rec,reason
+    if rec not in (None,'논의 중','TBD'):
+        return rec,reason
+
+    action_evidence=_hits_for_text(action)
+    if action_evidence:
+        action_rec,action_reason=_decide_with_site_prior(action_evidence,action,d)
+        if action_rec and action_rec!='논의 중':
+            hits=action_evidence.get(action_rec) or []
+            clue=', '.join(hits[:3])
+            return action_rec,(
+                f'4D 원인 분류가 명확하지 않았으나 5D 개선대책에서 '
+                f'{clue or action_rec} 관련 표현이 확인되어 {action_rec} 기인 가능성을 추천합니다.'
+            )
+
+    prior,site_reason=_occurrence_site_prior(d)
+    if prior:
+        return prior,site_reason
+
+    return '기타','5D 개선대책이 확인되었으나 부품/설계/공정으로 구분할 명확한 원인 단서가 부족해 기타를 추천합니다.'
+
+
 def recommend_origin(d):
     """Bilingual issue-origin recommendation.
 
     Occurrence/root cause is primary. Escape/system cause can support a decision
-    only when occurrence cause has no usable category evidence, so phrases such as
-    "inspection missed" or "control plan gap" cannot override the real root cause.
+    only when occurrence cause has no usable category evidence.  When 5D exists,
+    ambiguous/TBD results are resolved with 5D wording, occurrence site, then 기타.
     """
     occurrence=str(d.get('cause_4d') or '').strip()
     leak=str(d.get('leak_cause') or '').strip()
     system=str(d.get('system_cause') or '').strip()
+    action=str(d.get('action_5d') or '').strip()
+
     if not (occurrence or leak or system):
+        # 5D can still reveal whether the implemented countermeasure is clearly
+        # process/design/part-related even when 4D wording is missing.
+        if action:
+            return _finalize_with_5d('TBD','4D 원인 내용이 아직 없음',d)
         prior,site_reason=_occurrence_site_prior(d)
         if prior:
             return prior,site_reason
@@ -231,22 +268,26 @@ def recommend_origin(d):
     if primary:
         rec,reason=_decide_with_site_prior(primary,occurrence,d)
         if rec:
-            return rec,reason
+            return _finalize_with_5d(rec,reason,d)
 
-    # Fallback only: when occurrence cause has no categorizable evidence.
+    # Fallback only: when occurrence cause has no usable category evidence.
     supporting='\n'.join(x for x in (leak,system) if x)
     support=_hits_for_text(supporting)
     if support:
         rec,reason=_decide_with_site_prior(support,supporting,d)
         if rec:
-            return rec,reason
+            return _finalize_with_5d(rec,reason,d)
 
     # Occurrence site is a weak final fallback, not a replacement for explicit cause text.
     prior,site_reason=_occurrence_site_prior(d)
     if prior:
         return prior,site_reason
 
-    return '논의 중','원인 내용은 있으나 부품/설계/공정/기타로 명확히 분류할 근거가 부족합니다.'
+    return _finalize_with_5d(
+        '논의 중',
+        '원인 내용은 있으나 부품/설계/공정/기타로 명확히 분류할 근거가 부족합니다.',
+        d
+    )
 
 
 step8._recommend_origin = recommend_origin
