@@ -114,7 +114,8 @@ def _clean_summary_placeholders(saved):
 def weekly_versioned(src,out,d,g,mode):
     versioned=_version_path(out)
     msg,saved=_original_weekly(src,versioned,d,g,mode)
-    _clean_summary_placeholders(saved)
+    if str((g or {}).get('_weekly_placeholder_cleaned') or '').lower() not in ('1','true','yes'):
+        _clean_summary_placeholders(saved)
     return msg+f' / 버전 저장={Path(saved).name}',saved
 
 base.update_excel=update_excel_versioned
