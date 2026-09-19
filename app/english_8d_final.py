@@ -133,7 +133,69 @@ def _is_photo_caption(line):
     if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True
     if (s.startswith('[') and s.endswith(']')) and any(x in q for x in CAPTION_HINTS):return True
     return False
-\ndef extract_sections_from_blocks(blocks):
+\ndef _box(sh):
+    try:return (float(sh.left),float(sh.top),float(sh.width),float(sh.height))
+    except Exception:return (0,0,0,0)
+
+def _center(sh):
+    x,y,w,h=_box(sh);return x+w/2,y+h/2
+
+def _shape_text(sh):
+    if getattr(sh,'has_table',False):
+        return '\n'.join(_norm_line(cell.text) for row in sh.table.rows for cell in row.cells if _norm_line(cell.text))
+    return str(getattr(sh,'text','') or '').strip()
+
+def _d_marker_number(text):
+    s=_norm_line(text)
+    m=re.fullmatch(r'[①②③④⑤⑥⑦⑧]|[1-8]\s*[dD]',s)
+    if not m:return None
+    circ={'①':1,'②':2,'③':3,'④':4,'⑤':5,'⑥':6,'⑦':7,'⑧':8}
+    return circ.get(s,int(re.search(r'[1-8]',s).group()) if re.search(r'[1-8]',s) else None)
+
+def _spatial_section_blocks(path):
+    """Map content by the physical D-marker position, independent of English heading wording."""
+    prs=Presentation(path); blocks=[]
+    for sl in prs.slides:
+        shapes=list(sl.shapes); markers=[]
+        for sh in shapes:
+            n=_d_marker_number(_shape_text(sh))
+            if n:markers.append((n,sh))
+        if not markers:continue
+        # Most 8D forms use two columns. A D marker starts a region that extends to
+        # the next D marker below it in the same column; the opposite column is independent.
+        xs=sorted(_center(sh)[0] for _,sh in markers)
+        mid=(min(xs)+max(xs))/2 if len(xs)>1 else None
+        grouped={}
+        for n,sh in markers:
+            cx,cy=_center(sh); col=0 if mid is None or cx<=mid else 1
+            grouped.setdefault(col,[]).append((cy,n,sh))
+        for col,ms in grouped.items():
+            ms.sort()
+            for i,(cy,n,msh) in enumerate(ms):
+                if n<2 or n>6:continue
+                top=cy
+                bottom=ms[i+1][0] if i+1<len(ms) else float('inf')
+                mx,my,mw,mh=_box(msh); mright=mx+mw
+                vals=[]
+                for order,sh in enumerate(shapes):
+                    if sh is msh:continue
+                    sx,sy,sw,shh=_box(sh); cx2,cy2=_center(sh)
+                    scol=0 if mid is None or cx2<=mid else 1
+                    if scol!=col or cy2<top or cy2>=bottom:continue
+                    # Ignore the narrow vertical D-label/section-title band itself.
+                    if sx+sw<=mright*1.05:continue
+                    t=_shape_text(sh)
+                    if not t:continue
+                    for line in t.replace('\r','\n').splitlines():
+                        line=_norm_line(line)
+                        if line and not _is_photo_caption(line):vals.append((sy,sx,order,line))
+                vals.sort(key=lambda z:(z[0],z[1],z[2]))
+                if vals:
+                    blocks.append(str(n)+'D')
+                    blocks.extend(v[3] for v in vals)
+    return blocks
+
+def extract_sections_from_blocks(blocks):
     """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
     out={v:'' for v in SECTION_FIELDS.values()}
     buckets={k:[] for k,v in SECTION_FIELDS.items() if v}
