@@ -156,8 +156,8 @@ class English8DTests(unittest.TestCase):
  def test_4d_subheadings_split_only_within_4d(self):
   x,detected=e._english_fields_from_spatial([
    '4D','Root Cause','Guide interference',
-   'Escape Cause','Inspection gap',
-   'System Cause','Control plan missing',
+   'Escape Point','Inspection gap',
+   'Systemic Root Cause','Control plan missing',
    '5D','Root Cause','Guide revised'])
   self.assertIn('Guide interference',x['cause_4d'])
   self.assertIn('Inspection gap',x['leak_cause'])
