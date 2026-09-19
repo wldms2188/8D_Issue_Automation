@@ -92,7 +92,7 @@ def _norm_line(s):
     return re.sub(r'[ \t]+',' ',str(s or '')).strip()
 
 def _marker(line):
-    """Return (section, remainder). D-number has priority over wording."""
+    """Return (section, remainder). D-number and semantic headings are boundaries."""
     s=_norm_line(line)
     if not s:return None,s
     m=re.match(r'^\s*([1-8])\s*[dD]\b[\s.:：\-–—)]*(.*)$',s)
@@ -111,12 +111,11 @@ def _marker(line):
             ll=lab.casefold()
             if low==ll:
                 return sec,''
-            # Treat "Heading: content" as a heading, but do not strip ordinary
-            # content sentences such as "Root cause item A".
             if low.startswith(ll):
                 tail=s[len(lab):]
-                if re.match(r'^\\s*[:：\\-–—]',tail):
-                    rest=re.sub(r'^\\s*[:：\\-–—]\\s*','',tail).strip()
+                # Heading with explicit delimiter, e.g. "Corrective Action: Replace guide"
+                if re.match(r'^\s*[:：\-–—]',tail):
+                    rest=re.sub(r'^\s*[:：\-–—]\s*','',tail).strip()
                     return sec,rest
     return None,s
 
@@ -194,8 +193,9 @@ def _semantic_section_for_text(text):
 def _spatial_section_blocks(path,return_detected=False):
     """Map 2D~6D from D-marker geometry at cell/shape level.
 
-    English headings are evaluated in parallel inside each spatial region. Unknown
-    headings are still retained by geometry; known 7D/8D headings stop spillover.
+    D-marker columns define horizontal regions from one marker column to the next.
+    This matches common 8D sheets where each D marker sits at the left edge of its
+    table region, so a wide table is not incorrectly split at the midpoint.
     """
     prs=Presentation(path); blocks=[]; detected=set()
     for sl in prs.slides:
@@ -203,39 +203,51 @@ def _spatial_section_blocks(path,return_detected=False):
         markers=[]
         for u in units:
             n=_d_marker_number(u['text'])
-            if n:markers.append((n,u))
+            if n:
+                cx,cy=_center_box(u['box'])
+                markers.append({'n':n,'u':u,'cx':cx,'cy':cy})
         if not markers:continue
 
-        xs=sorted(_center_box(u['box'])[0] for _,u in markers)
-        # Two-column 8D sheets are common. Use marker positions, not table centers.
-        mid=(min(xs)+max(xs))/2 if len(xs)>1 and (max(xs)-min(xs))>1 else None
-        grouped={}
-        for n,u in markers:
-            cx,cy=_center_box(u['box']); col=0 if mid is None or cx<=mid else 1
-            grouped.setdefault(col,[]).append((cy,n,u))
-        for col,ms in grouped.items():
-            ms.sort(key=lambda z:z[0])
-            for i,(cy,n,mu) in enumerate(ms):
+        # Cluster marker x positions into D columns.
+        tol=float(prs.slide_width)*0.06
+        cols=[]
+        for m in sorted(markers,key=lambda z:z['cx']):
+            if not cols or abs(m['cx']-cols[-1]['cx'])>tol:
+                cols.append({'cx':m['cx'],'markers':[m]})
+            else:
+                cols[-1]['markers'].append(m)
+                cols[-1]['cx']=sum(x['cx'] for x in cols[-1]['markers'])/len(cols[-1]['markers'])
+
+        for ci,col in enumerate(cols):
+            ms=sorted(col['markers'],key=lambda z:z['cy'])
+            next_col_x=min((x['u']['box'][0] for x in cols[ci+1]['markers']),default=float('inf')) if ci+1<len(cols) else float('inf')
+            for i,m in enumerate(ms):
+                n=m['n']; mu=m['u']
                 if n<2 or n>6:continue
                 key=SECTION_FIELDS.get(str(n)+'D')
                 if key:detected.add(key)
-                top=cy
-                bottom=ms[i+1][0] if i+1<len(ms) else float('inf')
+                top=m['cy']
+                bottom=ms[i+1]['cy'] if i+1<len(ms) else float('inf')
                 mx,my,mw,mh=mu['box']; mright=mx+mw
                 vals=[]
                 for u in units:
                     if u is mu or _d_marker_number(u['text']):continue
                     ux,uy,uw,uh=u['box']; cx2,cy2=_center_box(u['box'])
-                    ucol=0 if mid is None or cx2<=mid else 1
-                    if ucol!=col or cy2<top or cy2>=bottom:continue
-                    # The narrow vertical label band sits left of the actual content area.
-                    if ux+uw<=mright*1.05:continue
+                    if cy2<top or cy2>=bottom:continue
+                    # Content must be to the right of this D marker and before the next D column.
+                    if ux+uw<=mright*1.02 or ux>=next_col_x:continue
                     for line in u['text'].replace('\r','\n').splitlines():
                         line=_norm_line(line)
                         if not line or _is_photo_caption(line):continue
-                        sem,_rest=_marker(line)
-                        # A known heading from another major D section is a semantic guard.
-                        if sem in ('1D','2D','3D','4D','5D','6D','7D','8D') and sem!=str(n)+'D':
+                        sem,rest=_marker(line)
+                        current=str(n)+'D'
+                        # Other D headings are guards, never content.
+                        if sem in ('1D','2D','3D','4D','5D','6D','7D','8D') and sem!=current:
+                            continue
+                        # Same-section heading is metadata; keep only inline payload after ':'/'-'.
+                        if sem==current:
+                            if rest:
+                                vals.append((uy,ux,u['order'],rest))
                             continue
                         vals.append((uy,ux,u['order'],line))
                 vals.sort(key=lambda z:(z[0],z[1],z[2]))
@@ -268,8 +280,14 @@ def extract_sections_from_blocks(blocks):
         vals=[]; seen=set()
         for x in buckets[sec]:
             q=re.sub(r'\s+',' ',x).strip().casefold()
-            if not q or q in seen:continue
-            seen.add(q); vals.append(x)
+            # Do not emit the section name itself (e.g. "Corrective Action" -> "개선대책").
+            msec,mrest=_marker(x)
+            if msec==sec and not mrest:
+                continue
+            # Normalize bullets/punctuation so repeated first-row text is not duplicated.
+            dq=re.sub(r'^[\s•·▪◦\-–—]+','',q)
+            if not dq or dq in seen:continue
+            seen.add(dq); vals.append(x)
         out[key]='\n'.join(vals).strip()
     return out
 
