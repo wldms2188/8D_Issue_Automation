@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 from pathlib import Path
 from openpyxl import load_workbook
+from pptx import Presentation
 
 import main_final as legacy
 import ui_enterprise as ui
@@ -240,6 +241,49 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             self.status_var.set('READY  ·  8D 추출 완료')
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
+    def _confirm_weekly_section(self,weekly,d,g):
+        """Resolve weekly section safely and ask before using any fallback area."""
+        try:
+            import main_recovery_step14_fix2 as weekly_core
+            prs=Presentation(weekly)
+            resolved=weekly_core.section_resolution(prs,d)
+        except Exception:
+            # If section inspection itself fails, prefer a new section over a guessed existing area.
+            g['_weekly_create_new_section']='1'
+            return True
+
+        mode=resolved.get('mode')
+        if mode=='exact':
+            if resolved.get('name'):g['_weekly_section_override_name']=resolved.get('name')
+            return True
+        if mode=='new':
+            g['_weekly_create_new_section']='1'
+            return True
+
+        name=resolved.get('name') or '확인된 구역'
+        reason=resolved.get('reason') or '유사한 구역이 확인되었습니다.'
+        msg=(
+            f'추천  {name}\n\n'
+            f'{reason}\n\n'
+            '이 구역에 업데이트할지, 새 구역을 만들어 업데이트할지 선택해 주세요.'
+        )
+        choice=ui.dialog(
+            self,'주간회의 구역 확인',msg,'question',
+            (('새 구역 생성','new'),('이 구역에 업데이트','use')),
+            width=620,height=340
+        )
+        if choice is None:
+            return False
+        if choice=='use':
+            if resolved.get('section') is not None and resolved.get('name'):
+                g['_weekly_section_override_name']=resolved.get('name')
+            elif resolved.get('insert_after') is not None:
+                g['_weekly_insert_after_override']=str(resolved.get('insert_after'))
+            return True
+
+        g['_weekly_create_new_section']='1'
+        return True
+
     def run(self):
         g=self.gui(); ppt8d=g.get('ppt8d',''); weekly=g.get('pptweekly',''); xlsx=g.get('xlsx','')
         if not ppt8d or not os.path.exists(ppt8d): return ui.warning(self,'입력 확인','8D 원본 PPT는 반드시 선택해 주세요.')
@@ -251,6 +295,9 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip();
             if selected_task: d['task_name']=selected_task
             mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx); excel_row=None
+            if do_weekly:
+                if not self._confirm_weekly_section(weekly,d,g):
+                    self.status_var.set('READY  ·  주간회의 구역 선택이 취소되었습니다.'); return
             if do_excel:
                 self.status_var.set('RUNNING  ·  Issue DB 대상 확인 중...'); self.update_idletasks(); wb=load_workbook(xlsx); ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active; excel_row,_=base.find(ws,d,g)
                 if mode=='existing' and not excel_row:
