@@ -43,7 +43,7 @@ def _negated(q, term):
         return False
     for pos in positions:
         # Negation normally follows the subject phrase (e.g. 공정조건 문제없음).
-        after=q[pos+len(t):pos+len(t)+12]
+        after=q[pos+len(t):pos+len(t)+32]
         if not any(n in after for n in NEGATIONS):
             return False
     return True
