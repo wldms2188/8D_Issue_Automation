@@ -244,8 +244,18 @@ def _spatial_section_blocks(path,return_detected=False):
                 # top edge of the next content band. Use midpoints to neighbouring
                 # D markers. This prevents 3D text just above the 3D marker from
                 # being misread as 2D, and 4D text as 3D.
-                top=(ms[i-1]['cy']+m['cy'])/2 if i>0 else 0.0
-                bottom=(m['cy']+ms[i+1]['cy'])/2 if i+1<len(ms) else float(prs.slide_height)
+                if i>0:
+                    top=(ms[i-1]['cy']+m['cy'])/2
+                elif i+1<len(ms):
+                    top=max(0.0,m['cy']-(ms[i+1]['cy']-m['cy'])*0.45)
+                else:
+                    top=0.0
+                if i+1<len(ms):
+                    bottom=(m['cy']+ms[i+1]['cy'])/2
+                elif i>0:
+                    bottom=min(float(prs.slide_height),m['cy']+(m['cy']-ms[i-1]['cy'])*0.45)
+                else:
+                    bottom=float(prs.slide_height)
                 mx,my,mw,mh=mu['box']; mright=mx+mw
                 vals=[]
                 for u in units:
@@ -545,8 +555,18 @@ def _d_regions_for_slide(sl,prs):
         next_x=min((x['u']['box'][0] for x in cols[ci+1]['markers']),default=float(prs.slide_width)) if ci+1<len(cols) else float(prs.slide_width)
         for i,m in enumerate(ms):
             if m['n']<2 or m['n']>6:continue
-            top=(ms[i-1]['cy']+m['cy'])/2 if i>0 else 0.0
-            bottom=(m['cy']+ms[i+1]['cy'])/2 if i+1<len(ms) else float(prs.slide_height)
+            if i>0:
+                top=(ms[i-1]['cy']+m['cy'])/2
+            elif i+1<len(ms):
+                top=max(0.0,m['cy']-(ms[i+1]['cy']-m['cy'])*0.45)
+            else:
+                top=0.0
+            if i+1<len(ms):
+                bottom=(m['cy']+ms[i+1]['cy'])/2
+            elif i>0:
+                bottom=min(float(prs.slide_height),m['cy']+(m['cy']-ms[i-1]['cy'])*0.45)
+            else:
+                bottom=float(prs.slide_height)
             mx,my,mw,mh=m['u']['box']
             regions.append({
                 'n':m['n'],'top':top,'bottom':bottom,
