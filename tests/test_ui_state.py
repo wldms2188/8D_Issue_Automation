@@ -8,6 +8,18 @@ import main_enterprise_v2 as v2
 import main_enterprise_v3 as v3
 
 class UIStateTests(unittest.TestCase):
+    def test_excel_safe_payload_removes_controls_recursively(self):
+        payload={
+            'problem':'Phenomenon\x0bB2',
+            'cause_4d':'Root cause\x0cBolt',
+            'nested':['A\x00B',('C\x0bD',)],
+        }
+        clean=ent.excel_safe_payload(payload)
+        self.assertEqual(clean['problem'],'PhenomenonB2')
+        self.assertEqual(clean['cause_4d'],'Root causeBolt')
+        self.assertEqual(clean['nested'][0],'AB')
+        self.assertEqual(clean['nested'][1][0],'CD')
+
     def test_selected_8d_replaces_initial_prompt(self):
         s=ent.target_ready_status(r'C:\\work\\sample.pptx','READY  ·  8D 원본을 선택해 주세요.')
         self.assertIn('8D 원본 선택 완료',s)
