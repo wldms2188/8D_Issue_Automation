@@ -223,21 +223,31 @@ ui.info=_select_and_finish
         pass
 
 def _prune_data_drawings(ws,changed_rows):
-    """Keep header drawings and drawings belonging to the updated row(s) only."""
+    """Keep header drawings and only the updated row's representative drawing(s).
+
+    For representative images, when an update left both the old and new image on
+    the same row, the most recently-added image wins.
+    """
     row_map={old:7+i for i,old in enumerate(sorted(changed_rows))}
     for attr in ('_images','_charts'):
         items=list(getattr(ws,attr,[]) or [])
-        kept=[]
+        header=[]; by_row={}
         for obj in items:
             row=_anchor_row(obj)
-            if row is None:
-                # Absolute/header artwork cannot be tied to a data row; preserve it.
-                kept.append(obj)
-                continue
-            if row<=6:
-                kept.append(obj)
+            if row is None or row<=6:
+                header.append(obj)
                 continue
             if row in row_map:
+                by_row.setdefault(row,[]).append(obj)
+
+        kept=list(header)
+        for row in sorted(by_row):
+            objs=by_row[row]
+            if attr=='_images' and objs:
+                # Issue DB has one representative image per data row. Keep the
+                # newest one if both old/new images survived the full update.
+                objs=[objs[-1]]
+            for obj in objs:
                 _move_anchor_to_row(obj,row_map[row])
                 kept.append(obj)
         try:
