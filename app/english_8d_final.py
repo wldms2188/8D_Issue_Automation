@@ -1,26 +1,30 @@
-"""Offline English/mixed 8D post-processing.
-Maps common English 8D labels to the existing Korean fields and translates frequent quality phrases.
-Identifiers, numbers, units, model/project names are preserved. No network/API required.
+"""English/mixed 8D extraction and post-processing.
+
+The legacy extractor is kept for metadata, while 2D~6D body text is rebuilt from
+source order so section contents are not lost when a template uses English labels
+or only a D-number marker. 7D/8D are boundaries, not 6D content.
 """
 import re
 import main_v310 as v310
 import main_enterprise_v3 as v3
 import ui_enterprise as ui
+import main_recovery_step9 as step9
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 FIELD_LABELS={
- 'problem':('problem description','problem statement','problem symptom','failure description','symptom','2d'),
- 'temporary_action':('interim containment action','containment action','temporary action','ica','3d'),
- 'cause_4d':('root cause','occurrence cause','cause of occurrence','4d root cause'),
- 'leak_cause':('escape cause','escape root cause','non detection cause','detection cause'),
+ 'problem':('problem description','problem statement','problem symptom','failure description','symptom','problem','2d'),
+ 'temporary_action':('interim containment action','containment action','containment','temporary action','ica','3d'),
+ 'cause_4d':('root cause','occurrence cause','cause of occurrence','cause analysis','root cause analysis','4d root cause','4d'),
+ 'leak_cause':('escape cause','escape root cause','non detection cause','non-detection cause','detection cause'),
  'system_cause':('system cause','systemic cause'),
- 'action_5d':('permanent corrective action','corrective action','pca','5d'),
- 'verification_6d':('verification','effectiveness verification','validation result','6d'),
+ 'action_5d':('permanent corrective action','corrective action','corrective actions','pca','5d'),
+ 'verification_6d':('verification','effectiveness verification','validation result','validation','6d'),
 }
 PHRASES=(
  ('root cause','발생원인'),('escape cause','유출원인'),('problem description','현상'),
- ('corrective action','개선대책'),('containment action','임시조치'),('temporary action','임시조치'),
- ('verification result','효과검증 결과'),('verification','효과검증'),
+ ('corrective action','개선대책'),('containment action','임시조치'),('containment','임시조치'),('temporary action','임시조치'),
+ ('verification result','효과검증 결과'),('effectiveness verification','효과검증'),('verification','효과검증'),
  ('confirmed','확인됨'),('identified','확인됨'),('occurred','발생'),('occurrence','발생'),
  ('failure','불량'),('defect','불량'),('crack','크랙'),('leakage','누설'),('leak','누설'),
  ('interference','간섭'),('insufficient','부족'),('excessive','과다'),('deformation','변형'),
@@ -30,12 +34,27 @@ PHRASES=(
  ('customer','고객'),('sample','샘플'),('test condition','시험조건'),('test','시험'),
 )
 
+SECTION_FIELDS={
+ '2D':'problem','3D':'temporary_action','4D':'cause_4d',
+ '4D_LEAK':'leak_cause','4D_SYSTEM':'system_cause',
+ '5D':'action_5d','6D':'verification_6d',
+}
+# Ordered from specific to broad. 7D/8D intentionally have no destination field.
+SEMANTIC_MARKERS=(
+ ('4D_LEAK',('escape root cause','escape cause','non detection cause','non-detection cause','detection cause','유출 원인','유출원인')),
+ ('4D_SYSTEM',('systemic cause','system cause','시스템 원인','시스템원인')),
+ ('3D',('interim containment action','containment action','containment','temporary action','임시 조치','임시조치','임시 대책','임시대책')),
+ ('5D',('permanent corrective action','corrective actions','corrective action','개선 대책','개선대책','개선 사항','개선사항')),
+ ('6D',('effectiveness verification','verification result','validation result','verification','validation','효과 검증','효과검증','유효성 검증','유효성검증')),
+ ('4D',('root cause analysis','cause analysis','occurrence cause','cause of occurrence','root cause','발생 원인','발생원인','원인 분석','원인분석')),
+ ('2D',('problem description','problem statement','problem symptom','failure description','problem','symptom','문제 현황','문제현황','불량 현상','불량현상')),
+)
+
 def looks_english(s):
     s=str(s or ''); a=len(re.findall(r'[A-Za-z]',s)); k=len(re.findall(r'[가-힣]',s))
     return a>=8 and a>k*2
 
 def translate_offline(s):
-    """Conservative terminology translation; never fabricates a free-form translation."""
     out=str(s or '')
     for en,ko in sorted(PHRASES,key=lambda x:len(x[0]),reverse=True):
         out=re.sub(r'(?i)(?<![A-Za-z])'+re.escape(en)+r'(?![A-Za-z])',ko,out)
@@ -47,7 +66,7 @@ def _label_extract(text,labels):
         low=line.casefold()
         for lab in labels:
             pos=low.find(lab)
-            if pos<0:continue
+            if pos<0: continue
             tail=re.sub(r'^\s*[:：\-–—]\s*','',line[pos+len(lab):]).strip()
             if tail:return tail
             vals=[]
@@ -61,21 +80,114 @@ def _label_extract(text,labels):
     return ''
 
 def untranslated_english(original,translated):
-    """Detect meaningful English prose left after conservative translation."""
     if not looks_english(original): return False
-    # Ignore common identifiers/technical abbreviations, numbers and units.
     cleaned=re.sub(r'\b[A-Z0-9][A-Z0-9_.+\-/()]*\b',' ',str(translated or ''))
     words=re.findall(r'[A-Za-z]{3,}',cleaned)
     return len(words)>=2
 
-def enhance_dict(d,raw_text=''):
+def _norm_line(s):
+    return re.sub(r'[ \t]+',' ',str(s or '')).strip()
+
+def _marker(line):
+    """Return (section, remainder). D-number has priority over wording."""
+    s=_norm_line(line)
+    if not s:return None,s
+    m=re.match(r'^\s*([2-8])\s*[dD]\b[\s.:：\-–—)]*(.*)$',s)
+    if m:
+        n=m.group(1); rest=m.group(2).strip()
+        if n in ('7','8'): return n+'D',rest
+        sec=n+'D'
+        if n=='4':
+            low=rest.casefold()
+            if any(x in low for x in ('escape cause','escape root cause','non detection','non-detection','유출원인','유출 원인')): sec='4D_LEAK'
+            elif any(x in low for x in ('system cause','systemic cause','시스템원인','시스템 원인')): sec='4D_SYSTEM'
+        return sec,_strip_semantic_label(rest,sec)
+    low=s.casefold()
+    for sec,labels in SEMANTIC_MARKERS:
+        for lab in labels:
+            pos=low.find(lab.casefold())
+            # A semantic heading must begin the line; avoids ordinary prose changing sections.
+            if pos==0:
+                rest=s[len(lab):].lstrip(' :：-–—')
+                return sec,rest
+    return None,s
+
+def _strip_semantic_label(text,sec):
+    s=_norm_line(text); low=s.casefold()
+    for ssec,labels in SEMANTIC_MARKERS:
+        if ssec!=sec:continue
+        for lab in labels:
+            if low.startswith(lab.casefold()):
+                return s[len(lab):].lstrip(' :：-–—')
+    return s
+
+def extract_sections_from_blocks(blocks):
+    """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
+    out={v:'' for v in SECTION_FIELDS.values()}
+    buckets={k:[] for k in SECTION_FIELDS}
+    current=None
+    for block in blocks:
+        for raw in str(block or '').replace('\r','\n').splitlines():
+            line=_norm_line(raw)
+            if not line:continue
+            sec,rest=_marker(line)
+            if sec:
+                current=sec
+                if sec in ('7D','8D'):
+                    continue
+                if rest and sec in buckets:
+                    buckets[sec].append(rest)
+                continue
+            if current in buckets:
+                buckets[current].append(line)
+    for sec,key in SECTION_FIELDS.items():
+        vals=[]; seen=set()
+        for x in buckets[sec]:
+            q=re.sub(r'\s+',' ',x).strip().casefold()
+            if not q or q in seen:continue
+            seen.add(q); vals.append(x)
+        out[key]='\n'.join(vals).strip()
+    return out
+
+def _shape_blocks(path):
+    """Read source in slide/top/left order; tables are emitted cell-by-cell in row order."""
+    prs=Presentation(path); blocks=[]
+    def walk(shapes):
+        for sh in shapes:
+            if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:
+                yield from walk(sh.shapes)
+            else:
+                yield sh
+    for sl in prs.slides:
+        items=[]
+        for order,sh in enumerate(walk(sl.shapes)):
+            top=int(getattr(sh,'top',0) or 0); left=int(getattr(sh,'left',0) or 0)
+            vals=[]
+            if getattr(sh,'has_table',False):
+                for row in sh.table.rows:
+                    for cell in row.cells:
+                        t=_norm_line(cell.text)
+                        if t: vals.append(t)
+            else:
+                t=str(getattr(sh,'text','') or '').strip()
+                if t: vals.append(t)
+            if vals:items.append((top,left,order,'\n'.join(vals)))
+        items.sort(key=lambda x:(x[0],x[1],x[2]))
+        blocks.extend(x[3] for x in items)
+    return blocks
+
+def enhance_dict(d,raw_text='',section_blocks=None):
     d=dict(d or {})
+    if section_blocks is not None:
+        rebuilt=extract_sections_from_blocks(section_blocks)
+        # Region-based extraction is authoritative when a section was found.
+        for key,val in rebuilt.items():
+            if val:d[key]=val
     source='\n'.join(str(d.get(k) or '') for k in FIELD_LABELS)
     source=(source+'\n'+str(raw_text or '')).strip()
     for key,labels in FIELD_LABELS.items():
         current=str(d.get(key) or '').strip()
-        if not current:
-            current=_label_extract(source,labels)
+        if not current:current=_label_extract(source,labels)
         if current and looks_english(current):
             d[key+'_en_original']=current
             d[key]=translate_offline(current)
@@ -87,62 +199,63 @@ def enhance_dict(d,raw_text=''):
 _original=v310.base.extract
 
 def _ppt_text(path):
-    try:
-        prs=Presentation(path); parts=[]
-        for sl in prs.slides:
-            for sh in sl.shapes:
-                t=str(getattr(sh,'text','') or '').strip()
-                if t: parts.append(t)
-                if getattr(sh,'has_table',False):
-                    for row in sh.table.rows:
-                        for cell in row.cells:
-                            t=str(cell.text or '').strip()
-                            if t: parts.append(t)
-        return '\n'.join(parts)
-    except Exception:
-        return ''
+    try:return '\n'.join(_shape_blocks(path))
+    except Exception:return ''
 
 def extract(path):
     d=_original(path)
-    return enhance_dict(d,_ppt_text(path))
+    try:blocks=_shape_blocks(path)
+    except Exception:blocks=[]
+    return enhance_dict(d,'\n'.join(blocks),blocks)
 v310.base.extract=extract
 
-
 def apply_english_choice(d,use_original):
-    """Use either all original English fields or the conservative Korean translation."""
     d=dict(d or {})
     if use_original:
         for key in FIELD_LABELS:
             original=d.get(key+'_en_original')
-            if original:
-                d[key]=original
+            if original:d[key]=original
     return d
+
+# English status terms must behave like their Korean equivalents.
+_original_status=v310.base.status
+def status_bilingual(d):
+    v=str(d.get('verification_6d') or '').strip()
+    q=re.sub(r'\s+',' ',v).casefold()
+    if any(x in q for x in ('in progress','ongoing','planned','plan to','pending','scheduled','tbd','to be verified','under verification')):
+        return v310.impl.base.STATUS['verify'] if hasattr(v310.impl.base,'STATUS') else '개선 검증중'
+    if any(x in q for x in ('verification complete','verification completed','verified','validated','effectiveness confirmed','completed','passed')):
+        return v310.impl.base.STATUS['complete'] if hasattr(v310.impl.base,'STATUS') else '개선 완료'
+    return _original_status(d)
+v310.base.status=status_bilingual
+
+_original_judge=step9._judge_issue_status
+def judge_status_bilingual(d):
+    text=str(d.get('verification_6d') or '').strip()
+    if not text:return 'open',''
+    q=re.sub(r'\s+',' ',text).casefold()
+    if any(x in q for x in ('진행 중','진행중','예정','in progress','ongoing','planned','plan to','pending','scheduled','tbd','to be verified','under verification')):
+        return 'open',text
+    return 'close',text
+step9._judge_issue_status=judge_status_bilingual
 
 _original_run=v3.EnterpriseAppV3.run
 def _run_with_translation_confirmation(self):
-    # Ask once before output generation. The subsequent base.extract call receives
-    # the same choice through this temporary wrapper, so Excel/PPT use one language consistently.
-    g=self.gui()
-    path=g.get('ppt8d','').strip()
+    g=self.gui(); path=g.get('ppt8d','').strip()
     if path:
         probe=extract(path)
         if probe.get('_english_translation_incomplete'):
             use_original=ui.ask_yes_no(
-                self,
-                '영문 번역 확인',
+                self,'영문 번역 확인',
                 '일부 영문 표현으로 인해 영문 전체가 번역되지는 못했습니다.\n\n'
                 '전체 영문 내용으로 입력하시겠습니까?\n\n'
                 '예: 전체 영문 원문으로 입력\n'
-                '아니오: 자동 번역된 한글 내용으로 입력'
-            )
+                '아니오: 자동 번역된 한글 내용으로 입력')
             original_extract=v310.base.extract
             def chosen_extract(p):
                 return apply_english_choice(original_extract(p),use_original)
             v310.base.extract=chosen_extract
-            try:
-                return _original_run(self)
-            finally:
-                v310.base.extract=original_extract
+            try:return _original_run(self)
+            finally:v310.base.extract=original_extract
     return _original_run(self)
-
 v3.EnterpriseAppV3.run=_run_with_translation_confirmation
