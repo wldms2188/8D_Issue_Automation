@@ -992,7 +992,9 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 if mode=='new' and excel_row and not ui.ask_yes_no(self,'중복 가능성',f'유사 이슈(row {excel_row})가 있습니다.\n그래도 신규 이슈로 추가할까요?'): self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
             od=None
             if do_weekly:
-                self.status_var.set('WAITING  ·  이슈기인 확인 필요'); self.update_idletasks(); od=EnterpriseOriginDialog(self,d)
+                origin_d=dict(d)
+                origin_d['_origin_occurrence_site']=g.get('occurrence_site') or d.get('occurrence_site')
+                self.status_var.set('WAITING  ·  이슈기인 확인 필요'); self.update_idletasks(); od=EnterpriseOriginDialog(self,origin_d)
                 if od.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 g['_issue_origin_selected']=od.result
             pd_result=None; db_status=None; weekly_status=None
