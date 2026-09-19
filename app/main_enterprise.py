@@ -411,19 +411,20 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 db_status=self._confirm_issue_db_status_v1(d)
                 g['_issue_status_selected']=db_status
             if do_weekly:
-                # When Issue DB is finally close, weekly Signal is unambiguously 개선 완료
-                # and no extra weekly popup is shown. Only an open result needs a separate choice.
-                status_for_weekly=db_status
-                if status_for_weekly is None:
-                    judged,_reason=legacy.step9._judge_issue_status(d)
-                    status_for_weekly='close' if str(judged).lower()=='close' else 'open'
-                if not weekly_status_confirmation_required(status_for_weekly):
-                    weekly_status='개선 완료'
-                else:
+                # Show the weekly chooser ONLY when Issue DB was actually updated and
+                # its final user-confirmed status is open.
+                if do_excel and weekly_status_confirmation_required(db_status):
                     self.status_var.set('WAITING  ·  주간회의 상태 확인 필요'); self.update_idletasks()
                     weekly_status=self._confirm_weekly_status_v1(d)
                     if weekly_status is None:
                         self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
+                elif do_excel and str(db_status or '').lower()=='close':
+                    weekly_status='개선 완료'
+                else:
+                    # Weekly-only execution has no "final Issue DB" state, so no extra
+                    # confirmation popup is shown; use the conservative automatic Signal.
+                    judged,_reason=legacy.step9._judge_issue_status(d)
+                    weekly_status=weekly_status_from_choice(d,judged)
                 g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
             if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
