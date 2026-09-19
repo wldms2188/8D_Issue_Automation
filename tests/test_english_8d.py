@@ -56,6 +56,11 @@ class English8DTests(unittest.TestCase):
   self.assertIn('Occurrence A',x['cause_4d'])
   self.assertIn('Detection control missing',x['leak_cause'])
 
+ def test_english_nonpending_6d_still_proposes_close_confirmation(self):
+  decision,text=e.judge_status_bilingual({'action_5d':'Guide revised','verification_6d':'1000 cycle evaluation result reviewed.'})
+  self.assertEqual(decision,'close')
+  self.assertTrue(text)
+
  def test_english_no_abnomality_and_completed_are_close(self):
   for text in [
    'No abnomality observed.',
