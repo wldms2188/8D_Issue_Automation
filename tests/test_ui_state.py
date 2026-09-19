@@ -131,6 +131,20 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(state,'complete')
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료')
 
+    def test_project_confirmation_value_uses_filename_only_when_extraction_missing(self):
+        self.assertEqual(
+            ent.project_confirmation_value('', 'MBAG_EB565M'),
+            'MBAG_EB565M'
+        )
+        self.assertEqual(
+            ent.project_confirmation_value('MBAG_EB-L(EU)', 'MBAG_EB565M'),
+            'MBAG_EB-L(EU)'
+        )
+        self.assertEqual(
+            ent.project_confirmation_value('', ''),
+            '(과제명 추출 못함)'
+        )
+
     def test_project_match_in_8d_filename_returns_literal_match(self):
         self.assertEqual(
             ent.project_match_in_8d_filename(
