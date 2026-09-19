@@ -37,28 +37,28 @@ def issue_db_status_reason(d,judged):
     judged='close' if str(judged or '').lower()=='close' else 'open'
     sixd=N(d.get('verification_6d'))
     if not sixd:
-        return '6D 효과검증 내용이 없어 완료 여부를 확인할 수 없으므로 open으로 판단했습니다.'
+        return '6D 효과검증 내용이 없어 완료 여부를 확인하기 어렵습니다.'
     q=sixd.lower().replace(' ','')
     if judged=='close':
         if any(x in q for x in ('완료','정상','이상없음','검증완료','verificationcomplete','completed','passed','validated','verified','noabnormality')):
-            return '6D에서 완료·정상·검증완료 의미의 표현을 확인하여 close로 판단했습니다.'
-        return '6D 효과검증 결과가 완료 상태로 판정되어 close로 판단했습니다.'
+            return '6D에서 완료·정상·검증완료 의미의 표현이 확인되었습니다.'
+        return '6D 효과검증 결과가 완료 상태로 보입니다.'
     if any(x in q for x in ('진행중','검증중','확인중','예정','계획','inprogress','ongoing','pending','planned','scheduled','tbd')):
-        return '6D에서 진행 중·검증 중·예정 의미의 표현을 확인하여 open으로 판단했습니다.'
+        return '6D에서 진행 중·검증 중·예정 의미의 표현이 확인되었습니다.'
     if any(x in q for x in ('불량','이상','실패','재발','abnormal','failed','failure','nok','oos')):
-        return '6D에서 이상·실패·재발 의미의 표현을 확인하여 open으로 판단했습니다.'
-    return '6D에 완료를 확정할 표현이 명확하지 않아 open으로 판단했습니다.'
+        return '6D에서 이상·실패·재발 의미의 표현이 확인되었습니다.'
+    return '6D에 완료를 확정할 표현이 명확하지 않습니다.'
 
 def weekly_status_reason(d,weekly_status):
     """Human-readable reason for the weekly-meeting Signal proposal."""
     st=N(weekly_status)
     if st=='개선 완료':
-        return '6D 효과검증이 완료 상태로 판단되어 주간회의 Signal을 개선 완료로 판단했습니다.'
+        return '6D 효과검증에서 완료 상태를 의미하는 내용이 확인되었습니다.'
     if st=='개선 검증중':
         if N(d.get('verification_6d')):
-            return '6D 효과검증 내용은 있으나 완료가 확정되지 않아 주간회의 Signal을 개선 검증중으로 판단했습니다.'
-        return '5D 개선대책은 있으나 6D 완료 검증이 확인되지 않아 주간회의 Signal을 개선 검증중으로 판단했습니다.'
-    return '5D 개선대책과 6D 효과검증 내용이 확인되지 않아 주간회의 Signal을 원인/개선 미확인으로 판단했습니다.'
+            return '6D 효과검증 내용은 있으나 완료가 확정되지 않은 상태로 보입니다.'
+        return '5D 개선대책은 있으나 6D의 완료 검증은 아직 확인되지 않았습니다.'
+    return '5D 개선대책과 6D 효과검증 내용이 아직 확인되지 않았습니다.'
 
 
 
@@ -146,8 +146,8 @@ class EnterpriseStatusDialog(tk.Toplevel):
         card=tk.Frame(parent,bg='#F8FAFC',highlightbackground='#D5E3EE',highlightthickness=1)
         card.pack(fill='x',pady=(0,10))
         tk.Label(card,text=title,bg='#F8FAFC',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(anchor='w',padx=14,pady=(10,2))
-        tk.Label(card,text=f'자동 판단  :  {auto_status}',bg='#F8FAFC',fg=ui.TEXT,font=('Malgun Gothic',9,'bold')).pack(anchor='w',padx=14,pady=(2,3))
-        tk.Label(card,text='판단 근거',bg='#F8FAFC',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(anchor='w',padx=14,pady=(5,1))
+        tk.Label(card,text=f'추천  {auto_status}',bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(anchor='w',padx=14,pady=(7,2))
+        tk.Label(card,text='추천 이유',bg='#F8FAFC',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(anchor='w',padx=14,pady=(5,1))
         tk.Label(card,text=reason,bg='#F8FAFC',fg='#4E6375',font=('Malgun Gothic',8),wraplength=760,justify='left').pack(anchor='w',padx=14,pady=(0,8))
         return card
 
