@@ -259,6 +259,37 @@ def _spatial_section_blocks(path,return_detected=False):
 
     return (blocks,detected) if return_detected else blocks
 
+FOUR_D_SUBLABELS={
+    'system_cause':(
+        'systemic root cause','system root cause','systemic cause','system cause',
+        'management system cause','system cause analysis'
+    ),
+    'leak_cause':(
+        'escape root cause','escape cause','escape point cause','escape point','point of escape',
+        'non detection cause','non-detection cause','detection failure cause',
+        'why not detected','detection cause'
+    ),
+    'cause_4d':(
+        'occurrence root cause','root cause of occurrence','occurrence cause',
+        'technical root cause','direct cause','root cause analysis','root cause'
+    ),
+}
+
+def _four_d_subfield(line):
+    """Recognize only 4D sub-headings; never changes the surrounding D region."""
+    s=_norm_line(line); low=s.casefold()
+    for key,labels in FOUR_D_SUBLABELS.items():
+        for lab in sorted(labels,key=len,reverse=True):
+            ll=lab.casefold()
+            if low==ll:
+                return key,''
+            if low.startswith(ll):
+                tail=s[len(lab):]
+                # In 4D only, tolerate a label followed directly by its value.
+                rest=re.sub(r'^\s*[:：\-–—)]*\s*','',tail).strip()
+                return key,rest
+    return None,s
+
 def _english_fields_from_spatial(blocks):
     """Build English 2D~6D fields from D geometry without cross-D semantic reassignment."""
     out={k:'' for k in ('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')}
@@ -296,20 +327,13 @@ def _english_fields_from_spatial(blocks):
                 continue
 
             if current in ('4D','4D_LEAK'):
-                sec,rest=_marker(line)
-                if sec=='4D':
-                    sub4='cause_4d'; detected.add(sub4)
+                four_key,rest=_four_d_subfield(line)
+                if four_key:
+                    sub4=four_key; detected.add(sub4)
                     if rest:buckets[sub4].append(rest)
                     continue
-                if sec=='4D_LEAK':
-                    sub4='leak_cause'; detected.add(sub4)
-                    if rest:buckets[sub4].append(rest)
-                    continue
-                if sec=='4D_SYSTEM':
-                    sub4='system_cause'; detected.add(sub4)
-                    if rest:buckets[sub4].append(rest)
-                    continue
-                # Other semantic headings (3D/5D/6D etc.) do NOT reassign content.
+                # Any 2D/3D/5D/6D-looking text remains literal 4D content.
+                # Only a 4D sub-heading may split occurrence/escape/system cause.
                 buckets[sub4].append(line)
 
     for key,vals in buckets.items():
