@@ -10,6 +10,7 @@ import main_v310 as v310
 import main_enterprise_v3 as v3
 import ui_enterprise as ui
 import main_recovery_step9 as step9
+import project_autocomplete_final as project_catalog
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -1025,6 +1026,20 @@ def _document_looks_english(raw):
 def extract(path):
     # Always start from the validated legacy/Korean chain for metadata, images and fallbacks.
     d=_original(path)
+
+    # If PPT metadata could not identify the project, use the user's project catalog
+    # against the source 8D filename. Only an unambiguous single match is adopted.
+    try:
+        filename_projects=project_catalog.filename_project_candidates(path)
+    except Exception:
+        filename_projects=[]
+    d['_filename_project_candidates']=filename_projects
+    if not str(d.get('task_name') or '').strip() and len(filename_projects)==1:
+        detected=filename_projects[0]
+        d['task_name']=detected
+        customer,_task=project_catalog.split_customer_task(detected)
+        if customer and not str(d.get('customer') or '').strip():
+            d['customer']=customer
     try:blocks=_shape_blocks(path)
     except Exception:blocks=[]
     raw='\n'.join(blocks)
