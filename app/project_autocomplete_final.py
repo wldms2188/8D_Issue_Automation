@@ -62,6 +62,15 @@ def _project_entry(self,parent,label,key,hint):
             try: popup.destroy()
             except Exception: pass
         popup=listbox=None
+
+    def _inside_popup(widget):
+        if popup is None or widget is None:
+            return False
+        try:
+            return widget.winfo_toplevel() is popup
+        except Exception:
+            return False
+
     def choose(*_):
         if not listbox:return
         sel=listbox.curselection()
@@ -70,6 +79,39 @@ def _project_entry(self,parent,label,key,hint):
             close()
             try: entry.icursor('end')
             except Exception: pass
+
+    def enter_or_close(_event=None):
+        # Enter accepts an explicitly highlighted candidate; otherwise it simply
+        # keeps the typed text and dismisses the candidate popup.
+        if listbox:
+            try:
+                if listbox.curselection():
+                    choose()
+                    return "break"
+            except Exception:
+                pass
+        close()
+        return "break"
+
+    def close_if_focus_left():
+        # FocusOut can occur while clicking a candidate. Delay the check so a
+        # popup/listbox click is not mistaken for clicking somewhere else.
+        try:
+            focus=self.focus_get()
+        except Exception:
+            focus=None
+        if focus is entry or _inside_popup(focus):
+            return
+        close()
+
+    def on_global_click(event):
+        # Close even when the user clicks a non-focusable area (label/frame),
+        # while preserving clicks inside the entry or its candidate popup.
+        widget=getattr(event,'widget',None)
+        if widget is entry or _inside_popup(widget):
+            return
+        close()
+
     def show(*_):
         nonlocal popup,listbox
         close(); vals=canonical_candidates(self.vars[key].get(),self.vars["team"].get().strip())
@@ -84,7 +126,11 @@ def _project_entry(self,parent,label,key,hint):
     # the popup immediately after a user selected an item.
     entry.bind("<Button-1>",lambda _e:self.after_idle(show),add="+")
     entry.bind("<KeyRelease>",lambda e: None if e.keysym in ("Up","Down","Return","Escape","Tab") else show(),add="+")
+    entry.bind("<Return>",enter_or_close,add="+")
     entry.bind("<Escape>",close,add="+")
+    entry.bind("<Tab>",lambda _e:close(),add="+")
+    entry.bind("<FocusOut>",lambda _e:self.after_idle(close_if_focus_left),add="+")
+    self.bind_all("<Button-1>",on_global_click,add="+")
     tk.Label(
         wrap,
         text="담당팀 연계 과제 후보 · 입력 시 유사 과제 자동완성",
