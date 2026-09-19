@@ -476,15 +476,11 @@ def _table_semantic_fields(path):
                     if rest:row_values.append(rest)
                     row_values.extend(nonempty[1:])
 
-                    # System cause is still preserved in its own field for backward
-                    # compatibility, but because it is "other than occurrence/escape",
-                    # also append it under occurrence cause with its item name.
+                    # System cause already has its own 4D destination.
+                    # Do not duplicate it under occurrence cause.
                     if sec=='4D_SYSTEM':
                         content='\n'.join(x for x in row_values if x).strip()
-                        if content:
-                            buckets['cause_4d'].append(f'- {label}\n{content}')
-                            detected.add('cause_4d')
-                            add('system_cause',content)
+                        if content:add('system_cause',content)
                         continue
 
                     if key:
@@ -635,6 +631,117 @@ def _ppt_text(path):
     try:return '\n'.join(_shape_blocks(path))
     except Exception:return ''
 
+def _korean_4d_extra_items(path):
+    """Return Korean 4D table items other than 발생/유출/시스템 원인.
+
+    Examples such as 재현시험, 추가 검토, 분석 결과 are preserved as:
+        - 항목명
+        내용
+    """
+    prs=Presentation(path)
+    extras=[]
+
+    def ck(text):
+        return re.sub(r'[\s_:：/\\\-·•]+','',_norm_line(text)).casefold()
+
+    occurrence=('발생원인','4d발생원인','원인분석','4d원인분석')
+    escape=('유출원인','4d유출원인')
+    system=('시스템원인','4d시스템원인','시스템적원인','관리시스템원인','it시스템')
+    stop=(
+        '5d','5d개선대책','개선대책','개선사항','영구개선','시정조치',
+        '6d','6d효과검증','효과검증','효과성검증','유효성검증',
+        '7d','수평전개','재발방지','8d','요청사항','후속조치'
+    )
+    structural=('구분','항목','내용','담당','담당자','완료일','일정','비고','결과')
+
+    def matches(q,labels):
+        return any(q==x or q.startswith(x) for x in labels)
+
+    for sl in prs.slides:
+        for sh in sl.shapes:
+            if not getattr(sh,'has_table',False):
+                continue
+
+            in_4d=False
+            current_extra=None
+
+            for row in sh.table.rows:
+                cells=[_norm_line(cell.text) for cell in row.cells]
+                nonempty=[x for x in cells if x]
+                if not nonempty:
+                    continue
+
+                label=nonempty[0]
+                q=ck(label)
+
+                # Enter/continue 4D on the known 4D headings.
+                if matches(q,occurrence) or matches(q,escape) or matches(q,system):
+                    in_4d=True
+                    current_extra=None
+                    continue
+
+                # Explicit 4D title/header also opens the region.
+                if q=='4d' or q.startswith('4d원인'):
+                    in_4d=True
+                    current_extra=None
+                    continue
+
+                # 5D+ headings terminate the 4D region.
+                if in_4d and matches(q,stop):
+                    in_4d=False
+                    current_extra=None
+                    continue
+
+                if not in_4d:
+                    continue
+
+                # Never treat the three standard cause rows as an "extra" item.
+                if matches(q,occurrence) or matches(q,escape) or matches(q,system):
+                    current_extra=None
+                    continue
+
+                # A named 4D row with a value is an additional 4D item.
+                if len(nonempty)>=2 and q not in structural:
+                    item=label.strip()
+                    content='\n'.join(nonempty[1:]).strip()
+                    if item and content:
+                        extras.append([item,content])
+                        current_extra=len(extras)-1
+                    continue
+
+                # A following one-cell row can be continuation text for the last extra item.
+                if len(nonempty)==1 and current_extra is not None and q not in structural:
+                    prev=extras[current_extra][1]
+                    extras[current_extra][1]=(prev+'\n'+nonempty[0]).strip()
+
+    out=[]; seen=set()
+    for item,content in extras:
+        text=f'- {item}\n{content}'.strip()
+        key=re.sub(r'\s+',' ',text).casefold()
+        if key and key not in seen:
+            seen.add(key); out.append(text)
+    return out
+
+def _augment_korean_4d_extras(path,d):
+    """Append only non-standard Korean 4D items below the existing 발생원인."""
+    d=dict(d or {})
+    try:
+        extras=_korean_4d_extra_items(path)
+    except Exception:
+        extras=[]
+    if not extras:
+        return d
+
+    base_text=str(d.get('cause_4d') or '').strip()
+    parts=[base_text] if base_text else []
+    existing=re.sub(r'\s+',' ',base_text).casefold()
+    for extra in extras:
+        compact=re.sub(r'\s+',' ',extra).casefold()
+        if compact and compact not in existing:
+            parts.append(extra)
+    d['cause_4d']='\n\n'.join(parts).strip()
+    return d
+
 def english_content_ratio(raw):
     """Percentage of Latin letters among Latin + Hangul letters in the PPT text."""
     s=str(raw or '')
@@ -657,9 +764,10 @@ def extract(path):
     d['_english_ratio']=ratio
     d['_english_mode']=ratio>=80.0
 
-    # Under 80% English: preserve the existing Korean extraction exactly.
+    # Under 80% English: keep the existing Korean extraction and add only
+    # extra 4D table items (e.g. 재현시험/추가 검토) below 발생원인.
     if not d['_english_mode']:
-        return d
+        return _augment_korean_4d_extras(path,d)
 
     # 80%+ English priority:
     #   1) table item/header meaning
