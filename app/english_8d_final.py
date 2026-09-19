@@ -555,15 +555,126 @@ def _d_regions_for_slide(sl,prs):
     return regions
 
 def _semantic_section_number(sec):
-    if sec in ('4D','4D_LEAK','4D_SYSTEM'):return 4
-    m=re.match(r'^([2-6])D    detected=set()
+    if sec in ('4D','4D_LEAK','4D_SYSTEM'):
+        return 4
+    m=re.match(r'^([2-6])D$',str(sec or ''))
+    return int(m.group(1)) if m else None
+
+def _cell_in_expected_d_region(box,sec,regions):
+    """A semantic table label is accepted only inside its matching D area."""
+    n=_semantic_section_number(sec)
+    if not n or not regions:
+        return True
+    cx,cy=_center_box(box)
+    candidates=[r for r in regions if r['n']==n]
+    if not candidates:
+        return True
+    for r in candidates:
+        if r['top']<=cy<r['bottom'] and cx>=r['left']*0.92 and cx<r['right']:
+            return True
+    return False
+
+def _scoped_table_semantic_fields(path):
+    """Korean-style exact table extraction, limited to the matching D region.
+
+    The section name in the table is authoritative for WHAT the content is.
+    D geometry is used only to ensure the row belongs to that D area, preventing
+    unrelated tables elsewhere from leaking into 2D~6D.
+    """
+    keys=('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')
+    buckets={k:[] for k in keys}
+    detected=set()
+    prs=Presentation(path)
+
+    def add(key,text):
+        text=_norm_line(text)
+        if text and not _is_photo_caption(text):
+            buckets[key].append(text)
+
+    for sl in prs.slides:
+        regions=_d_regions_for_slide(sl,prs)
+        for sh in sl.shapes:
+            if not getattr(sh,'has_table',False):
+                continue
+            tb=sh.table
+            sx,sy,sw,shh=_box(sh)
+            col_left=[]; x=sx
+            for col in tb.columns:
+                col_left.append(x); x+=float(col.width)
+            row_top=[]; y=sy
+            for row in tb.rows:
+                row_top.append(y); y+=float(row.height)
+
+            for r,row in enumerate(tb.rows):
+                cells=[_norm_line(cell.text) for cell in row.cells]
+                for cc,raw in enumerate(cells):
+                    if not raw:
+                        continue
+                    sec,rest=_marker(raw)
+                    if not sec:
+                        continue
+                    key=SECTION_FIELDS.get(sec)
+                    if not key:
+                        continue
+
+                    box=(col_left[cc],row_top[r],float(tb.columns[cc].width),float(row.height))
+                    if not _cell_in_expected_d_region(box,sec,regions):
+                        continue
+
+                    detected.add(key)
+                    vals=[]
+                    if rest:
+                        vals.append(rest)
+                    # Same-row cells to the right are the Korean extractor's first
+                    # choice for section content.
+                    vals.extend(cells[cc+1:])
+                    for v in vals:
+                        if v:
+                            add(key,v)
+
+                    # Preserve extra named rows that belong to the same 4D band.
+                    if sec=='4D':
+                        for rr in range(r+1,len(tb.rows)):
+                            rcells=[_norm_line(cell.text) for cell in tb.rows[rr].cells]
+                            nonempty=[x for x in rcells if x]
+                            if not nonempty:
+                                continue
+                            nsec,_=_marker(nonempty[0])
+                            if nsec:
+                                break
+                            rbox=(col_left[0],row_top[rr],float(tb.columns[0].width),float(tb.rows[rr].height))
+                            if not _cell_in_expected_d_region(rbox,'4D',regions):
+                                break
+                            if len(nonempty)>=2:
+                                item=nonempty[0]
+                                content='\n'.join(nonempty[1:]).strip()
+                                if item and content:
+                                    buckets['cause_4d'].append(f'- {item}\n{content}')
+                                    detected.add('cause_4d')
+
+    out={k:'' for k in keys}
+    for key,vals in buckets.items():
+        seen=set(); cleaned=[]
+        for x in vals:
+            q=re.sub(r'\s+',' ',x).strip().casefold()
+            if not q or q in seen:
+                continue
+            seen.add(q); cleaned.append(x)
+        out[key]='\n'.join(cleaned).strip()
+    return out,detected
+
+def _semantic_fields_and_detected(blocks):
+    fields=extract_sections_from_blocks(blocks or [])
+    detected=set()
     for block in blocks or []:
         for raw in str(block or '').replace('\r','\n').splitlines():
             line=_norm_line(raw)
-            if not line:continue
+            if not line:
+                continue
             sec,_rest=_marker(line)
             key=SECTION_FIELDS.get(sec)
-            if key:detected.add(key)
+            if key:
+                detected.add(key)
     return fields,detected
 
 def _shape_blocks(path):
