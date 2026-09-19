@@ -17,14 +17,21 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
     ACTIVE_BORDER = ui.NAVY
     INACTIVE_BORDER = ui.BORDER
 
+    @staticmethod
+    def _initial_window_size(sw,sh):
+        # Use most of the available desktop so the result/status area is visible
+        # at common Windows DPI settings, while keeping a small taskbar margin.
+        w=max(1000,min(1380,int(sw)-40))
+        h=max(720,min(980,int(sh)-45))
+        return min(w,int(sw)),min(h,int(sh))
+
     def _compact_layout(self):
         self.update_idletasks()
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w = min(1180, max(1040, sw - 60))
-        h = min(820, max(700, sh - 55))
-        self.minsize(min(1040, w), min(690, h))
+        w,h=self._initial_window_size(sw,sh)
+        self.minsize(min(1080,w),min(740,h))
         self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
-        try: self.log.configure(height=2)
+        try: self.log.configure(height=5)
         except Exception: pass
         for z in getattr(self, 'dropzones', {}).values():
             try: z.pack_configure(pady=2)
