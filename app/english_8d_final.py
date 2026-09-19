@@ -35,7 +35,7 @@ PHRASES=(
 )
 
 SECTION_FIELDS={
- '2D':'problem','3D':'temporary_action','4D':'cause_4d',
+ '1D':None,'2D':'problem','3D':'temporary_action','4D':'cause_4d',
  '4D_LEAK':'leak_cause','4D_SYSTEM':'system_cause',
  '5D':'action_5d','6D':'verification_6d',
 }
@@ -207,7 +207,7 @@ def _spatial_section_blocks(path):
 
 def extract_sections_from_blocks(blocks):
     """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
-    out={v:'' for v in SECTION_FIELDS.values()}
+    out={v:'' for v in SECTION_FIELDS.values() if v}
     buckets={k:[] for k,v in SECTION_FIELDS.items() if v}
     current=None
     for block in blocks:
