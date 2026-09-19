@@ -131,6 +131,13 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(state,'complete')
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료')
 
+    def test_project_only_selection_compares_only_project_part(self):
+        mismatch,extracted,selected=ent.customer_project_mismatch(
+            {'customer':'CustomerA','task_name':'Model Care 25'},'Model Care 25'
+        )
+        self.assertFalse(mismatch)
+        self.assertEqual(extracted,'CustomerA_Model Care 25')
+
     def test_selected_project_warns_when_8d_project_is_missing_or_slightly_different(self):
         mismatch,extracted,selected=ent.customer_project_mismatch(
             {'customer':'','task_name':''},'MBAG_EB565M'
