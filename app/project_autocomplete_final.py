@@ -47,7 +47,9 @@ _FILENAME_STOP_WORDS={
 }
 
 def _filename_words(value):
-    words=re.findall(r'[0-9A-Za-z가-힣]+',str(value or '').casefold())
+    # Keep hyphenated model words together (e.g. EB-L), while underscores/spaces
+    # remain separators between project-name components.
+    words=re.findall(r'[0-9A-Za-z가-힣]+(?:-[0-9A-Za-z가-힣]+)*',str(value or '').casefold())
     return [w for w in words if len(w)>=2 and w not in _FILENAME_STOP_WORDS]
 
 def filename_project_candidates(path,team=""):
