@@ -73,7 +73,115 @@ def _anchor_row(obj):
     """Return a 1-based worksheet row for an image/chart anchor when possible."""
     anchor=getattr(obj,'anchor',None)
     if isinstance(anchor,str):
-        m=re.match(r'^[A-Za-z]+(\d+)
+        m=re.fullmatch(r'[A-Za-z]+(\d+)',anchor.strip())
+        return int(m.group(1)) if m else None
+    try:
+        return int(anchor._from.row)+1
+    except Exception:
+        return None
+
+def _move_anchor_to_row(obj,new_row):
+    anchor=getattr(obj,'anchor',None)
+    old=_anchor_row(obj)
+    if old is None:
+        return
+    delta=int(new_row)-int(old)
+    if isinstance(anchor,str):
+        m=re.fullmatch(r'([A-Za-z]+)\d+',anchor.strip())
+        if m:
+            obj.anchor=f'{m.group(1)}{int(new_row)}'
+        return
+    try:
+        anchor._from.row=max(0,int(anchor._from.row)+delta)
+    except Exception:
+        pass
+    try:
+        anchor.to.row=max(0,int(anchor.to.row)+delta)
+    except Exception:
+        pass
+
+def _prune_data_drawings(ws,changed_rows):
+    """Keep header drawings and only the updated row's representative drawing(s).
+
+    For representative images, when an update left both the old and new image on
+    the same row, the most recently-added image wins.
+    """
+    row_map={old:7+i for i,old in enumerate(sorted(changed_rows))}
+    for attr in ('_images','_charts'):
+        items=list(getattr(ws,attr,[]) or [])
+        header=[]; by_row={}
+        for obj in items:
+            row=_anchor_row(obj)
+            if row is None or row<=6:
+                header.append(obj)
+                continue
+            if row in row_map:
+                by_row.setdefault(row,[]).append(obj)
+
+        kept=list(header)
+        for row in sorted(by_row):
+            objs=by_row[row]
+            if attr=='_images' and objs:
+                # Issue DB has one representative image per data row. Keep the
+                # newest one if both old/new images survived the full update.
+                objs=[objs[-1]]
+            for obj in objs:
+                _move_anchor_to_row(obj,row_map[row])
+                kept.append(obj)
+        try:
+            setattr(ws,attr,kept)
+        except Exception:
+            pass
+
+def _detect_changed_rows(ws0,ws):
+    max_col=max(ws0.max_column,ws.max_column)
+    source_counts=Counter(_row_signature(ws0,r,max_col) for r in range(7,ws0.max_row+1))
+    changed=[]
+    for r in range(7,ws.max_row+1):
+        sig=_row_signature(ws,r,max_col)
+        if source_counts.get(sig,0)>0:
+            source_counts[sig]-=1
+        else:
+            changed.append(r)
+    return changed
+
+def _excel_update_only(source,saved,preferred_row=None):
+    """Create a true reduced Issue DB: rows 1-6 + only the updated data row(s).
+
+    All other data rows and their floating representative images/charts are removed.
+    The surviving updated row(s) are compacted to row 7 onward.
+    """
+    src=load_workbook(source,rich_text=True)
+    dst=load_workbook(saved,rich_text=True)
+    ws0=src['Sheet1'] if 'Sheet1' in src.sheetnames else src.active
+    ws=dst['Sheet1'] if 'Sheet1' in dst.sheetnames else dst.active
+
+    changed=_detect_changed_rows(ws0,ws)
+    if preferred_row and 7<=int(preferred_row)<=ws.max_row:
+        preferred_row=int(preferred_row)
+        # Exact row from the just-finished update wins for existing-issue updates.
+        if preferred_row not in changed:
+            changed=[preferred_row]
+        else:
+            changed=[preferred_row]+[r for r in changed if r!=preferred_row]
+
+    if not changed:
+        return None,0
+
+    changed=sorted(set(r for r in changed if 7<=r<=ws.max_row))
+    _prune_data_drawings(ws,changed)
+
+    # Remove every old data row except the row(s) that were just updated.
+    # Deleting bottom-up naturally compacts the kept rows to 7, 8, ...
+    keep=set(changed)
+    for r in range(ws.max_row,6,-1):
+        if r not in keep:
+            ws.delete_rows(r,1)
+
+    target=Path(saved).with_name(Path(saved).stem+'_업데이트사항만'+Path(saved).suffix)
+    dst.save(target)
+    return target,len(changed)
+
 
 class OutputTypeDialog(ent.tk.Toplevel):
     def __init__(self,parent):
@@ -192,7 +300,7 @@ def _select_and_finish(parent,title,message):
             if excel:
                 saved=Path(getattr(parent,'_last_saved_outputs',{}).get('excel','')) if getattr(parent,'_last_saved_outputs',{}).get('excel') else _latest_version(excel)
                 if saved and Path(saved).exists():
-                    reduced,n=_excel_update_only(excel,saved)
+                    reduced,n=_excel_update_only(excel,saved,getattr(parent,'_last_excel_updated_row',None))
                     if reduced:
                         made.append(f'Issue DB: 업데이트 행 {n}개')
                         try:Path(saved).unlink()
