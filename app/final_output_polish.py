@@ -21,10 +21,10 @@ def _version_path(requested):
     """Return root_v0.N.ext in the requested output folder, scanning existing versions."""
     p=Path(requested)
     stem=re.sub(r'_업데이트$','',p.stem,flags=re.I)
-    m=re.match(r'^(.*)_v0[.](\\d+)$',stem,re.I)
+    m=re.match(r'^(.*)_v0[.](\d+)$',stem,re.I)
     root=m.group(1) if m else stem
     current=int(m.group(2)) if m else 0
-    pat=re.compile(rf'^{re.escape(root)}_v0[.](\\d+){re.escape(p.suffix)}$',re.I)
+    pat=re.compile(rf'^{re.escape(root)}_v0[.](\d+){re.escape(p.suffix)}$',re.I)
     nums=[current]
     if p.parent.exists():
         for f in p.parent.iterdir():
