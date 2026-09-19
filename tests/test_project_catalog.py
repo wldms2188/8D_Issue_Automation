@@ -10,6 +10,14 @@ class ProjectCatalogTests(unittest.TestCase):
   self.assertEqual(p.split_customer_task('JF2S Delta (Set_Biz)'),('', 'JF2S Delta (Set_Biz)'))
  def test_project_matching_ignores_customer_prefix(self):
   self.assertEqual(p.project_key('MBAG_EB-L(EU)',True),p.project_key('Other_EB-L(US)',True))
+ def test_weekly_identity_preserves_parenthesis_variant(self):
+  self.assertNotEqual(p.project_key('MBAG_EB-L(EU)',False),p.project_key('MBAG_EB-L(US)',False))
+  self.assertEqual(p.project_key('MBAG_EB-L(EU)',False),p.project_key('Other_EB-L(EU)',False))
+ def test_no_underscore_uses_whole_project(self):
+  self.assertEqual(p.split_customer_task('Model Care 25'),('', 'Model Care 25'))
+  self.assertEqual(p.project_key('Model Care 25',False),p.project_key('Model Care 25',False))
+ def test_parenthesis_underscore_stays_in_project(self):
+  self.assertEqual(p.split_customer_task('JF2S Delta (Set_Biz)'),('', 'JF2S Delta (Set_Biz)'))
  def test_parenthesis_variants_are_suggested(self):
   xs=p.canonical_candidates('EB-L','원통형Pack개발품질팀')
   self.assertIn('MBAG_EB-L(EU)',xs); self.assertIn('MBAG_EB-L(US)',xs)
