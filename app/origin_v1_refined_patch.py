@@ -25,7 +25,7 @@ RULES = {
         'design review','design change','drawing','drawing error','drawing change',
         'tolerance','tolerance stack','tolerance stack up','tolerance stack-up',
         'clearance','insufficient clearance','interference','structural interference',
-        'dimension','dimensional','geometry','geometric','spec','specification',
+        'geometry','geometric','spec','specification',
         'specification issue','structural','stiffness','strength margin','design selection',
         'design requirement','design criteria','cad','layout interference',
     ),
@@ -83,20 +83,20 @@ def _term_positions(text,term):
     return [(m.start(),m.end()) for m in re.finditer(re.escape(t),q,re.I)]
 
 def _negated(text,term):
-    """True only when every occurrence of a term is locally negated/excluded."""
+    """True only when every occurrence is negated inside its own sentence/clause."""
     q=_plain(text)
     positions=_term_positions(text,term)
     if not positions:
         return False
     negs=tuple(_plain(n) for n in NEGATIONS)
+    separators='.;\n'
     for a,b in positions:
-        before=q[max(0,a-55):a]
-        term_text=q[a:b]
-        after=q[b:b+55]
-        local=(before+' '+term_text+' '+after).strip()
-        # Common grammar: "not caused by X", "X was ruled out",
-        # "no issue with X", "X within specification".
-        if not any(n in local for n in negs):
+        left=max([q.rfind(sep,0,a) for sep in separators]+[-1])+1
+        rights=[q.find(sep,b) for sep in separators]
+        rights=[x for x in rights if x>=0]
+        right=min(rights) if rights else len(q)
+        clause=q[left:right].strip()
+        if not any(n in clause for n in negs):
             return False
     return True
 
