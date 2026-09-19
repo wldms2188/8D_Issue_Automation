@@ -130,7 +130,12 @@ def _select_and_finish(parent,title,message):
                         try:Path(saved).unlink()
                         except Exception:pass
         except Exception as e:errors.append('Issue DB 축약본 생성 실패: '+str(e))
-        extra='\n'.join(made+errors)
+        if errors:
+            extra='\n'.join(made+errors)
+            return _original_info(parent,'업데이트 완료','일부 축약본 생성에 실패했습니다. 전체 업데이트 본은 보존했습니다.\n\n'+extra)
+        if not made:
+            return _original_info(parent,'업데이트 완료','변경된 행/페이지를 찾지 못해 축약본을 만들지 않았습니다. 전체 업데이트 본은 보존했습니다.')
+        extra='\n'.join(made)
         return _original_info(parent,'업데이트 완료','업데이트 사항 이외 삭제본으로 저장했습니다.\n\n'+extra)
     return _original_info(parent,'업데이트 완료',message+'\n\n선택 유형: 전체 업데이트 본')
 
