@@ -161,6 +161,25 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         rec,_=clf.recommend_origin(d)
         self.assertEqual(rec,'기타')
 
+    def test_gui_occurrence_site_overrides_conflicting_ppt_site(self):
+        d={
+            'cause_4d':'원인 추가 검토 중',
+            'occurrence_site':'부품 생산',
+            '_origin_occurrence_site':'제품 생산',
+        }
+        rec,reason=clf.recommend_origin(d)
+        self.assertEqual(rec,'공정')
+        self.assertIn('화면 선택값',reason)
+
+        d={
+            'cause_4d':'원인 추가 검토 중',
+            'occurrence_site':'제품 생산',
+            '_origin_occurrence_site':'부품 생산',
+        }
+        rec,reason=clf.recommend_origin(d)
+        self.assertEqual(rec,'부품')
+        self.assertIn('화면 선택값',reason)
+
     def test_occurrence_site_product_production_supports_process(self):
         cases=[
             {'cause_4d':'원인 추가 검토 중','occurrence_site':'제품 생산'},
