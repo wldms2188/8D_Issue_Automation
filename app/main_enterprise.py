@@ -313,7 +313,11 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         for key in ('ppt8d','pptweekly','xlsx'): self.vars[key]=tk.StringVar()
         self.dropzones={}; specs=[('8D 원본 PPT','ppt8d',('.pptx',),True),('주간회의 PPT','pptweekly',('.pptx',),False),('Issue DB Excel','xlsx',('.xlsx',),False)]
         for title,key,exts,req in specs:
-            z=ui.DropZone(filebody,title,key,self.vars[key],exts,self.pick,self._refresh_target,req); z.pack(fill='x',pady=5); self.dropzones[key]=z
+            z=ui.DropZone(
+                filebody,title,key,self.vars[key],exts,self.pick,
+                lambda k=key:self._file_selection_changed(k),req
+            )
+            z.pack(fill='x',pady=5); self.dropzones[key]=z
         tk.Label(filebody,text=f"Drag & Drop: {'사용 가능' if ui.DND_AVAILABLE else '미사용 · [찾기] 버튼 사용'}  |  8D는 필수, 나머지는 선택 입력",bg='white',fg=ui.MUTED,font=('Malgun Gothic',8)).pack(anchor='w',pady=(4,0))
         self._section_title(right,'02','담당 및 분류 정보','표준 입력'); fields=tk.Frame(right,bg='white'); fields.pack(fill='x',padx=18,pady=(0,10))
         for key in ('team','task_name','owner','sample','plm_no'): self.vars[key]=tk.StringVar()
@@ -330,9 +334,40 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         row=tk.Frame(parent,bg='white'); row.pack(fill='x',pady=4); tk.Label(row,text=label,bg='white',fg=ui.TEXT,font=('Malgun Gothic',9),width=17,anchor='w').pack(side='left'); ttk.Entry(row,textvariable=self.vars[key]).pack(side='left',fill='x',expand=True); tk.Label(parent,text=hint,bg='white',fg='#98A3AD',font=('Malgun Gothic',7)).pack(anchor='e')
     def _enterprise_combo(self,parent,label,key,values):
         row=tk.Frame(parent,bg='white'); row.pack(fill='x',pady=5); tk.Label(row,text=label,bg='white',fg=ui.TEXT,font=('Malgun Gothic',9),width=17,anchor='w').pack(side='left'); ttk.Combobox(row,textvariable=self.vars[key],values=values,state='readonly').pack(side='left',fill='x',expand=True)
+    def _file_selection_changed(self,key):
+        """Synchronize target chips and the visible status immediately after file changes."""
+        self._refresh_target()
+        if key!='ppt8d':
+            return
+        path=(self.vars.get('ppt8d').get().strip() if self.vars.get('ppt8d') else '')
+        if path:
+            msg='READY  ·  8D 원본 선택 완료 · 미리보기 가능'
+            self.status_var.set(msg)
+            # V3 uses a display-only status variable; sync it immediately as well.
+            try:self._sync_status_display()
+            except Exception:pass
+            # Keep the large result/message area consistent with the small status badge.
+            try:
+                self.log.delete('1.0','end')
+                self.log.insert('end','[ 입력 준비 ]\n'+'─'*72+'\n')
+                self.log.insert('end',f'8D 원본 선택 완료 : {Path(path).name}\n')
+                self.log.insert('end','상태              : 미리보기 또는 자동 업데이트 실행 가능\n')
+            except Exception:
+                pass
+        else:
+            self.status_var.set('READY  ·  8D 원본을 선택해 주세요.')
+            try:self._sync_status_display()
+            except Exception:pass
+            try:
+                self.log.delete('1.0','end')
+                self.log.insert('end','8D 원본을 Drag & Drop하거나 [찾기]로 선택해 주세요.\n')
+            except Exception:
+                pass
+
     def pick(self,k,desc=None,pattern=None):
-        types=[('Excel (*.xlsx)','*.xlsx')] if k=='xlsx' else [('PowerPoint (*.pptx)','*.pptx')]; f=filedialog.askopenfilename(title='파일 선택',filetypes=types+[('모든 파일','*.*')],parent=self)
-        if f: self.vars[k].set(f); self._refresh_target()
+        types=[('Excel (*.xlsx)','*.xlsx')] if k=='xlsx' else [('PowerPoint (*.pptx)','*.pptx')]
+        f=filedialog.askopenfilename(title='파일 선택',filetypes=types+[('모든 파일','*.*')],parent=self)
+        if f:self.vars[k].set(f)
     def _refresh_target(self):
         if not hasattr(self,'target_label'): return
         ppt8d=(self.vars.get('ppt8d').get().strip() if self.vars.get('ppt8d') else '')
