@@ -19,20 +19,24 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
 
     @staticmethod
     def _initial_window_size(sw,sh):
-        # Match the validated compact view: large enough to show the bottom status/log
-        # area, but smaller than the previous near-full-screen startup size.
+        # Keep a normal window, but reserve enough vertical room for the result/status
+        # message area at the bottom. Do not grow to near-full-screen.
         w=max(1100,min(1360,int(sw)-100))
-        h=max(800,min(900,int(sh)-140))
+        h=max(840,min(950,int(sh)-100))
         return min(w,int(sw)),min(h,int(sh))
 
     def _compact_layout(self):
         self.update_idletasks()
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         w,h=self._initial_window_size(sw,sh)
-        self.minsize(min(1080,w),min(740,h))
-        self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
+        self.minsize(min(1080,w),min(760,h))
+        # Center horizontally. Vertically, bias slightly upward so the bottom
+        # result/status message area stays clear of the Windows taskbar.
+        x=max(0,(sw-w)//2)
+        y=max(20,(sh-h)//2-20)
+        self.geometry(f'{w}x{h}+{x}+{y}')
         # Keep a normal resizable window. Height is enlarged by _initial_window_size().
-        try: self.log.configure(height=5)
+        try: self.log.configure(height=6)
         except Exception: pass
         for z in getattr(self, 'dropzones', {}).values():
             try: z.pack_configure(pady=2)
