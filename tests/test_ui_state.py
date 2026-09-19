@@ -6,6 +6,8 @@ import main_enterprise as ent
 import main_recovery_step12 as step12
 import main_enterprise_v2 as v2
 import main_enterprise_v3 as v3
+import main_recovery_step11 as step11
+import main_v310 as v310
 
 class UIStateTests(unittest.TestCase):
     def test_excel_safe_payload_removes_controls_recursively(self):
@@ -37,6 +39,31 @@ class UIStateTests(unittest.TestCase):
     def test_final_update_complete_is_100(self):
         pct,label=v2.progress_state('COMPLETE · 선택한 자료의 업데이트가 완료되었습니다.',85)
         self.assertEqual((pct,label),(100,'업데이트 완료'))
+
+    def test_english_weekly_native_zones_never_overlap(self):
+        long_2d=('Scratch was observed during visual OQC inspection after unloading process. ' * 10).strip()
+        long_3d=('Containment action included sorting, reinspection, customer protection and shipment hold. ' * 8).strip()
+        d={
+            '_english_mode':True,
+            'problem':long_2d,
+            'temporary_action':long_3d,
+            'customer_response':'Customer notified and protected.',
+            'cause_4d':'Bolt loosening due to fastening torque variation.',
+            'leak_cause':'Inspection control missed the condition.',
+            'system_cause':'Control plan linkage gap.',
+            'action_5d':'Corrective action implemented.',
+            'verification_6d':'No additional abnormalities were observed.',
+        }
+        zones,texts,fonts=step11._english_template_anchored_layout(d,{})
+        self.assertEqual(zones['2D']['y'],v310.ZONES['2D']['y'])
+        self.assertEqual(zones['3D']['y'],v310.ZONES['3D']['y'])
+        self.assertLessEqual(zones['2D']['y']+zones['2D']['h']+.12,zones['3D']['y']+.001)
+        self.assertLessEqual(zones['3D']['y']+zones['3D']['h']+.12,zones['4D_CAUSE']['y']+.001)
+        self.assertLessEqual(zones['4D_LEAK']['y']+zones['4D_LEAK']['h']+.12,zones['5D']['y']+.001)
+        self.assertLessEqual(zones['5D']['y']+zones['5D']['h']+.12,zones['6D']['y']+.001)
+        self.assertLessEqual(zones['6D']['y']+zones['6D']['h'],7.47)
+        self.assertGreaterEqual(fonts['2D'],6.0)
+        self.assertGreaterEqual(fonts['3D'],6.0)
 
     def test_initial_window_keeps_status_message_visible(self):
         w,h=v3.EnterpriseAppV3._initial_window_size(1920,1080)
