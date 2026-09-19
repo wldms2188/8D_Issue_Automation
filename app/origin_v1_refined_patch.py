@@ -107,7 +107,16 @@ def _hits_for_text(text):
         hits=[]
         for term in terms:
             t=_norm(term)
-            if not t or t not in q or _negated(text,term):
+            if not t:
+                continue
+            # English terms require a real word/phrase match. This prevents short
+            # tokens such as "spec" from matching unrelated words like "specific".
+            if re.search(r'[A-Za-z]',str(term)):
+                if not _term_positions(text,term):
+                    continue
+            elif t not in q:
+                continue
+            if _negated(text,term):
                 continue
             # Avoid double-counting generic tokens contained in a specific phrase.
             normalized=[_norm(h) for h in hits]
