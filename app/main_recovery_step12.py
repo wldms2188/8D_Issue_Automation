@@ -10,6 +10,7 @@ import main_recovery_step8 as step8
 import main_recovery_step4 as step4
 import main_v319 as v319
 import main_v310 as v310
+import main_v315 as v315
 
 base=step11.base
 N=v310.N
@@ -96,7 +97,14 @@ def _update_page2_step12(sl,d,g,mode):
                     pass
 
     v319._page2_meta(sl,d,g)
-    step11._restore_missing_4d_unit(sl,zones)
+
+    # Both 4D blocks are always present in the detail layout.  Keep the native
+    # 4D circle + item-name as a group and position each group just above the
+    # upper-left corner of its corresponding content region.
+    zl=zones['4D_CAUSE']; zr=zones['4D_LEAK']
+    left_xy=(max(.10,zl['x']-.18),max(.10,zl['y']-.35))
+    right_xy=(max(.10,zr['x']-.18),max(.10,zr['y']-.35))
+    v315._ensure_4d_units(sl,True,True,left_xy,right_xy)
 
 
 def weekly_step12(src,out,d,g,mode):
