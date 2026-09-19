@@ -81,40 +81,74 @@ def customer_project_mismatch(extracted_d,selected_value):
 WEEKLY_PENDING_TERMS=(
     '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
     '예정','추정','계획','계획 중','계획중','미완료','완료 예정','추가 검토','모니터링 중','모니터링중',
+    '추적 중','추적중','시험 예정','검증 예정','확인 예정','추가 검증','추가 확인',
     'in progress','ongoing','pending','planned','scheduled','tbd','tbc','wip',
     'under verification','under validation','under review','in review',
     'under evaluation','in evaluation','under monitoring','monitoring ongoing',
     'to be verified','to be validated','to be completed','to be confirmed',
-    'not completed','not complete','not verified','not validated',
+    'not completed','not complete','not verified','not validated','not yet complete',
+    'not yet completed','not yet verified','not yet validated',
     'awaiting verification','awaiting validation','awaiting result','awaiting results',
     'follow-up ongoing','follow up ongoing','verification pending','validation pending',
     'planned completion','scheduled completion','target completion','will be verified',
-    'will be validated','will be completed','expected to be completed'
+    'will be validated','will be completed','expected to be completed',
+    'verification required','validation required','further verification required',
+    'further validation required','additional verification required',
+    'additional validation required','remaining verification','remaining validation',
+    'verification to follow','validation to follow','follow-up required','follow up required'
 )
 WEEKLY_COMPLETE_TERMS=(
     '검증 완료','검증완료','개선 완료','개선완료','확인 완료','확인완료',
+    '시험 완료','시험완료','평가 완료','평가완료','적용 완료','적용완료',
     '정상','이상 없음','이상없음','양호','문제 없음','문제없음','재발 없음','재발없음',
-    'verification complete','verification completed','verification is complete',
-    'validation complete','validation completed','validation is complete',
-    'effectiveness confirmed','effectiveness verified','effectiveness validated',
-    'completed','complete','successfully completed',
+    '추가 이상 없음','추가이상없음','추가 불량 없음','추가불량없음',
+    'verification complete','verification completed','verification is complete','verification finished',
+    'validation complete','validation completed','validation is complete','validation finished',
+    'evaluation complete','evaluation completed','evaluation finished',
+    'test complete','test completed','testing completed','test finished',
+    'effectiveness confirmed','effectiveness verified','effectiveness validated','effective',
+    'completed','complete','successfully completed','finished','done',
     'validated','verified','passed','pass','all tests passed','test passed',
-    'acceptable','satisfactory','normal result','normal condition','result normal',
+    'validation passed','verification passed','evaluation passed',
+    'acceptable','satisfactory','normal result','normal condition','result normal','stable result',
     'no abnormality','no abnormalities','no abnomality','no abnomalities',
     'no additional abnormality','no additional abnormalities','no additional abnomality','no additional abnomalities',
-    'without abnormality','without abnormalities','no issue','no issues',
-    'no defect','no defects','no recurrence','no recurrence observed',
-    'no abnormality observed','no abnormality detected','no abnormality found',
+    'no further abnormality','no further abnormalities','without abnormality','without abnormalities',
+    'no issue','no issues','no additional issue','no additional issues',
+    'no defect','no defects','no additional defect','no additional defects',
+    'no recurrence','no recurrence observed','no repeat issue','no repeated issue',
+    'no abnormality observed','no abnormality detected','no abnormality found','no abnormality occurred',
+    'no abnormalities observed','no abnormalities detected','no abnormalities found','no abnormalities occurred',
     'no abnomality observed','no abnomality detected','no abnomality found',
-    'within spec','within specification','meets spec','meets specification',
-    'met spec','met specification','criteria met','requirement met','requirements met'
+    'zero defect','zero defects','within spec','within specification',
+    'meets spec','meets specification','met spec','met specification',
+    'criteria met','acceptance criteria met','all criteria met',
+    'requirement met','requirements met','target met','all requirements met'
 )
 WEEKLY_ABNORMAL_TERMS=(
     '불량','이상 발생','이상발생','미흡','재발','부적합','실패','ng','nok','oos',
     'abnormal','abnomal','abnormality','abnomality','abnormalities','abnomalities',
     'fail','failed','failure','not ok','out of spec','out-of-spec',
     'defect remains','issue remains','recurred','recurrence','not acceptable',
-    'criteria not met','requirement not met','requirements not met'
+    'criteria not met','acceptance criteria not met','target not met',
+    'requirement not met','requirements not met','still abnormal','abnormality observed',
+    'abnormality detected','abnormality found','defect observed','defect detected','defect found'
+)
+
+ACTION_PENDING_TERMS=(
+    '진행 중','진행중','예정','계획','미완료','적용 예정','반영 예정','조치 예정',
+    'in progress','ongoing','pending','planned','scheduled','not completed','not complete',
+    'to be implemented','to be applied','to be released','to be updated',
+    'implementation pending','implementation in progress','application pending',
+    'will be implemented','will be applied','expected to be completed'
+)
+ACTION_COMPLETE_TERMS=(
+    '개선 완료','개선완료','조치 완료','조치완료','적용 완료','적용완료','반영 완료','반영완료',
+    '변경 완료','변경완료','시행 완료','시행완료','대책 완료','대책완료',
+    'completed','complete','implemented','implementation completed','successfully implemented',
+    'applied','application completed','released','deployed','updated','revised',
+    'corrective action completed','corrective action implemented','countermeasure implemented',
+    'countermeasure applied','action completed','action implemented','done','finished'
 )
 
 def _normalize_weekly_status_text(text):
@@ -129,34 +163,97 @@ def weekly_verification_state(text):
     if not q:
         return 'unknown','6D 내용 없음'
 
-    # Ongoing/planned wording has priority even when a sentence also contains
-    # words such as "complete" (e.g. "completion planned").
-    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_PENDING_TERMS):
-        return 'pending','진행 중/검증 중/예정 표현 감지'
-
-    # Negated abnormality is a normal/completed result, not an abnormal result.
-    normal_patterns=(
-        r'\bno\s+(?:further\s+|additional\s+)?abnormalit(?:y|ies)\b',
+    strong_normal_patterns=(
+        r'\bno\s+(?:further\s+|additional\s+|new\s+|repeated\s+)?abnormalit(?:y|ies)\b',
         r'\bwithout\s+(?:any\s+)?abnormalit(?:y|ies)\b',
-        r'\bno\s+(?:further\s+|additional\s+)?defects?\b',
-        r'\bno\s+(?:further\s+|additional\s+)?issues?\b',
-        r'\bno\s+recurrence\b',
+        r'\bno\s+(?:further\s+|additional\s+|new\s+)?defects?\b',
+        r'\bno\s+(?:further\s+|additional\s+|new\s+)?issues?\b',
+        r'\bno\s+(?:further\s+|additional\s+)?failures?\b',
+        r'\bno\s+(?:further\s+|additional\s+)?recurrence\b',
+        r'\bno\s+repeat(?:ed)?\s+issues?\b',
+        r'\bzero\s+defects?\b',
     )
-    if any(re.search(p,q) for p in normal_patterns):
-        return 'complete','이상 없음/재발 없음 표현 감지'
+    strong_normal=any(re.search(p,q) for p in strong_normal_patterns)
 
-    # Explicit abnormal/fail results override a generic word such as "completed".
-    # Negated abnormality was already handled above.
-    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_ABNORMAL_TERMS):
+    # Mask confirmed "no abnormality/no defect" phrases before looking for
+    # abnormal tokens, so "No additional abnormalities" can never be read as abnormal.
+    abnormal_scan=q
+    for p in strong_normal_patterns:
+        abnormal_scan=re.sub(p,' ',abnormal_scan)
+
+    abnormal=(
+        any(_normalize_weekly_status_text(x) in abnormal_scan for x in WEEKLY_ABNORMAL_TERMS)
+        or bool(re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',abnormal_scan))
+    )
+    if abnormal:
         return 'abnormal','이상/실패/재발 표현 감지'
-    if re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',q):
-        return 'abnormal','이상/실패/재발 표현 감지'
+
+    pending=any(_normalize_weekly_status_text(x) in q for x in WEEKLY_PENDING_TERMS)
+
+    # A definitive normal/no-additional-abnormality result is considered complete
+    # unless the text explicitly says verification/validation itself is still pending.
+    explicit_verification_pending=any(x in q for x in (
+        'under verification','under validation','verification pending','validation pending',
+        'verification in progress','validation in progress','verification scheduled',
+        'validation scheduled','to be verified','to be validated',
+        'not yet verified','not yet validated','verification required','validation required',
+        'additional verification required','additional validation required',
+        'remaining verification','remaining validation'
+    ))
+    if strong_normal and not explicit_verification_pending:
+        return 'complete','이상 없음/추가 이상 없음/재발 없음 표현 감지'
+
+    if pending:
+        return 'pending','진행 중/검증 중/예정 표현 감지'
 
     if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_COMPLETE_TERMS):
         return 'complete','완료/정상/검증 완료 표현 감지'
-    if re.search(r'\b(?:complet(?:e|ed)|verif(?:ied|ication complete(?:d)?)|validat(?:ed|ion complete(?:d)?)|pass(?:ed)?|normal|acceptable|satisfactory)\b',q):
+    if re.search(r'\b(?:complet(?:e|ed)|finish(?:ed)?|verif(?:ied|ication complete(?:d)?)|validat(?:ed|ion complete(?:d)?)|pass(?:ed)?|normal|acceptable|satisfactory|effective)\b',q):
         return 'complete','완료/정상/검증 완료 표현 감지'
     return 'unknown','6D 내용은 있으나 완료/진행 상태를 확정할 표현이 명확하지 않음'
+
+def action_5d_state(text):
+    """Classify 5D implementation state; used as supporting evidence for Issue DB."""
+    q=_normalize_weekly_status_text(text)
+    if not q:
+        return 'unknown'
+    if any(_normalize_weekly_status_text(x) in q for x in ACTION_PENDING_TERMS):
+        return 'pending'
+    if any(_normalize_weekly_status_text(x) in q for x in ACTION_COMPLETE_TERMS):
+        return 'complete'
+    if re.search(r'\b(?:implement(?:ed|ation completed)|appl(?:ied|ication completed)|deploy(?:ed|ment completed)|releas(?:ed|e completed)|revis(?:ed|ion completed)|updat(?:ed|e completed)|complet(?:e|ed)|finished|done)\b',q):
+        return 'complete'
+    return 'unknown'
+
+def issue_db_recommended_status(d):
+    """Unified bilingual Issue DB recommendation using both 5D and 6D evidence."""
+    action=N((d or {}).get('action_5d'))
+    verify=N((d or {}).get('verification_6d'))
+    verify_state,verify_reason=weekly_verification_state(verify)
+    action_state=action_5d_state(action)
+
+    if verify_state=='abnormal':
+        return 'open','6D에서 이상/실패/재발 결과가 확인되었습니다.'
+    if verify_state=='pending':
+        return 'open','6D 검증/확인이 진행 중이거나 예정 상태입니다.'
+    if verify_state=='complete':
+        if action_state=='complete':
+            return 'close','5D 개선대책 완료와 6D 완료/정상/추가 이상 없음 결과가 함께 확인되었습니다.'
+        return 'close','6D에서 완료/정상/추가 이상 없음 결과가 확인되었습니다.'
+
+    # Keep the earlier V1 behavior for a non-empty 6D with no pending/abnormal
+    # evidence: propose close and let the user confirm in the status window.
+    if verify:
+        if action_state=='complete':
+            return 'close','5D 개선대책 완료가 확인되고 6D에 진행 중/이상 표현이 없습니다.'
+        return 'close','6D 내용이 있으며 진행 중/예정/이상 표현이 명확히 확인되지 않았습니다.'
+
+    # 5D alone is not enough to close without 6D effectiveness evidence.
+    if action_state=='complete':
+        return 'open','5D 개선대책은 완료되었으나 6D 효과검증 내용이 없어 open으로 판단합니다.'
+    if action:
+        return 'open','5D 개선대책은 있으나 6D 효과검증 완료가 확인되지 않았습니다.'
+    return 'open','5D/6D 완료 근거가 없습니다.'
 
 def weekly_recommended_status(d):
     """Recommend weekly Signal using the same Korean/English 6D state rules."""
@@ -512,8 +609,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         if not issue_db_status_confirmation_required(d):
             return 'open'
 
-        judged,_reason=legacy.step9._judge_issue_status(d)
-        recommended='close' if str(judged).lower()=='close' else 'open'
+        recommended,_reason=issue_db_recommended_status(d)
         other='open' if recommended=='close' else 'close'
         five=N(d.get('action_5d')) or '(5D 내용 없음)'
         six=N(d.get('verification_6d')) or '(6D 내용 없음)'
