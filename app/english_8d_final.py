@@ -1051,22 +1051,11 @@ def status_bilingual(d):
 v310.base.status=status_bilingual
 
 def judge_status_bilingual(d):
-    """V1 Issue DB behavior for English/Korean 6D.
-
-    - no 6D -> open
-    - pending/abnormal 6D -> open
-    - completed/normal 6D -> close
-    - other non-empty 6D -> close proposal, so the user gets the close/open
-      confirmation dialog instead of silently remaining open.
-    """
-    text=str(d.get('verification_6d') or '').strip()
-    if not text:
-        return 'open',text
+    """Use the same 5D/6D bilingual recommendation as the enterprise status dialog."""
     import main_enterprise as ent
-    state,_reason=ent.weekly_verification_state(text)
-    if state in ('pending','abnormal'):
-        return 'open',text
-    return 'close',text
+    decision,_reason=ent.issue_db_recommended_status(d)
+    return decision,str(d.get('verification_6d') or '').strip()
+
 step9._judge_issue_status=judge_status_bilingual
 
 _original_preview=v3.EnterpriseAppV3.preview
