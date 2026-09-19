@@ -22,4 +22,40 @@ class English8DTests(unittest.TestCase):
  def test_technical_identifiers_do_not_trigger_failure(self):
   x=e.enhance_dict({'problem':'Crack occurred at MBAG_EB-L(EU) DUT3.'})
   self.assertFalse(x['_english_translation_incomplete'])
+ def test_numbered_sections_keep_all_content_and_stop_at_next_d(self):
+  blocks=[
+   '2D Problem Description\nCrack found at weld\nLeak observed',
+   '3D',
+   'Containment\nStop shipment\n100% inspection',
+   '4D Root Cause\nDesign margin insufficient\nTolerance stack-up',
+   '5D Corrective Action\nDrawing changed\nTolerance revised',
+   '6D Verification\nDV test passed\nNo recurrence',
+   '7D Prevent Recurrence\nUpdate lesson learned',
+   '8D Closure\nClosed']
+  x=e.extract_sections_from_blocks(blocks)
+  self.assertIn('Crack found at weld',x['problem'])
+  self.assertIn('Leak observed',x['problem'])
+  self.assertIn('Stop shipment',x['temporary_action'])
+  self.assertIn('100% inspection',x['temporary_action'])
+  self.assertIn('Design margin insufficient',x['cause_4d'])
+  self.assertIn('Tolerance stack-up',x['cause_4d'])
+  self.assertIn('Drawing changed',x['action_5d'])
+  self.assertIn('DV test passed',x['verification_6d'])
+  self.assertNotIn('7D',x['verification_6d'])
+  self.assertNotIn('Closure',x['verification_6d'])
+
+ def test_unsplit_4d_defaults_to_occurrence_cause(self):
+  x=e.extract_sections_from_blocks(['4D','Root cause item A','Root cause item B','5D','Action'])
+  self.assertEqual(x['cause_4d'],'Root cause item A\nRoot cause item B')
+  self.assertEqual(x['leak_cause'],'')
+
+ def test_explicit_escape_cause_splits_4d(self):
+  x=e.extract_sections_from_blocks(['4D Root Cause','Occurrence A','Escape Cause','Detection control missing','5D Corrective Action','Fix'])
+  self.assertIn('Occurrence A',x['cause_4d'])
+  self.assertIn('Detection control missing',x['leak_cause'])
+
+ def test_english_pending_status_is_open(self):
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'Validation is in progress.'})[0],'open')
+  self.assertEqual(e.judge_status_bilingual({'verification_6d':'Verification completed and passed.'})[0],'close')
+
 if __name__=='__main__':unittest.main()
