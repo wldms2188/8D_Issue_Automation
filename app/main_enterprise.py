@@ -669,7 +669,10 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks()
                 xo=out/(Path(xlsx).stem+'_업데이트.xlsx')
                 a,xsaved=base.update_excel(xlsx,xo,d,g,new=(mode=='new'))
-                self._last_saved_outputs['excel']=str(xsaved); results.append(a)
+                self._last_saved_outputs['excel']=str(xsaved)
+                mrow=re.search(r'row\s+(\d+)',str(a),re.I)
+                self._last_excel_updated_row=int(mrow.group(1)) if mrow else None
+                results.append(a)
             if do_weekly:
                 self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks()
                 po=out/(Path(weekly).stem+'_업데이트.pptx')
