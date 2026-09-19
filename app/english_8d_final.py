@@ -254,6 +254,31 @@ def _spatial_section_blocks(path,return_detected=False):
                         if not line or _is_photo_caption(line):continue
                         vals.append((uy,ux,u['order'],line))
                 vals.sort(key=lambda z:(z[0],z[1],z[2]))
+
+                # A single 4D band can contain Root/Escape/System cause columns
+                # side-by-side. If those 4D sub-headings are horizontally separated,
+                # use their x positions only to split WITHIN 4D; never across D sections.
+                if region_sec in ('4D','4D_LEAK') and vals:
+                    heads=[]
+                    for vy,vx,vo,line in vals:
+                        fk,rest=_four_d_subfield(line)
+                        if fk:heads.append((vy,vx,vo,fk,rest))
+                    horizontal=(len(heads)>=2 and (max(h[1] for h in heads)-min(h[1] for h in heads))>float(prs.slide_width)*0.08)
+                    if horizontal:
+                        sec_token={'cause_4d':'4D','leak_cause':'4D_LEAK','system_cause':'4D_SYSTEM'}
+                        for vy,vx,vo,line in vals:
+                            fk,rest=_four_d_subfield(line)
+                            if fk:
+                                detected.add(fk)
+                                if rest:
+                                    blocks.append(sec_token[fk]); blocks.append(rest)
+                                continue
+                            # Prefer a heading above/same-row, then nearest x column.
+                            eligible=[h for h in heads if h[0]<=vy+float(prs.slide_height)*0.015] or heads
+                            h=min(eligible,key=lambda z:(abs(vx-z[1]),abs(vy-z[0])))
+                            detected.add(h[3]); blocks.append(sec_token[h[3]]); blocks.append(line)
+                        continue
+
                 blocks.append(region_sec)
                 blocks.extend(v[3] for v in vals)
 
