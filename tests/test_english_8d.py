@@ -135,6 +135,24 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Horizontal deployment done',x['verification_6d'])
    self.assertNotIn('Customer request A',x['verification_6d'])
 
+ def test_extract_recovers_2d_when_marker_is_below_real_heading(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'marker_below_heading.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   # Real 2D heading/content are above the visual 2D marker.
+   sh=sl.shapes.add_textbox(Inches(0.9),Inches(0.15),Inches(4.5),Inches(0.7))
+   sh.text='Problem Description\nScratch on metal strap'
+   for label,y in [('2D',0.8),('3D',2.2),('4D',3.6),('5D',5.0)]:
+    m=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); m.text=label
+   sh=sl.shapes.add_textbox(Inches(0.9),Inches(1.0),Inches(4.5),Inches(0.7)); sh.text='Containment\nStop shipment'
+   sh=sl.shapes.add_textbox(Inches(0.9),Inches(2.4),Inches(4.5),Inches(0.7)); sh.text='Root Cause\nGuide interference'
+   prs.save(p)
+   x=e.extract(p)
+   self.assertIn('Scratch on metal strap',x['problem'])
+   self.assertNotIn('Stop shipment',x['problem'])
+   self.assertIn('Stop shipment',x['temporary_action'])
+   self.assertIn('Guide interference',x['cause_4d'])
+
  def test_spatial_semantic_heading_corrects_one_row_shift(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td)/'shifted_layout.pptx'
