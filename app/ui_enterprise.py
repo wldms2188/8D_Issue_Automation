@@ -32,7 +32,7 @@ def _dialog_height(message, requested=250):
     return max(requested, min(640, 195 + lines*24))
 
 
-def dialog(parent, title, message, kind='info', buttons=(('확인', True),), width=500, height=250):
+def dialog(parent, title, message, kind='info', buttons=(('확인', True),), width=500, height=250, button_width=11):
     height=_dialog_height(message,height)
     win=tk.Toplevel(parent); win.withdraw(); win.title(title); win.configure(bg=WHITE); win.resizable(False,False); win.transient(parent)
     result={'value':None}
@@ -44,7 +44,7 @@ def dialog(parent, title, message, kind='info', buttons=(('확인', True),), wid
     def choose(v): result['value']=v; win.destroy()
     for i,(label,value) in enumerate(buttons):
         primary=(i==len(buttons)-1)
-        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=11,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,padx=4,pady=10)
+        b=tk.Button(box,text=label,command=lambda v=value:choose(v),font=('Malgun Gothic',9,'bold'),width=button_width,bd=0,cursor='hand2',bg=BLUE if primary else '#E5EBF0',fg=WHITE if primary else TEXT,activebackground='#12598F' if primary else '#D9E2E9',activeforeground=WHITE if primary else TEXT,padx=4,pady=10)
         b.pack(side='left',padx=(8,0))
     icon={'info':'i','warning':'!','error':'×','question':'?'}.get(kind,'i')
     col={'info':BLUE,'warning':'#C98424','error':RED,'question':BLUE}.get(kind,BLUE)
