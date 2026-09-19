@@ -33,22 +33,21 @@ def _norm(s):
     return re.sub(r'\s+','',str(s or '').lower())
 
 
-def _negated(q, term):
+def _negated(text, term):
     """True only when every occurrence of term is locally negated."""
-    t=_norm(term)
+    q=re.sub(r'\s+',' ',str(text or '').lower()).strip()
+    t=re.sub(r'\s+',' ',str(term or '').lower()).strip()
     if not t:
         return False
-    nq=_norm(q)
-    positions=[m.start() for m in re.finditer(re.escape(t),nq)]
+    positions=[m.start() for m in re.finditer(re.escape(t),q)]
     if not positions:
         return False
+    negs=tuple(re.sub(r'\s+',' ',str(n).lower()).strip() for n in NEGATIONS)
     for pos in positions:
-        # Negation normally follows the subject phrase (e.g. 공정조건 문제없음).
-        after=nq[pos+len(t):pos+len(t)+48]
-        if not any(n in after for n in NEGATIONS):
+        after=q[pos+len(t):pos+len(t)+48]
+        if not any(n in after for n in negs):
             return False
     return True
-
 
 def recommend_origin(d):
     text=step8._cause_text(d)
@@ -60,7 +59,7 @@ def recommend_origin(d):
         hits=[]
         for term in terms:
             t=_norm(term)
-            if t and t in q and not _negated(q,t):
+            if t and t in q and not _negated(text,term):
                 # Avoid counting a short token again when a more specific phrase already explains it.
                 if not any(t in _norm(h) or _norm(h) in t for h in hits):
                     hits.append(term)
