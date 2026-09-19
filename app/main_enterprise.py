@@ -33,6 +33,10 @@ def weekly_status_from_choice(d,choice):
         return '개선 검증중'
     return '원인/개선 미확인'
 
+def weekly_status_confirmation_required(issue_db_status):
+    """Only a final open Issue DB status needs a separate weekly Signal choice."""
+    return str(issue_db_status or '').strip().lower()=='open'
+
 def issue_db_status_reason(d,judged):
     """Human-readable reason for the Issue DB open/close proposal."""
     judged='close' if str(judged or '').lower()=='close' else 'open'
@@ -413,7 +417,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 if status_for_weekly is None:
                     judged,_reason=legacy.step9._judge_issue_status(d)
                     status_for_weekly='close' if str(judged).lower()=='close' else 'open'
-                if status_for_weekly=='close':
+                if not weekly_status_confirmation_required(status_for_weekly):
                     weekly_status='개선 완료'
                 else:
                     self.status_var.set('WAITING  ·  주간회의 상태 확인 필요'); self.update_idletasks()
