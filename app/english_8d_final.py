@@ -574,6 +574,98 @@ def _d_regions_for_slide(sl,prs):
             })
     return regions
 
+def _english_section_images(path):
+    """Map English-source pictures only to the D region that physically owns them.
+
+    The legacy collector used nearest headings, which can attach a 2D image to 3D
+    (or vice versa) when English captions/headings are long.  English mode instead
+    uses the same D-region geometry that gates text extraction.  Pictures outside
+    a valid D region are ignored rather than assigned to the wrong section.
+    """
+    keys=('2D','3D','4D_CAUSE','4D_LEAK','5D','6D')
+    out={k:[] for k in keys}
+    prs=Presentation(path)
+
+    for si,sl in enumerate(prs.slides):
+        regions=_d_regions_for_slide(sl,prs)
+        if not regions:
+            continue
+
+        # 4D sub-headings are used only to split a single 4D region into
+        # occurrence-cause vs escape/system-cause image ownership.
+        sub4=[]
+        for u in _positioned_units(sl):
+            sec,_rest=_marker(u.get('text',''))
+            if sec not in ('4D','4D_LEAK','4D_SYSTEM'):
+                continue
+            bx=u.get('box')
+            if not bx:
+                continue
+            cx,cy=_center_box(bx)
+            target='4D_LEAK' if sec in ('4D_LEAK','4D_SYSTEM') else '4D_CAUSE'
+            sub4.append((target,cx,cy))
+
+        four_regions=sorted([r for r in regions if r['n']==4],key=lambda r:r['cx'])
+
+        for sh in sl.shapes:
+            if getattr(sh,'shape_type',None) not in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.GROUP):
+                continue
+            blob=v310.image_blob(sh)
+            if not blob:
+                continue
+            ib=_box(sh)
+            if not ib or ib[2]<=0 or ib[3]<=0:
+                continue
+            # Ignore tiny icons/logos; keep content photos/figures.
+            if ib[2] < float(prs.slide_width)*0.025 or ib[3] < float(prs.slide_height)*0.025:
+                continue
+
+            cx,cy=_center_box(ib)
+            candidates=[
+                r for r in regions
+                if r['top']<=cy<r['bottom']
+                and cx>=r['left']*0.90 and cx<r['right']
+            ]
+            if not candidates:
+                # Strict English behavior: no cross-D nearest-heading fallback.
+                continue
+
+            # When columns are close, choose the region whose marker/column is nearest.
+            reg=min(candidates,key=lambda r:abs(cx-r['cx']))
+            n=reg['n']
+            if n in (2,3,5,6):
+                sec=f'{n}D'
+            elif n==4:
+                same4=[
+                    h for h in sub4
+                    if reg['top']<=h[2]<reg['bottom']
+                    and h[1]>=reg['left']*0.90 and h[1]<reg['right']
+                ]
+                if same4:
+                    sec=min(same4,key=lambda h:abs(cx-h[1])+.35*abs(cy-h[2]))[0]
+                elif len(four_regions)>=2:
+                    nearest_i=min(range(len(four_regions)),key=lambda i:abs(cx-four_regions[i]['cx']))
+                    sec='4D_CAUSE' if nearest_i==0 else '4D_LEAK'
+                else:
+                    mid=(reg['left']+reg['right'])/2.0
+                    sec='4D_CAUSE' if cx<mid else '4D_LEAK'
+            else:
+                continue
+
+            out[sec].append((blob,ib,si))
+
+    for key,vals in out.items():
+        vals=sorted(vals,key=lambda z:(z[2],z[1][1],z[1][0]))
+        seen=set(); unique=[]
+        for item in vals:
+            h=hash(item[0])
+            if h in seen:
+                continue
+            seen.add(h); unique.append(item)
+        out[key]=unique[:8]
+    return out
+
+
 def _semantic_section_number(sec):
     if sec in ('4D','4D_LEAK','4D_SYSTEM'):
         return 4
@@ -942,6 +1034,16 @@ def extract(path):
     # extra 4D table items (e.g. 재현시험/추가 검토) below 발생원인.
     if not d['_english_mode']:
         return _augment_korean_4d_extras(path,d)
+
+    # In English mode, rebuild image ownership from the same D-region geometry
+    # used for text.  Do not inherit legacy nearest-heading image assignments.
+    try:
+        english_images=_english_section_images(path)
+        d['_section_images']=english_images
+        rep=v310.composite(english_images.get('2D',[]))
+        d['_images']=[(1,1,1,rep)] if rep else []
+    except Exception:
+        d['_section_images']={k:[] for k in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D')}
 
     # 80%+ English extraction now mirrors the Korean table logic:
     #   1) Matching table/header label inside the correct D region.
