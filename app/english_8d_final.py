@@ -4,6 +4,7 @@ The legacy extractor is kept for metadata, while 2D~6D body text is rebuilt from
 source order so section contents are not lost when a template uses English labels
 or only a D-number marker. 7D/8D are boundaries, not 6D content.
 """
+import copy
 import re
 from pathlib import Path
 import main_v310 as v310
@@ -1024,7 +1025,38 @@ def _document_looks_english(raw):
     # User rule: English logic only when English content is at least 80%.
     return english_content_ratio(raw)>=80.0
 
+_EXTRACT_CACHE={}
+
+def _extract_cache_key(path):
+    try:
+        p=Path(path)
+        st=p.stat()
+        return (str(p.resolve()),int(st.st_mtime_ns),int(st.st_size))
+    except Exception:
+        return None
+
+def _extract_cache_get(path):
+    key=_extract_cache_key(path)
+    if key is None:
+        return None
+    value=_EXTRACT_CACHE.get(key)
+    return copy.deepcopy(value) if value is not None else None
+
+def _extract_cache_put(path,value):
+    key=_extract_cache_key(path)
+    if key is None:
+        return value
+    # Keep only a few recent source files to avoid retaining large embedded images.
+    if key not in _EXTRACT_CACHE and len(_EXTRACT_CACHE)>=3:
+        _EXTRACT_CACHE.clear()
+    _EXTRACT_CACHE[key]=copy.deepcopy(value)
+    return value
+
 def extract(path):
+    cached=_extract_cache_get(path)
+    if cached is not None:
+        return cached
+
     # Always start from the validated legacy/Korean chain for metadata, images and fallbacks.
     d=_original(path)
 
@@ -1064,7 +1096,7 @@ def extract(path):
     # Under 80% English: keep the existing Korean text extraction and add only
     # extra 4D table items (e.g. 재현시험/추가 검토) below 발생원인.
     if not d['_english_mode']:
-        return _augment_korean_4d_extras(path,d)
+        return _extract_cache_put(path,_augment_korean_4d_extras(path,d))
 
     # 80%+ English extraction now mirrors the Korean table logic:
     #   1) Matching table/header label inside the correct D region.
@@ -1092,7 +1124,7 @@ def extract(path):
     result=enhance_dict(d,raw,allow_label_fallback=False)
     result['_english_ratio']=ratio
     result['_english_mode']=True
-    return result
+    return _extract_cache_put(path,result)
 
 v310.base.extract=extract
 
