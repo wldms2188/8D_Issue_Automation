@@ -27,19 +27,38 @@ def _k(x):
     return re.sub(r'[^0-9A-Za-z가-힣]+','',N(x)).lower()
 
 
+def _split_top_level_customer_task(value):
+    s=N(value)
+    depth=0
+    for i,ch in enumerate(s):
+        if ch=='(':
+            depth+=1
+        elif ch==')' and depth:
+            depth-=1
+        elif ch=='_' and depth==0:
+            return s[:i].strip(),s[i+1:].strip()
+    return '',s
+
 def _customer_task(d):
     customer=N(d.get('customer'))
     task=N(d.get('task_name'))
+
+    # User contract: top-level A_B already means customer_project.
+    # Therefore never prepend d.customer again, even if an earlier extractor
+    # populated customer incorrectly.
+    prefix,rest=_split_top_level_customer_task(task)
+    if prefix and rest:
+        # Collapse accidental repeated prefix: A_A_B -> A_B.
+        pat=re.compile(r'^(?:'+re.escape(prefix)+r'\s*[_\-/／|:：]\s*)+',re.I)
+        m=pat.match(rest)
+        while m:
+            rest=N(rest[m.end():]).strip(' _-/／|:：')
+            m=pat.match(rest)
+        return prefix+'_'+rest if rest else prefix
+
     if customer and task:
-        # task_name can already be stored as "customer_project" when the user
-        # selects a canonical project. Collapse one or more repeated prefixes.
         if C(task)==C(customer):
             return customer
-        pat=re.compile(r'^(?:'+re.escape(customer)+r'\s*[_\-/／|:：]\s*)+',re.I)
-        m=pat.match(task)
-        if m:
-            rest=N(task[m.end():]).strip(' _-/／|:：')
-            return customer+('_'+rest if rest else '')
         return customer+'_'+task
     return customer or task
 
