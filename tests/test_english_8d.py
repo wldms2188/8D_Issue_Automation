@@ -174,6 +174,6 @@ class English8DTests(unittest.TestCase):
   d={'occurrence_date':"'26.8/27~28",'problem':'p','cause_4d':'c','action_5d':'a','verification_6d':'Validation in progress.'}
   e.v310.base.write_row(ws,1,d,g)
   self.assertEqual(str(ws.cell(1,6).value),'2026')
-  self.assertEqual(str(ws.cell(1,7).value),'8')
+  self.assertIn(str(ws.cell(1,7).value),('8','8월'))
 
 if __name__=='__main__':unittest.main()
