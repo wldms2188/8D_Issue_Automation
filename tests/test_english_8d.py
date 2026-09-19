@@ -73,11 +73,25 @@ class English8DTests(unittest.TestCase):
    add_pic(7.2,1.25,4)  # 4D escape
    add_pic(7.2,3.25,5)  # 5D
    add_pic(7.2,5.15,6)  # 6D
+
+   # Page 2 intentionally contains many attractive pictures. None may be used.
+   sl2=prs.slides.add_slide(prs.slide_layouts[6])
+   for label,x,y in [
+    ('2D',0.2,1.0),('3D',0.2,3.0),('4D',0.2,5.0),
+    ('4D',6.0,1.0),('5D',6.0,3.0),('6D',6.0,5.0),
+   ]:
+    sh=sl2.shapes.add_textbox(Inches(x),Inches(y),Inches(.55),Inches(.3)); sh.text=label
+   for i,(x,y) in enumerate([(1.2,1.25),(1.2,3.25),(1.2,5.15),(7.2,1.25),(7.2,3.25),(7.2,5.15)],20):
+    im=Image.new('RGB',(260,160),(20*i%255,40*i%255,60*i%255))
+    b=io.BytesIO(); im.save(b,'PNG'); b.seek(0)
+    sl2.shapes.add_picture(b,Inches(x),Inches(y),Inches(1.8),Inches(1.0))
+
    prs.save(p)
 
    imgs=e._english_section_images(p)
    for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
     self.assertEqual(len(imgs[key]),1,msg=(key,{k:len(v) for k,v in imgs.items()}))
+    self.assertTrue(all(item[2]==0 for item in imgs[key]),msg=(key,imgs[key]))
 
    # The 2D picture must never leak into 3D and vice versa.
    self.assertLess(imgs['2D'][0][1][1],imgs['3D'][0][1][1])
