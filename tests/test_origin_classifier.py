@@ -161,6 +161,54 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         rec,_=clf.recommend_origin(d)
         self.assertEqual(rec,'기타')
 
+    def test_occurrence_site_product_production_supports_process(self):
+        cases=[
+            {'cause_4d':'원인 추가 검토 중','occurrence_site':'제품 생산'},
+            {'cause_4d':'Root cause under additional review','occurrence_site':'Product production'},
+            {'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향','occurrence_site':'제품 생산'},
+            {'cause_4d':'Design tolerance and assembly torque both contributed','occurrence_site':'Product manufacturing'},
+        ]
+        for d in cases:
+            rec,reason=clf.recommend_origin(d)
+            self.assertEqual(rec,'공정',msg=(rec,reason,d))
+            self.assertIn('발생처',reason)
+
+    def test_occurrence_site_part_production_supports_part(self):
+        cases=[
+            {'cause_4d':'원인 추가 검토 중','occurrence_site':'부품 생산'},
+            {'cause_4d':'Root cause under additional review','occurrence_site':'Part production'},
+            {'cause_4d':'부품 편차와 조립 공정이 함께 의심됨','occurrence_site':'부품 생산'},
+            {'cause_4d':'Supplier part variation and assembly process both suspected','occurrence_site':'Component production'},
+        ]
+        for d in cases:
+            rec,reason=clf.recommend_origin(d)
+            self.assertEqual(rec,'부품',msg=(rec,reason,d))
+            self.assertIn('발생처',reason)
+
+    def test_occurrence_site_never_overrides_clear_explicit_cause(self):
+        cases=[
+            ('설계',{'cause_4d':'설계마진 부족으로 구조 간섭 발생','occurrence_site':'제품 생산'}),
+            ('부품',{'cause_4d':'협력사 부품 LOT 편차가 발생원인','occurrence_site':'제품 생산'}),
+            ('공정',{'cause_4d':'체결토크 산포가 발생원인','occurrence_site':'부품 생산'}),
+            ('기타',{'cause_4d':'운송 중 외부충격이 발생원인','occurrence_site':'부품 생산'}),
+        ]
+        for expected,d in cases:
+            rec,_=clf.recommend_origin(d)
+            self.assertEqual(rec,expected,msg=(expected,rec,d))
+
+    def test_occurrence_site_can_support_when_4d_is_empty(self):
+        rec,reason=clf.recommend_origin({
+            'cause_4d':'','leak_cause':'','system_cause':'','occurrence_site':'제품 생산'
+        })
+        self.assertEqual(rec,'공정')
+        self.assertIn('보조',reason)
+
+        rec,reason=clf.recommend_origin({
+            'cause_4d':'','leak_cause':'','system_cause':'','occurrence_site':'부품 생산'
+        })
+        self.assertEqual(rec,'부품')
+        self.assertIn('보조',reason)
+
     def test_ambiguous_design_process_is_not_forced(self):
         rec,_=clf.recommend_origin({'cause_4d':'설계 공차와 체결토크 산포가 동시에 영향'})
         self.assertEqual(rec,'논의 중')
