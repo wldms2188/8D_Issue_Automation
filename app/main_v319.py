@@ -43,6 +43,13 @@ def _trim_before_customer(issue, customer):
 def _weekly_task(d):
     customer=N(d.get('customer')); task=N(d.get('task_name'))
     if customer and task:
+        if C(task)==C(customer):
+            return customer
+        pat=re.compile(r'^(?:'+re.escape(customer)+r'\s*[_\-/／|:：]\s*)+',re.I)
+        m=pat.match(task)
+        if m:
+            rest=N(task[m.end():]).strip(' _-/／|:：')
+            return customer+('_'+rest if rest else '')
         return customer+'_'+task
     return customer or task
 
