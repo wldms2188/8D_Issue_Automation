@@ -1,7 +1,8 @@
-import sys,tempfile,unittest
+import sys,tempfile,unittest,base64
 from pathlib import Path
 from pptx import Presentation
 from openpyxl import Workbook,load_workbook
+from openpyxl.drawing.image import Image as XLImage
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import final_output_polish as f
 import output_variant_final as o
@@ -40,6 +41,37 @@ class OutputVersionTests(unittest.TestCase):
    self.assertEqual(rw.max_row,7)
    self.assertEqual(rw.cell(7,10).value,'A_NEWPROJECT')
    self.assertEqual(rw.cell(7,14).value,'new issue')
+
+ def test_excel_reduced_removes_other_row_images_and_keeps_newest_updated_image(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td); src=p/'issue_img.xlsx'; dst=p/'issue_img_v0.1.xlsx'
+   png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nX0AAAAASUVORK5CYII=')
+   img1=p/'i1.png'; img2=p/'i2.png'; img3=p/'i3.png'; imgnew=p/'inew.png'
+   for q in (img1,img2,img3,imgnew): q.write_bytes(png)
+
+   wb=Workbook(); ws=wb.active; ws.title='Sheet1'
+   for r in range(1,7): ws.cell(r,1).value=f'H{r}'
+   for r,name in [(7,'OLD1'),(8,'OLD2'),(9,'OLD3')]:
+    ws.cell(r,10).value=name
+   ws.add_image(XLImage(str(img1)),'P7')
+   ws.add_image(XLImage(str(img2)),'P8')
+   ws.add_image(XLImage(str(img3)),'P9')
+   wb.save(src)
+
+   full=load_workbook(src); fw=full['Sheet1']
+   fw.cell(8,10).value='UPDATED'
+   # Simulate full-output behavior that leaves old image and appends the new one.
+   fw.add_image(XLImage(str(imgnew)),'P8')
+   full.save(dst)
+
+   reduced,n=o._excel_update_only(src,dst,preferred_row=8)
+   self.assertEqual(n,1)
+   rw=load_workbook(reduced)['Sheet1']
+   self.assertEqual(rw.max_row,7)
+   self.assertEqual(rw.cell(7,10).value,'UPDATED')
+   data_images=[img for img in rw._images if o._anchor_row(img) and o._anchor_row(img)>=7]
+   self.assertEqual(len(data_images),1)
+   self.assertEqual(o._anchor_row(data_images[0]),7)
 
  def test_update_only_ignores_unchanged_slides_that_shift_index(self):
   with tempfile.TemporaryDirectory() as td:
