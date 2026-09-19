@@ -827,7 +827,7 @@ def translation_coverage(d):
     return max(0,min(100,int(round(converted*100.0/total))))
 
 def _ask_translation_choice(self,d,path,action='preview'):
-    """Ask separately for preview or update; button labels describe the exact action."""
+    """Ask separately for preview or update; keep button labels short for the dialog width."""
     if not d.get('_english_mode'):
         return False
     pct=translation_coverage(d)
@@ -840,8 +840,8 @@ def _ask_translation_choice(self,d,path,action='preview'):
         '선택한 버튼의 내용으로만 처리됩니다.'
     )
     buttons=(
-        (f'영문 원문으로 {verb}',False),
-        (f'한글 번역으로 {verb}',True),
+        ('영문 원문',False),
+        ('한글 번역',True),
     )
     choice=ui.dialog(
         self,f'영문 8D {verb} 선택',msg,'question',
