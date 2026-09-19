@@ -769,27 +769,34 @@ def extract(path):
     if not d['_english_mode']:
         return _augment_korean_4d_extras(path,d)
 
-    # 80%+ English priority:
-    #   1) table item/header meaning
-    #   2) semantic headings in the whole source
-    #   3) D-circle/shape geometry only for fields that could not be identified above
-    # No semantic result is rejected or moved just because its geometry disagrees.
-    try:table_fields,table_detected=_table_semantic_fields(path)
-    except Exception:table_fields,table_detected={},set()
-    source_fields,source_detected=_semantic_fields_and_detected(blocks)
-
-    try:spatial,_geo_detected=_spatial_section_blocks(path,True)
-    except Exception:spatial=[]
+    # 80%+ English safety hierarchy:
+    #   1) D-circle geometry defines ONLY the allowed section/area (candidate gate).
+    #   2) Inside that allowed area, table/header wording decides the actual field.
+    #   3) Whole-document semantic scanning is used only when no usable D-region
+    #      geometry exists at all. This prevents an unrelated table elsewhere on
+    #      the slide/deck from leaking into 4D (or any other D section).
+    try:spatial,geo_marked=_spatial_section_blocks(path,True)
+    except Exception:spatial,geo_marked=[],set()
     geo_fields,geo_detected=_english_fields_from_spatial(spatial) if spatial else ({},set())
 
     all_keys=('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')
-    for key in all_keys:
-        if key in table_detected:
-            d[key]=table_fields.get(key,'')
-        elif key in source_detected:
-            d[key]=source_fields.get(key,'')
-        elif key in geo_detected:
-            d[key]=geo_fields.get(key,'')
+
+    if spatial and geo_marked:
+        # Region-scoped extraction is authoritative for every geometrically found
+        # section. Semantic labels are interpreted only inside those regions.
+        for key in all_keys:
+            if key in geo_marked or key in geo_detected:
+                d[key]=geo_fields.get(key,'')
+    else:
+        # Templates without usable D markers retain semantic/table fallback.
+        try:table_fields,table_detected=_table_semantic_fields(path)
+        except Exception:table_fields,table_detected={},set()
+        source_fields,source_detected=_semantic_fields_and_detected(blocks)
+        for key in all_keys:
+            if key in table_detected:
+                d[key]=table_fields.get(key,'')
+            elif key in source_detected:
+                d[key]=source_fields.get(key,'')
 
     result=enhance_dict(d,raw,allow_label_fallback=False)
     result['_english_ratio']=ratio
