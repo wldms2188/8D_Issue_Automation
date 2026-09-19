@@ -10,6 +10,11 @@ import main_v310 as v310
 base=step6.base
 N=v310.N
 _old_write_row=base.write_row
+_EXCEL_ILLEGAL_CONTROL_RE=re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
+
+def _excel_safe(text):
+    return _EXCEL_ILLEGAL_CONTROL_RE.sub('',N(text))
+
 
 def _db_summary(d):
     try:
@@ -35,7 +40,7 @@ def _db_summary(d):
 def write_row_step7(ws,r,d,g):
     result=_old_write_row(ws,r,d,g)
     if '_db_problem_selected' in g:
-        ws.cell(r,14).value=g['_db_problem_selected']
+        ws.cell(r,14).value=_excel_safe(g['_db_problem_selected'])
     return result
 base.write_row=write_row_step7
 
