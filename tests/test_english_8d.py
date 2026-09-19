@@ -77,4 +77,17 @@ class English8DTests(unittest.TestCase):
   self.assertNotIn('Preventive action',x['verification_6d'])
   self.assertNotIn('Follow up',x['verification_6d'])
 
+ def test_varied_english_section_names(self):
+  variants=[
+   (['Problem Definition','Scratch found','Immediate Action','Stop shipment','Cause Investigation','Guide interference','Countermeasure','Guide revised','Effectiveness Check','Passed DV'],
+    {'problem':'Scratch found','temporary_action':'Stop shipment','cause_4d':'Guide interference','action_5d':'Guide revised','verification_6d':'Passed DV'}),
+   (['Failure Phenomenon','Dent found','Customer Protection','100% sorting','5 Why','Fixture gap','Permanent Action','Fixture changed','Validation Results','No recurrence'],
+    {'problem':'Dent found','temporary_action':'100% sorting','cause_4d':'Fixture gap','action_5d':'Fixture changed','verification_6d':'No recurrence'}),
+   (['Issue Description','Leak found','Short-Term Action','Quarantine lot','Failure Cause','Seal damage','Corrective Measure','Seal changed','Effect Confirmation','Test passed'],
+    {'problem':'Leak found','temporary_action':'Quarantine lot','cause_4d':'Seal damage','action_5d':'Seal changed','verification_6d':'Test passed'}),
+  ]
+  for blocks,expected in variants:
+   x=e.extract_sections_from_blocks(blocks)
+   for key,val in expected.items():self.assertIn(val,x[key],msg=(blocks,key,x))
+
 if __name__=='__main__':unittest.main()
