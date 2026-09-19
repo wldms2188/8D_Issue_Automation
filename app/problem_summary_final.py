@@ -47,6 +47,39 @@ def _structured_blocks(src):
     if current:blocks.append(" ".join(current).strip())
     return blocks
 
+def _is_colon_bullet_block(raw):
+    """True for a bullet item shaped like '- label : value'."""
+    s=N(raw).strip()
+    if not re.match(r"^\s*(?:[-•·]|\(?\d+\s*[.)])\s*",s):
+        return False
+    body=re.sub(r"^\s*(?:[-•·]|\(?\d+\s*[.)])\s*","",s,1).strip()
+    # Require meaningful text on both sides of the colon.
+    m=re.match(r"^(.{1,60}?)\s*[:：]\s*(.+)$",body)
+    return bool(m and m.group(1).strip() and m.group(2).strip())
+
+def _summary_atomic_groups(src):
+    """Return summary units that must be kept/dropped together.
+
+    Consecutive bullet 'label : value' items are one atomic group.  This prevents
+    a summary from keeping only the first half of a related pair when the next
+    item would exceed the character limit.
+    """
+    blocks=_structured_blocks(src)
+    groups=[]; colon_run=[]
+    def flush():
+        nonlocal colon_run
+        if colon_run:
+            groups.append("\n".join(colon_run))
+            colon_run=[]
+    for block in blocks:
+        if _is_colon_bullet_block(block):
+            colon_run.append(block)
+        else:
+            flush()
+            groups.append(block)
+    flush()
+    return groups
+
 def _clean_block(raw):
     s=_db_clean(_norm(raw))
     s=re.sub(r"\b진행\s*중\b","중",s)
@@ -60,16 +93,24 @@ def _compact_problem(d):
     if not src:return ""
     header=_context_header(src)
     candidates=[]; seen=set()
-    for raw in _structured_blocks(src):
-        s=_clean_block(raw)
+    for raw in _summary_atomic_groups(src):
+        # An atomic group may contain multiple related bullet lines. Clean each
+        # line separately, then keep/drop the complete group as one unit.
+        cleaned=[]
+        for piece in N(raw).split("\n"):
+            s=_clean_block(piece)
+            if s:
+                cleaned.append(s)
+        if not cleaned:
+            continue
+        s="\n".join(cleaned)
         key=re.sub(r"[\s,.;:·/\\_-]+","",s).casefold()
-        if not s or key in seen:continue
+        if key in seen:continue
         seen.add(key); candidates.append(s)
 
-    # IMPORTANT: source order is strict. Once the next complete block would make
-    # the summary exceed 150 chars, stop there. Do NOT skip that block and then
-    # pull a later block into the remaining space. This means e.g. '2. 시험조건'
-    # and every later item disappear together if item 2 cannot fit completely.
+    # IMPORTANT: source order is strict. Once the next complete atomic group would
+    # make the summary exceed 150 chars, stop there. Consecutive bullet
+    # 'label : value' lines are one group, so a related pair is never split.
     selected=[]
     prefix=(header+"\n") if header else ""
     used=len(prefix)
