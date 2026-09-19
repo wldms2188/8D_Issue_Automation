@@ -1149,8 +1149,15 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 results.append(a)
             if do_weekly:
                 self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks()
+                def _weekly_progress(message):
+                    self.status_var.set('RUNNING  ·  '+N(message))
+                    self.update_idletasks()
+                g['_weekly_progress_callback']=_weekly_progress
                 po=out/(Path(weekly).stem+'_업데이트.pptx')
-                b,psaved=base.weekly(weekly,po,d,g,mode)
+                try:
+                    b,psaved=base.weekly(weekly,po,d,g,mode)
+                finally:
+                    g.pop('_weekly_progress_callback',None)
                 self._last_saved_outputs['weekly']=str(psaved); results.append(b)
             self.log.delete('1.0','end'); targets=[]
             if do_excel: targets.append('Issue DB Excel')
