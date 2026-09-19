@@ -20,6 +20,21 @@ class OutputVersionTests(unittest.TestCase):
    src=p/'weekly.pptx'; src.touch()
    (out/'weekly_v0.2.pptx').touch(); (out/'weekly_v0.10.pptx').touch()
    self.assertEqual(o._latest_version(src).name,'weekly_v0.10.pptx')
+ def test_post_writer_cause_and_problem_overrides_are_excel_safe(self):
+  import main_recovery_step5 as s5
+  import main_recovery_step7 as s7
+  bad_cause='1. 발생원인\n1) Root cause\x0b- Bolt loosening'
+  bad_problem='Phenomenon\x0bB2 sample\x0c visual OQC'
+  self.assertNotIn('\x0b',s5._excel_safe(bad_cause))
+  self.assertNotIn('\x0b',s7._excel_safe(bad_problem))
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'post_writer_safe.xlsx'
+   wb=Workbook(); ws=wb.active
+   ws.cell(1,1).value=s5._excel_safe(bad_cause)
+   ws.cell(2,1).value=s7._excel_safe(bad_problem)
+   wb.save(p)
+   self.assertTrue(p.exists())
+
  def test_excel_illegal_powerpoint_controls_are_removed(self):
   bad='불량 Phenomenon\x0bB2 sample\x0c visual OQC\x00 inspection'
   clean=v29.v29_one(bad)
