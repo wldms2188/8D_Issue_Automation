@@ -3,9 +3,14 @@
 
 import main_recovery_step4 as step4
 import main_v310 as v310
+import re
 
 base = step4.base
 N = v310.N
+_EXCEL_ILLEGAL_CONTROL_RE=re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
+
+def _excel_safe(text):
+    return _EXCEL_ILLEGAL_CONTROL_RE.sub('',N(text))
 
 _old_write_row = base.write_row
 
@@ -13,11 +18,10 @@ _old_write_row = base.write_row
 def _numbered_lines(text):
     out=[]
     for raw in N(text).split('\n'):
-        s=raw.strip()
+        s=_excel_safe(raw).strip()
         if not s:
             continue
         # remove existing simple bullets/numbering to avoid double numbering
-        import re
         s=re.sub(r'^[-•·▪◦]\s*','',s)
         s=re.sub(r'^\(?\d+\)?[.)]\s*','',s)
         if s:
@@ -42,7 +46,7 @@ def _cause_db_text(d):
         parts.append('2. 유출원인')
         parts.extend(f'{i}) {x}' for i,x in enumerate(leak_all,1))
 
-    return '\n'.join(parts)
+    return _excel_safe('\n'.join(parts))
 
 
 def _month_label_from_date(d):
