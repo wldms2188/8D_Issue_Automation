@@ -87,6 +87,8 @@ def _section_by_name(prs,name):
 
 def section_resolution(prs,d):
     """Resolve exact project section first; otherwise return a safe user-confirmable fallback."""
+    try:s13._clear_slide_text_cache()
+    except Exception:pass
     exact=_matching_native_section(prs,d)
     if exact:
         return {'mode':'exact','name':N(exact.get('name')),'reason':'고객사_과제명 또는 과제명 기준으로 일치하는 구역을 찾았습니다.','section':exact}
@@ -272,8 +274,12 @@ def _attachment_key(d):
 def _ps_quote(path):return str(path).replace("'","''")
 
 def _append_8d_attachments(out_path,src8d_path,detail_index,d):
-    try:source_count=len(Presentation(src8d_path).slides)
-    except Exception as e:raise RuntimeError('8D 원본의 유첨 페이지 수를 확인하지 못했습니다: '+repr(e))
+    source_count=(d or {}).get('_attachment_source_count')
+    if source_count in (None,''):
+        try:source_count=len(Presentation(src8d_path).slides)
+        except Exception as e:raise RuntimeError('8D 원본의 유첨 페이지 수를 확인하지 못했습니다: '+repr(e))
+    try:source_count=int(source_count)
+    except Exception:source_count=0
     if source_count<=1:return 0
     insert_after=detail_index+1; key=_attachment_key(d); prefix='AUTO_8D_ATTACH_'+key+'_'; out_q=_ps_quote(Path(out_path).resolve()); src_q=_ps_quote(Path(src8d_path).resolve()); prefix_q=prefix.replace("'","''")
     script=f"""
@@ -282,7 +288,8 @@ $ppt = $null
 $pres = $null
 try {{
     $ppt = New-Object -ComObject PowerPoint.Application
-    $ppt.Visible = -1
+    try { $ppt.DisplayAlerts = 1 } catch {}
+    try { $ppt.AutomationSecurity = 3 } catch {}
     $pres = $ppt.Presentations.Open('{out_q}', 0, 0, 0)
     for ($i = $pres.Slides.Count; $i -ge 1; $i--) {{
         $nm = [string]$pres.Slides.Item($i).Name
@@ -301,25 +308,48 @@ finally {{
     last_detail=''
     for attempt in range(2):
         try:
-            p=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=120)
-        except FileNotFoundError:raise RuntimeError('Windows PowerShell을 찾지 못해 8D 유첨 페이지를 붙이지 못했습니다.')
+            p=subprocess.run(
+                ['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],
+                capture_output=True,text=True,timeout=60
+            )
+        except FileNotFoundError:
+            raise RuntimeError('Windows PowerShell을 찾지 못해 8D 유첨 페이지를 붙이지 못했습니다.')
         except subprocess.TimeoutExpired:
-            last_detail='PowerPoint 유첨 페이지 복사 작업이 120초를 초과했습니다.'
-            if attempt==0:continue
-            raise RuntimeError(last_detail)
+            # Do not repeat a hung Office COM call; one timeout is enough.
+            raise RuntimeError('PowerPoint 유첨 페이지 복사 작업이 60초를 초과해 중단되었습니다.')
         if p.returncode==0:
             nums=[int(x.strip()) for x in (p.stdout or '').splitlines() if x.strip().isdigit()]
             return nums[-1] if nums else source_count-1
         last_detail=(p.stderr or p.stdout or '').strip()
         rpc=('RPC' in last_detail.upper() or '0X800706BA' in last_detail.upper() or '0X80010108' in last_detail.upper())
-        if attempt==0 and rpc:continue
+        if attempt==0 and rpc:
+            continue
         break
     raise RuntimeError('8D 유첨 페이지 자동 복사 실패: '+last_detail[-800:])
 
+def _weekly_progress(g,text):
+    cb=(g or {}).get('_weekly_progress_callback')
+    if callable(cb):
+        try:cb(text)
+        except Exception:pass
+
+def _append_8d_attachments_safe(out_path,src8d_path,detail_index,d):
+    """Attachment failure must not discard the already-saved weekly update."""
+    try:
+        return _append_8d_attachments(out_path,src8d_path,detail_index,d),''
+    except Exception as e:
+        return 0,str(e)
+
 def weekly_fix5(src,out,d,g,mode):
+    try:s13._clear_slide_text_cache()
+    except Exception:pass
+    _weekly_progress(g,'주간회의 파일을 불러오는 중...')
     prs=Presentation(src)
+
+    _weekly_progress(g,'주간회의 요약 페이지를 확인하는 중...')
     _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
 
+    _weekly_progress(g,'상세 페이지 위치를 확인하는 중...')
     matched_section=_selected_section(prs,d,g)
     force_new=str(g.get('_weekly_create_new_section') or '').lower() in ('1','true','yes')
     nearby_after=g.get('_weekly_insert_after_override')
@@ -360,15 +390,24 @@ def weekly_fix5(src,out,d,g,mode):
             sec_name=N(matched_section.get('name')) if matched_section else '(확인된 상세페이지 주변)'
             detail_action=f'선택 구역 [{sec_name}]에 상세 페이지 추가 (양식 원본 slide {template_index+1})'
 
+    _weekly_progress(g,'상세 페이지 내용을 반영하는 중...')
     s13._update_detail_slide(prs.slides[target],d,g,mode)
+    try:s13._clear_slide_text_cache(prs.slides[target])
+    except Exception:pass
     Path(out).parent.mkdir(parents=True,exist_ok=True)
+    _weekly_progress(g,'주간회의 파일을 저장하는 중...')
     try:prs.save(out); saved=out
     except PermissionError:
         p=Path(out); saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix)); prs.save(saved)
 
-    attached=_append_8d_attachments(saved,g.get('ppt8d',''),target,d)
+    _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
+    attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
     sec_name=N(matched_section.get('name')) if matched_section else ('신규 구역' if force_new else '확인된 상세페이지 주변')
-    attach_msg=f' / 8D 유첨 {attached}페이지 추가' if attached else ' / 8D 유첨 없음'
+    if attach_error:
+        attach_msg=' / 8D 유첨 추가 실패(주간회의 본문은 저장됨): '+attach_error[:220]
+    else:
+        attach_msg=f' / 8D 유첨 {attached}페이지 추가' if attached else ' / 8D 유첨 없음'
+    _weekly_progress(g,'주간회의 업데이트 마무리 중...')
     return ('주간회의 PPT: 요약 '+summary_action+' / 상세 '+detail_action+f' / 배치 구역={sec_name} / 과제명={N(d.get("task_name"))}'+attach_msg,saved)
 
 base.weekly=weekly_fix5
