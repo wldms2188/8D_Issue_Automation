@@ -105,11 +105,16 @@ def _marker(line):
     low=s.casefold()
     for sec,labels in SEMANTIC_MARKERS:
         for lab in labels:
-            pos=low.find(lab.casefold())
-            # A semantic heading must begin the line; avoids ordinary prose changing sections.
-            if pos==0:
-                rest=s[len(lab):].lstrip(' :：-–—')
-                return sec,rest
+            ll=lab.casefold()
+            if low==ll:
+                return sec,''
+            # Treat "Heading: content" as a heading, but do not strip ordinary
+            # content sentences such as "Root cause item A".
+            if low.startswith(ll):
+                tail=s[len(lab):]
+                if re.match(r'^\\s*[:：\\-–—]',tail):
+                    rest=re.sub(r'^\\s*[:：\\-–—]\\s*','',tail).strip()
+                    return sec,rest
     return None,s
 
 def _strip_semantic_label(text,sec):
