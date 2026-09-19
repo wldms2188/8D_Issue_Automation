@@ -31,6 +31,12 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         w,h=self._initial_window_size(sw,sh)
         self.minsize(min(1080,w),min(740,h))
         self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
+        # Production UI should open maximized on Windows, matching the validated enterprise layout.
+        # Keep the calculated geometry as a safe fallback on environments that do not support zoomed state.
+        try:
+            self.state('zoomed')
+        except Exception:
+            pass
         try: self.log.configure(height=5)
         except Exception: pass
         for z in getattr(self, 'dropzones', {}).values():
