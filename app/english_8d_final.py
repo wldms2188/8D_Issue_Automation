@@ -1031,41 +1031,15 @@ def _ask_translation_choice(self,d,path,action='preview'):
 # Korean/English 6D status terms use one decision engine for Issue DB and weekly Signal.
 _original_status=v310.base.status
 
-_PENDING_STATUS=(
-    '진행 중','진행중','검증 중','검증중','예정','계획','미완료',
-    'in progress','ongoing','planned','plan to','pending','scheduled','tbd',
-    'to be verified','under verification','under validation','not completed'
-)
-_CLOSE_STATUS=(
-    '검증 완료','검증완료','개선 완료','개선완료','정상','이상 없음','이상없음','양호',
-    'no abnormality','not abnormal','no defect','no issue','normal result',
-    'verification complete','verification completed','effectiveness confirmed',
-    'validated','verified','completed','complete','passed','pass','acceptable'
-)
-_OPEN_STATUS=(
-    '불량','이상 발생','이상발생','미흡','재발','부적합','ng','nok',
-    'abnormal','abnomal','abnormality','fail','failed','failure',
-    'not ok','out of spec','out-of-spec','oos','defect remains','issue remains',
-    'recurred','recurrence','not acceptable'
-)
-
 def _status_decision(text):
+    """Use the exact same Korean/English completion engine as weekly Signal."""
     raw=str(text or '').strip()
-    if not raw:return 'open','6D 내용 없음'
-    q=re.sub(r'\s+',' ',raw).casefold()
-    if any(x.casefold() in q for x in _PENDING_STATUS):
-        return 'open','진행/예정 표현 감지'
-    # Explicit normal/no-abnormal wording must win before "abnormality" checks.
-    if any(x.casefold() in q for x in _CLOSE_STATUS):
-        return 'close','완료/정상 표현 감지'
-    if any(x.casefold() in q for x in _OPEN_STATUS):
-        return 'open','이상/실패 표현 감지'
-    if re.search(r'\b(?:abnormal|abnomal|ng|nok|fail(?:ed|ure)?|oos)\b',q):
-        return 'open','이상/실패 표현 감지'
-    if re.search(r'\b(?:pass(?:ed)?|verified|validated|complete(?:d)?|normal|ok)\b',q):
-        return 'close','완료/정상 표현 감지'
-    # 6D text exists but does not prove completion: propose open and require final user confirmation.
-    return 'open','6D 내용은 있으나 완료/정상 판단어가 명확하지 않음'
+    if not raw:
+        return 'open','6D 내용 없음'
+    # main_enterprise is already loaded through main_enterprise_v3.
+    import main_enterprise as ent
+    state,reason=ent.weekly_verification_state(raw)
+    return ('close',reason) if state=='complete' else ('open',reason)
 
 def status_bilingual(d):
     decision,_reason=_status_decision(d.get('verification_6d'))
