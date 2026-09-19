@@ -425,11 +425,25 @@ def extract(path):
     except Exception:blocks=[]
     try:spatial,detected=_spatial_section_blocks(path,True)
     except Exception:spatial,detected=[],set()
-    # When D markers are available, geometry supplies the region while English
-    # headings validate/split it. Do not append the whole slide text again because
-    # a multi-section table would re-introduce 1D/7D/8D content into 2D/6D.
-    section_blocks=spatial if spatial else blocks
-    return enhance_dict(d,'\n'.join(blocks),section_blocks,detected if spatial else None)
+
+    raw='\n'.join(blocks)
+    if spatial:
+        # Geometry is primary, but a D marker can sit one row below its real section.
+        # After semantic remapping that can leave the earlier section empty. Fill only
+        # those empty sections from source-order semantic headings; never overwrite a
+        # non-empty spatial result.
+        spatial_fields=extract_sections_from_blocks(spatial)
+        source_fields=extract_sections_from_blocks(blocks)
+        for key in spatial_fields:
+            sval=str(spatial_fields.get(key) or '').strip()
+            fval=str(source_fields.get(key) or '').strip()
+            if key in detected:
+                d[key]=sval or fval
+            elif sval:
+                d[key]=sval
+        return enhance_dict(d,raw)
+
+    return enhance_dict(d,raw,blocks,None)
 v310.base.extract=extract
 
 def apply_english_choice(d,use_original):
