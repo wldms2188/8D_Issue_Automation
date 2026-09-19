@@ -245,7 +245,7 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         for d in cases:
             rec,reason=clf.recommend_origin(d)
             self.assertEqual(rec,'부품',msg=(rec,reason,d))
-            self.assertIn('발생처',reason)
+            self.assertIn('중 발생한 이슈이며',reason)
 
     def test_occurrence_site_never_overrides_clear_explicit_cause(self):
         cases=[
