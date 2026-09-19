@@ -58,4 +58,23 @@ class English8DTests(unittest.TestCase):
   self.assertEqual(e.judge_status_bilingual({'verification_6d':'Validation is in progress.'})[0],'open')
   self.assertEqual(e.judge_status_bilingual({'verification_6d':'Verification completed and passed.'})[0],'close')
 
+ def test_supplied_english_layout_boundaries_and_photo_captions(self):
+  blocks=[
+   '1D','Team build','Model EB565M (E122A)','2D','Problem description','Defect Phenomenon','Scratch on metal strap',
+   '[Close-up Photo]','3D','Containment','Stop shipment','4D','Root cause','Guide interference confirmed','Non-defect : N/A',
+   '5D','Corrective action','Guide position improved','[Unloading Process]','[After Improvement]',
+   '6D','Validation','DV validation passed','7D','Preventive action','Standard update','8D','Follow up','Improvement : N/A']
+  x=e.extract_sections_from_blocks(blocks)
+  self.assertIn('Scratch on metal strap',x['problem'])
+  self.assertNotIn('Team build',x['problem'])
+  self.assertNotIn('[Close-up Photo]',x['problem'])
+  self.assertIn('Stop shipment',x['temporary_action'])
+  self.assertIn('Guide interference confirmed',x['cause_4d'])
+  self.assertIn('Guide position improved',x['action_5d'])
+  self.assertNotIn('[Unloading Process]',x['action_5d'])
+  self.assertNotIn('[After Improvement]',x['action_5d'])
+  self.assertIn('DV validation passed',x['verification_6d'])
+  self.assertNotIn('Preventive action',x['verification_6d'])
+  self.assertNotIn('Follow up',x['verification_6d'])
+
 if __name__=='__main__':unittest.main()
