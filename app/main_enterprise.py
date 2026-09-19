@@ -159,6 +159,10 @@ def weekly_status_confirmation_required(issue_db_status):
     """Only a final open Issue DB status needs a separate weekly Signal choice."""
     return str(issue_db_status or '').strip().lower()=='open'
 
+def issue_db_status_confirmation_required(d):
+    """Show one Issue DB status chooser whenever 5D or 6D has content."""
+    return bool(N(d.get('action_5d')) or N(d.get('verification_6d')))
+
 def issue_db_status_reason(d,judged):
     """Human-readable reason for the Issue DB open/close proposal."""
     judged='close' if str(judged or '').lower()=='close' else 'open'
@@ -475,23 +479,31 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
     def _confirm_issue_db_status_v1(self,d):
-        """Restore the original V1 Issue DB status confirmation behavior."""
-        judged,reason=legacy.step9._judge_issue_status(d)
-        final_status='close' if str(judged).lower()=='close' else 'open'
-        if final_status=='close':
-            sixd=N(reason) or N(d.get('verification_6d')) or '(6D 내용 없음)'
-            prompt=(
-                '6D까지 작성되어 있으며, 아래 6D 내용에 진행 중/예정 표현이 없어 close로 판단됩니다.\n\n'
-                '판단 이유(6D 내용)\n'
-                '────────────────────\n'
-                f'{sixd}\n'
-                '────────────────────\n\n'
-                '이슈 상태를 close로 처리하시겠습니까?\n'
-                '아니오를 선택하면 open으로 처리합니다.'
-            )
-            if not messagebox.askyesno('이슈 상태 확인',prompt,parent=self):
-                final_status='open'
-        return final_status
+        """Show one explicit Issue DB open/close chooser when 5D or 6D exists."""
+        if not issue_db_status_confirmation_required(d):
+            return 'open'
+
+        judged,_reason=legacy.step9._judge_issue_status(d)
+        recommended='close' if str(judged).lower()=='close' else 'open'
+        five=N(d.get('action_5d')) or '(5D 내용 없음)'
+        six=N(d.get('verification_6d')) or '(6D 내용 없음)'
+        reason=issue_db_status_reason(d,recommended)
+
+        prompt=(
+            f'추천 상태  : {recommended}\n'
+            f'판단 이유  : {reason}\n\n'
+            '[5D 개선대책]\n'
+            f'{five}\n\n'
+            '[6D 효과검증]\n'
+            f'{six}\n\n'
+            'Issue DB에 반영할 최종 상태를 선택해 주세요.'
+        )
+        # Put the recommendation last so the recommended action is the blue button.
+        buttons=(('close','close'),('open','open')) if recommended=='open' else (('open','open'),('close','close'))
+        return ui.dialog(
+            self,'Issue DB 상태 확인',prompt,'question',
+            buttons,width=720,height=470,button_width=12
+        )
 
     def _confirm_weekly_status_v1(self,d):
         """Show a separate weekly Signal chooser only when the Issue DB remains open."""
@@ -579,6 +591,8 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             if do_excel:
                 self.status_var.set('WAITING  ·  Issue DB 상태 확인 필요'); self.update_idletasks()
                 db_status=self._confirm_issue_db_status_v1(d)
+                if db_status is None:
+                    self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 g['_issue_status_selected']=db_status
             if do_weekly:
                 # Show the weekly chooser ONLY when Issue DB was actually updated and
