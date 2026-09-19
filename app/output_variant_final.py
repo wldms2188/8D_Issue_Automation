@@ -29,7 +29,7 @@ def _latest_version(source_path):
 
 def _slide_signature(slide):
     """Compare slide content while ignoring package-level metadata."""
-    try:return slide._element.xml
+    try:return str(slide._element.xml)
     except Exception:return ''
 
 
