@@ -42,8 +42,8 @@ class UIStateTests(unittest.TestCase):
         d={'action_5d':'Guide revised','verification_6d':'Validation is in progress.'}
         db_reason=ent.issue_db_status_reason(d,'open')
         weekly_reason=ent.weekly_status_reason(d,'개선 검증중')
-        self.assertIn('open',db_reason)
-        self.assertIn('주간회의 Signal',weekly_reason)
+        self.assertIn('진행 중',db_reason)
+        self.assertIn('완료가 확정되지 않은',weekly_reason)
 
 if __name__=='__main__':
     unittest.main()
