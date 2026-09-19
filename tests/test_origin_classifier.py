@@ -221,7 +221,7 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         }
         rec,reason=clf.recommend_origin(d)
         self.assertEqual(rec,'부품')
-        self.assertIn('화면 선택값',reason)
+        self.assertIn('중 발생한 이슈이며',reason)
 
     def test_occurrence_site_product_production_supports_process(self):
         cases=[
@@ -233,7 +233,7 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         for d in cases:
             rec,reason=clf.recommend_origin(d)
             self.assertEqual(rec,'공정',msg=(rec,reason,d))
-            self.assertIn('발생처',reason)
+            self.assertIn('중 발생한 이슈이며',reason)
 
     def test_occurrence_site_part_production_supports_part(self):
         cases=[
