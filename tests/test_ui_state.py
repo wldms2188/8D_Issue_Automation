@@ -79,6 +79,12 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(state,'abnormal')
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 검증중')
 
+    def test_issue_db_status_popup_when_5d_or_6d_exists(self):
+        self.assertTrue(ent.issue_db_status_confirmation_required({'action_5d':'대책 있음','verification_6d':''}))
+        self.assertTrue(ent.issue_db_status_confirmation_required({'action_5d':'','verification_6d':'검증 내용'}))
+        self.assertTrue(ent.issue_db_status_confirmation_required({'action_5d':'대책','verification_6d':'검증'}))
+        self.assertFalse(ent.issue_db_status_confirmation_required({'action_5d':'','verification_6d':''}))
+
     def test_weekly_popup_only_for_final_open_issue_db(self):
         self.assertTrue(ent.weekly_status_confirmation_required('open'))
         self.assertFalse(ent.weekly_status_confirmation_required('close'))
