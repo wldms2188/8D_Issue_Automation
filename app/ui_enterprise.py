@@ -101,8 +101,8 @@ class DropZone(tk.Frame):
         if Path(path).suffix.lower() not in self.extensions:
             warning(self.winfo_toplevel(),'파일 형식 확인',f"허용되는 파일 형식: {', '.join(self.extensions)}")
             return
-        self.var.set(os.path.normpath(path)); self.on_change()
-    def clear(self): self.var.set(''); self.on_change()
+        self.var.set(os.path.normpath(path))
+    def clear(self): self.var.set('')
     def refresh(self):
         p=self.var.get().strip()
         if p:
