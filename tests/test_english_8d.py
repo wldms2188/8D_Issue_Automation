@@ -197,6 +197,61 @@ class English8DTests(unittest.TestCase):
   self.assertFalse(e._document_looks_english('A'*79+'가'*21))
   self.assertAlmostEqual(e.english_content_ratio('A'*80+'가'*20),80.0)
 
+ def test_midpoint_regions_prevent_3d_and_4d_from_shifting_up_one_section(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'midpoint_regions.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+
+   # Markers are reference centres. The actual content is intentionally above
+   # each marker; old marker-to-next-marker bands shifted 3D into 2D and 4D into 3D.
+   for label,y in [('2D',1.0),('3D',2.8),('4D',4.6),('5D',6.2)]:
+    m=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); m.text=label
+
+   p2=sl.shapes.add_textbox(Inches(1.0),Inches(1.15),Inches(5.0),Inches(0.5)); p2.text='Problem Description\nScratch found'
+   p3=sl.shapes.add_textbox(Inches(1.0),Inches(2.45),Inches(5.0),Inches(0.5)); p3.text='Containment\nStop shipment'
+   p4=sl.shapes.add_textbox(Inches(1.0),Inches(4.25),Inches(5.0),Inches(0.5)); p4.text='Root Cause\nGuide interference'
+   prs.save(p)
+
+   blocks=e._spatial_section_blocks(p)
+   fields,_=e._english_fields_from_spatial(blocks)
+   self.assertIn('Scratch found',fields['problem'])
+   self.assertIn('Stop shipment',fields['temporary_action'])
+   self.assertNotIn('Stop shipment',fields['problem'])
+   self.assertIn('Guide interference',fields['cause_4d'])
+   self.assertNotIn('Guide interference',fields['temporary_action'])
+
+ def test_scoped_table_semantics_match_korean_style_row_extraction(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'english_table_rows.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   for label,y in [('2D',0.8),('3D',2.2),('4D',3.6),('5D',5.0),('6D',6.4)]:
+    m=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); m.text=label
+
+   # Each table row owns its content, like the Korean exact-label extractor.
+   rows=[
+    ('Problem Description','Scratch found',0.9),
+    ('Containment','Stop shipment',2.3),
+    ('Root Cause','Guide interference',3.7),
+    ('Corrective Action','Guide revised',5.1),
+    ('Verification','DV passed',6.5),
+   ]
+   for a,b,y in rows:
+    tb=sl.shapes.add_table(1,2,Inches(0.9),Inches(y),Inches(7.0),Inches(0.55)).table
+    tb.cell(0,0).text=a; tb.cell(0,1).text=b
+
+   # Same wording, but outside the real 4D band: must be ignored.
+   bad=sl.shapes.add_table(1,2,Inches(0.9),Inches(0.1),Inches(7.0),Inches(0.45)).table
+   bad.cell(0,0).text='Root Cause'; bad.cell(0,1).text='WRONG TABLE'
+   prs.save(p)
+
+   fields,detected=e._scoped_table_semantic_fields(p)
+   self.assertEqual(fields['problem'],'Scratch found')
+   self.assertEqual(fields['temporary_action'],'Stop shipment')
+   self.assertEqual(fields['cause_4d'],'Guide interference')
+   self.assertEqual(fields['action_5d'],'Guide revised')
+   self.assertEqual(fields['verification_6d'],'DV passed')
+   self.assertNotIn('WRONG TABLE',fields['cause_4d'])
+
  def test_unrelated_table_outside_4d_region_is_not_extracted(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td)/'scoped_4d.pptx'
