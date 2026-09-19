@@ -157,11 +157,92 @@ def _normalize_weekly_status_text(text):
     q=q.replace('abnomalities','abnormalities').replace('abnomality','abnormality').replace('abnomal','abnormal')
     return q
 
+def _result_tail_state(q):
+    """Interpret an explicit result/value after ':'/'→' as higher-value evidence.
+
+    Examples:
+      진행 중 : 이상없음        -> complete
+      Progress: No abnormalities -> complete
+      진행 중 : 이상 발생       -> abnormal
+      진행 : 추가 검증 예정     -> pending
+
+    'so far/to date/현재까지' keeps the result provisional rather than complete.
+    """
+    tails=[]
+    for raw in re.split(r'[\n\r;]+',q):
+        line=raw.strip()
+        if not line:
+            continue
+        parts=re.split(r'\s*(?::|：|→|=>|⇒)\s*',line,maxsplit=1)
+        if len(parts)==2 and parts[1].strip():
+            tails.append(parts[1].strip())
+
+    if not tails:
+        return None,None
+
+    provisional_terms=(
+        '현재까지','현재 까지','지금까지','현 시점','현재 시점',
+        'so far','to date','as of now','currently','at this time'
+    )
+    pending_terms=tuple(_normalize_weekly_status_text(x) for x in WEEKLY_PENDING_TERMS)
+    complete_terms=tuple(_normalize_weekly_status_text(x) for x in WEEKLY_COMPLETE_TERMS)
+    abnormal_terms=tuple(_normalize_weekly_status_text(x) for x in WEEKLY_ABNORMAL_TERMS)
+
+    strong_normal_patterns=(
+        r'이상\s*없(?:음|다|었습니다|었다)?',
+        r'추가\s*이상\s*없(?:음|다|었습니다|었다)?',
+        r'문제\s*없(?:음|다|었습니다|었다)?',
+        r'재발\s*없(?:음|다|었습니다|었다)?',
+        r'\bno\s+(?:further\s+|additional\s+|new\s+|repeated\s+)?abnormalit(?:y|ies)\b',
+        r'\bwithout\s+(?:any\s+)?abnormalit(?:y|ies)\b',
+        r'\bno\s+(?:further\s+|additional\s+|new\s+)?defects?\b',
+        r'\bno\s+(?:further\s+|additional\s+|new\s+)?issues?\b',
+        r'\bno\s+(?:further\s+|additional\s+)?recurrence\b',
+        r'\bno\s+repeat(?:ed)?\s+issues?\b',
+        r'\bzero\s+defects?\b',
+    )
+
+    # The final explicit result is the strongest; scan from the end.
+    for tail in reversed(tails):
+        t=_normalize_weekly_status_text(tail)
+        if not t:
+            continue
+
+        provisional=any(x in t for x in provisional_terms)
+
+        normal_mask=t
+        strong_normal=any(re.search(p,t) for p in strong_normal_patterns)
+        for p in strong_normal_patterns:
+            normal_mask=re.sub(p,' ',normal_mask)
+
+        abnormal=(
+            any(x in normal_mask for x in abnormal_terms)
+            or bool(re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',normal_mask))
+        )
+        if abnormal:
+            return 'abnormal','결과 항목의 이상/실패/재발 표현 감지'
+
+        tail_pending=any(x in t for x in pending_terms)
+        if tail_pending:
+            return 'pending','결과 항목의 진행 중/예정 표현 감지'
+
+        tail_complete=strong_normal or any(x in t for x in complete_terms)
+        if tail_complete:
+            if provisional:
+                return 'pending','결과는 이상 없으나 현재까지/so far 표현으로 검증 진행 중'
+            return 'complete','결과 항목의 완료/정상/이상 없음 표현 감지'
+
+    return None,None
+
 def weekly_verification_state(text):
     """Return complete/pending/abnormal/unknown from Korean or English 6D wording."""
     q=_normalize_weekly_status_text(text)
     if not q:
         return 'unknown','6D 내용 없음'
+
+    tail_state,tail_reason=_result_tail_state(q)
+    if tail_state:
+        return tail_state,tail_reason
 
     strong_normal_patterns=(
         r'\bno\s+(?:further\s+|additional\s+|new\s+|repeated\s+)?abnormalit(?:y|ies)\b',
