@@ -135,6 +135,34 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Horizontal deployment done',x['verification_6d'])
    self.assertNotIn('Customer request A',x['verification_6d'])
 
+ def test_spatial_semantic_heading_corrects_one_row_shift(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'shifted_layout.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   # D markers are intentionally one visual row ahead of the semantic content.
+   for label,y in [('2D',0.5),('3D',2.0),('4D',3.5),('5D',5.0)]:
+    sh=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); sh.text=label
+   contents=[
+    ('Containment\nStop shipment',0.7),
+    ('Root Cause\nGuide interference confirmed',2.2),
+    ('Corrective Action\nGuide revised',3.7),
+   ]
+   for text,y in contents:
+    sh=sl.shapes.add_textbox(Inches(0.9),Inches(y),Inches(4.5),Inches(0.8)); sh.text=text
+   prs.save(p)
+   blocks=e._spatial_section_blocks(p)
+   x=e.extract_sections_from_blocks(blocks)
+   self.assertNotIn('Stop shipment',x['problem'])
+   self.assertIn('Stop shipment',x['temporary_action'])
+   self.assertIn('Guide interference confirmed',x['cause_4d'])
+   self.assertIn('Guide revised',x['action_5d'])
+
+ def test_translation_coverage_reports_partial_dictionary_conversion(self):
+  x=e.enhance_dict({'problem':'Crack occurred after repeated vehicle evaluation.'})
+  pct=e.translation_coverage(x)
+  self.assertGreater(pct,0)
+  self.assertLess(pct,100)
+
  def test_5d_heading_and_first_row_are_not_duplicated(self):
   x=e.extract_sections_from_blocks([
    '5D','Corrective Action','Guide revised','Corrective Action','Guide revised',
