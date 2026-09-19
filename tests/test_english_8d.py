@@ -135,4 +135,15 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Horizontal deployment done',x['verification_6d'])
    self.assertNotIn('Customer request A',x['verification_6d'])
 
+ def test_5d_heading_and_first_row_are_not_duplicated(self):
+  x=e.extract_sections_from_blocks([
+   '5D','Corrective Action','Guide revised','Corrective Action','Guide revised',
+   '6D','Validation'])
+  self.assertEqual(x['action_5d'],'Guide revised')
+
+ def test_5d_inline_heading_keeps_payload_once(self):
+  x=e.extract_sections_from_blocks([
+   '5D','Corrective Action: Guide revised','Guide revised','6D','Validation'])
+  self.assertEqual(x['action_5d'],'Guide revised')
+
 if __name__=='__main__':unittest.main()
