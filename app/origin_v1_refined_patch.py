@@ -7,21 +7,21 @@ import main_recovery_step8 as step8
 RULES = {
     '부품': (
         '부품','자재','소재','원재료','협력사','입고','supplier','component',
-        'lot편차','부품불량','셀불량','재료불량','수입검사','부품편차',
+        'lot편차','부품불량','셀불량','재료불량','수입검사','부품편차',\n        'part','parts','material defect','component defect','supplier issue','incoming defect','part variation',
     ),
     '설계': (
         '설계','design','도면','공차','사양','spec','구조','치수','강성','간섭',
-        '설계마진','공차설계','구조간섭','사양미흡','설계변경','도면변경',
+        '설계마진','공차설계','구조간섭','사양미흡','설계변경','도면변경',\n        'design margin','design issue','drawing','tolerance','dimension','structural interference','specification',
     ),
     '공정': (
         '공정','작업','조립','체결','토크','용접','설비','가공','도포','압착',
-        '공정조건','작업조건','작업표준','공정산포','토크산포','용접조건','도포조건',
+        '공정조건','작업조건','작업표준','공정산포','토크산포','용접조건','도포조건',\n        'process','process condition','work condition','assembly','fastening','torque','welding','equipment','coating','pressing',
     ),
     '기타': (
-        '운송','보관','취급','고객사용','외부충격','환경조건','사용조건','취급부주의',
+        '운송','보관','취급','고객사용','외부충격','환경조건','사용조건','취급부주의',\n        'transport','storage','handling','customer use','external impact','environmental condition','usage condition',
     ),
 }
-NEGATIONS=('문제없음','이상없음','정상','원인아님','무관','영향없음')
+NEGATIONS=('문제없음','이상없음','정상','원인아님','무관','영향없음','no issue','no problem','normal','not cause','not related','no impact')
 MIXERS=('동시에','복합','및','그리고')
 
 
