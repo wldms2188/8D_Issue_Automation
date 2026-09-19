@@ -4,6 +4,7 @@ Identifiers, numbers, units, model/project names are preserved. No network/API r
 """
 import re
 import main_v310 as v310
+from pptx import Presentation
 
 FIELD_LABELS={
  'problem':('problem description','problem statement','problem symptom','failure description','symptom','2d'),
@@ -57,6 +58,14 @@ def _label_extract(text,labels):
             if vals:return '\n'.join(vals)
     return ''
 
+def untranslated_english(original,translated):
+    """Detect meaningful English prose left after conservative translation."""
+    if not looks_english(original): return False
+    # Ignore common identifiers/technical abbreviations, numbers and units.
+    cleaned=re.sub(r'\b[A-Z0-9][A-Z0-9_.+\-/()]*\b',' ',str(translated or ''))
+    words=re.findall(r'[A-Za-z]{3,}',cleaned)
+    return len(words)>=2
+
 def enhance_dict(d,raw_text=''):
     d=dict(d or {})
     source='\n'.join(str(d.get(k) or '') for k in FIELD_LABELS)
@@ -68,12 +77,30 @@ def enhance_dict(d,raw_text=''):
         if current and looks_english(current):
             d[key+'_en_original']=current
             d[key]=translate_offline(current)
-    d['_english_detected']=any(looks_english(str(d.get(k+'_en_original') or '')) for k in FIELD_LABELS)
+            d[key+'_translation_incomplete']=untranslated_english(current,d[key])
+    d['_english_detected']=any(bool(d.get(k+'_en_original')) for k in FIELD_LABELS)
+    d['_english_translation_incomplete']=any(bool(d.get(k+'_translation_incomplete')) for k in FIELD_LABELS)
     return d
 
 _original=v310.base.extract
+
+def _ppt_text(path):
+    try:
+        prs=Presentation(path); parts=[]
+        for sl in prs.slides:
+            for sh in sl.shapes:
+                t=str(getattr(sh,'text','') or '').strip()
+                if t: parts.append(t)
+                if getattr(sh,'has_table',False):
+                    for row in sh.table.rows:
+                        for cell in row.cells:
+                            t=str(cell.text or '').strip()
+                            if t: parts.append(t)
+        return '\n'.join(parts)
+    except Exception:
+        return ''
+
 def extract(path):
     d=_original(path)
-    # Existing extractor already collects PPT text into fields; post-process those fields safely.
-    return enhance_dict(d)
+    return enhance_dict(d,_ppt_text(path))
 v310.base.extract=extract
