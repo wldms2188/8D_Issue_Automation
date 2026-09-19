@@ -3,7 +3,7 @@ Keeps the validated processing core and replaces presentation/UI only.
 """
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from openpyxl import load_workbook
 from pptx import Presentation
@@ -241,6 +241,49 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             self.status_var.set('READY  ·  8D 추출 완료')
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
+    def _confirm_issue_db_status_v1(self,d):
+        """Restore the original V1 Issue DB status confirmation behavior."""
+        judged,reason=legacy.step9._judge_issue_status(d)
+        final_status='close' if str(judged).lower()=='close' else 'open'
+        if final_status=='close':
+            sixd=N(reason) or N(d.get('verification_6d')) or '(6D 내용 없음)'
+            prompt=(
+                '6D까지 작성되어 있으며, 아래 6D 내용에 진행 중/예정 표현이 없어 close로 판단됩니다.\n\n'
+                '판단 이유(6D 내용)\n'
+                '────────────────────\n'
+                f'{sixd}\n'
+                '────────────────────\n\n'
+                '이슈 상태를 close로 처리하시겠습니까?\n'
+                '아니오를 선택하면 open으로 처리합니다.'
+            )
+            if not messagebox.askyesno('이슈 상태 확인',prompt,parent=self):
+                final_status='open'
+        return final_status
+
+    def _confirm_weekly_status_v1(self,d):
+        """Confirm weekly Signal separately, using the same V1-style rationale dialog."""
+        judged,reason=legacy.step9._judge_issue_status(d)
+        recommended=weekly_status_from_choice(d,judged)
+        sixd=N(reason) or N(d.get('verification_6d')) or '(6D 내용 없음)'
+
+        # V1-like confirmation is required only for a completion recommendation.
+        # Non-complete states remain conservative and are not promoted automatically.
+        if recommended!='개선 완료':
+            return recommended
+
+        prompt=(
+            '6D까지 작성되어 있으며, 아래 6D 내용에 진행 중/예정 표현이 없어 개선 완료로 추천됩니다.\n\n'
+            '추천 이유(6D 내용)\n'
+            '────────────────────\n'
+            f'{sixd}\n'
+            '────────────────────\n\n'
+            '주간회의 Signal을 개선 완료로 처리하시겠습니까?\n'
+            '아니오를 선택하면 개선 검증중으로 처리합니다.'
+        )
+        if messagebox.askyesno('주간회의 상태 확인',prompt,parent=self):
+            return '개선 완료'
+        return '개선 검증중' if N(d.get('action_5d')) or N(d.get('verification_6d')) else '원인/개선 미확인'
+
     def _confirm_weekly_section(self,weekly,d,g):
         """Resolve weekly section safely and ask before using any fallback area."""
         try:
@@ -316,15 +359,14 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 summary=legacy.step7._db_summary(d); self.status_var.set('WAITING  ·  Issue DB 현상 입력 확인 필요'); self.update_idletasks(); pd=EnterpriseProblemDialog(self,summary)
                 if pd.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 pd_result=pd.result; g['_db_problem_selected']=summary if pd.result=='summary' else N(d.get('problem'))
-            if do_excel or do_weekly:
-                judged,_reason=legacy.step9._judge_issue_status(d)
-                self.status_var.set('WAITING  ·  상태 판단 최종 확인 필요'); self.update_idletasks()
-                sd=EnterpriseStatusDialog(self,d,judged,do_excel,do_weekly)
-                if sd.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
-                db_status=sd.result.get('issue_db')
-                weekly_status=sd.result.get('weekly')
-                if do_excel: g['_issue_status_selected']=db_status
-                if do_weekly: g['_weekly_status_selected']=weekly_status
+            if do_excel:
+                self.status_var.set('WAITING  ·  Issue DB 상태 확인 필요'); self.update_idletasks()
+                db_status=self._confirm_issue_db_status_v1(d)
+                g['_issue_status_selected']=db_status
+            if do_weekly:
+                self.status_var.set('WAITING  ·  주간회의 상태 확인 필요'); self.update_idletasks()
+                weekly_status=self._confirm_weekly_status_v1(d)
+                g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
             if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
             if do_weekly: self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks(); po=out/(Path(weekly).stem+'_업데이트.pptx'); b,_=base.weekly(weekly,po,d,g,mode); results.append(b)
