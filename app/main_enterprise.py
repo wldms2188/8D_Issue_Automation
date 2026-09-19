@@ -32,6 +32,34 @@ def weekly_status_from_choice(d,choice):
         return '개선 검증중'
     return '원인/개선 미확인'
 
+def issue_db_status_reason(d,judged):
+    """Human-readable reason for the Issue DB open/close proposal."""
+    judged='close' if str(judged or '').lower()=='close' else 'open'
+    sixd=N(d.get('verification_6d'))
+    if not sixd:
+        return '6D 효과검증 내용이 없어 완료 여부를 확인할 수 없으므로 open으로 판단했습니다.'
+    q=sixd.lower().replace(' ','')
+    if judged=='close':
+        if any(x in q for x in ('완료','정상','이상없음','검증완료','verificationcomplete','completed','passed','validated','verified','noabnormality')):
+            return '6D에서 완료·정상·검증완료 의미의 표현을 확인하여 close로 판단했습니다.'
+        return '6D 효과검증 결과가 완료 상태로 판정되어 close로 판단했습니다.'
+    if any(x in q for x in ('진행중','검증중','확인중','예정','계획','inprogress','ongoing','pending','planned','scheduled','tbd')):
+        return '6D에서 진행 중·검증 중·예정 의미의 표현을 확인하여 open으로 판단했습니다.'
+    if any(x in q for x in ('불량','이상','실패','재발','abnormal','failed','failure','nok','oos')):
+        return '6D에서 이상·실패·재발 의미의 표현을 확인하여 open으로 판단했습니다.'
+    return '6D에 완료를 확정할 표현이 명확하지 않아 open으로 판단했습니다.'
+
+def weekly_status_reason(d,weekly_status):
+    """Human-readable reason for the weekly-meeting Signal proposal."""
+    st=N(weekly_status)
+    if st=='개선 완료':
+        return '6D 효과검증이 완료 상태로 판단되어 주간회의 Signal을 개선 완료로 판단했습니다.'
+    if st=='개선 검증중':
+        if N(d.get('verification_6d')):
+            return '6D 효과검증 내용은 있으나 완료가 확정되지 않아 주간회의 Signal을 개선 검증중으로 판단했습니다.'
+        return '5D 개선대책은 있으나 6D 완료 검증이 확인되지 않아 주간회의 Signal을 개선 검증중으로 판단했습니다.'
+    return '5D 개선대책과 6D 효과검증 내용이 확인되지 않아 주간회의 Signal을 원인/개선 미확인으로 판단했습니다.'
+
 
 
 
@@ -83,32 +111,76 @@ class EnterpriseProblemDialog(tk.Toplevel):
 
 class EnterpriseStatusDialog(tk.Toplevel):
     def __init__(self,parent,d,judged,for_excel=True,for_weekly=True):
-        super().__init__(parent); self.withdraw(); self.result=None; self.title('이슈 상태 최종 확인'); self.configure(bg='white'); self.resizable(False,False); self.transient(parent)
+        super().__init__(parent); self.withdraw(); self.result=None; self.title('상태 판단 최종 확인'); self.configure(bg='white'); self.resizable(False,False); self.transient(parent)
         judged='close' if str(judged).lower()=='close' else 'open'
         weekly=weekly_status_from_choice(d,judged)
-        sixd=N(d.get('verification_6d')) or '(6D 내용 없음)'
+        self.db_var=tk.StringVar(value=judged)
+        self.weekly_var=tk.StringVar(value=weekly)
+        self.db_confirm=tk.BooleanVar(value=False)
+        self.weekly_confirm=tk.BooleanVar(value=False)
+        self.for_excel=bool(for_excel); self.for_weekly=bool(for_weekly)
+
         head=tk.Frame(self,bg=ui.NAVY,height=58); head.pack(fill='x'); head.pack_propagate(False)
-        tk.Label(head,text='이슈 상태 최종 확인',bg=ui.NAVY,fg='white',font=('Malgun Gothic',12,'bold')).pack(side='left',padx=22)
-        body=tk.Frame(self,bg='white'); body.pack(fill='both',expand=True,padx=24,pady=18)
-        tk.Label(body,text='6D 내용을 기준으로 자동 판단한 상태입니다. 최종 상태를 확인하거나 변경해 주세요.',bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold'),wraplength=700,justify='left').pack(anchor='w')
-        summary=[]
-        if for_excel: summary.append(f'Issue DB 자동 판단 : {judged}')
-        if for_weekly: summary.append(f'주간회의 Signal 자동 판단 : {weekly}')
-        card=tk.Frame(body,bg='#EEF5FA',highlightbackground='#D5E3EE',highlightthickness=1); card.pack(fill='x',pady=(12,10))
-        tk.Label(card,text='\n'.join(summary),bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold'),justify='left').pack(anchor='w',padx=12,pady=10)
-        tk.Label(body,text='판단 기준이 된 6D 원문',bg='white',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(anchor='w',pady=(2,5))
-        box=tk.Text(body,height=8,wrap='word',bg='#F7F9FB',fg=ui.TEXT,relief='flat',highlightthickness=1,highlightbackground=ui.BORDER,font=('Malgun Gothic',9),padx=10,pady=8)
-        box.pack(fill='both',expand=True); box.insert('1.0',sixd); box.configure(state='disabled')
-        self.var=tk.StringVar(value=judged)
-        row=tk.Frame(body,bg='white'); row.pack(fill='x',pady=(12,4))
-        ttk.Radiobutton(row,text='open  ·  진행/검증 필요',variable=self.var,value='open',style='Mode.TRadiobutton').pack(side='left',padx=(0,24))
-        ttk.Radiobutton(row,text='close  ·  개선 완료',variable=self.var,value='close',style='Mode.TRadiobutton').pack(side='left')
-        foot=tk.Frame(self,bg='#F6F8FA',height=66); foot.pack(fill='x'); foot.pack_propagate(False)
+        tk.Label(head,text='상태 판단 최종 확인',bg=ui.NAVY,fg='white',font=('Malgun Gothic',12,'bold')).pack(side='left',padx=22)
+        body=tk.Frame(self,bg='white'); body.pack(fill='both',expand=True,padx=24,pady=16)
+        tk.Label(body,text='주간회의와 Issue DB의 상태를 각각 확인해 주세요. 상태를 변경한 뒤에도 각 항목의 확인 체크가 필요합니다.',bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold'),wraplength=790,justify='left').pack(anchor='w',pady=(0,10))
+
+        if self.for_weekly:
+            self._weekly_card(body,d,weekly)
+        if self.for_excel:
+            self._db_card(body,d,judged)
+
+        foot=tk.Frame(self,bg='#F6F8FA',height=70); foot.pack(fill='x'); foot.pack_propagate(False)
         b=tk.Frame(foot,bg='#F6F8FA'); b.pack(side='right',padx=20,pady=13)
-        tk.Button(b,text='취소',command=self.cancel,width=12,bd=0,font=('Malgun Gothic',9,'bold'),bg='#E5EBF0',fg=ui.TEXT,pady=7,cursor='hand2').pack(side='left',padx=4)
-        tk.Button(b,text='확인',command=self.ok,width=12,bd=0,font=('Malgun Gothic',9,'bold'),bg=ui.BLUE,fg='white',pady=7,cursor='hand2').pack(side='left',padx=4)
-        self.protocol('WM_DELETE_WINDOW',self.cancel); ui.center_window(self,parent,760,590); self.deiconify(); self.grab_set(); self.focus_force(); parent.wait_window(self)
-    def ok(self): self.result=self.var.get(); self.destroy()
+        tk.Button(b,text='취소',command=self.cancel,width=12,bd=0,font=('Malgun Gothic',9,'bold'),bg='#E5EBF0',fg=ui.TEXT,pady=8,cursor='hand2').pack(side='left',padx=4)
+        self.ok_btn=tk.Button(b,text='상태 확인 완료',command=self.ok,width=16,bd=0,font=('Malgun Gothic',9,'bold'),bg='#AAB7C2',fg='white',pady=8,cursor='arrow',state='disabled')
+        self.ok_btn.pack(side='left',padx=4)
+
+        if self.for_excel: self.db_confirm.trace_add('write',lambda *_:self._refresh_ok())
+        if self.for_weekly: self.weekly_confirm.trace_add('write',lambda *_:self._refresh_ok())
+        self.protocol('WM_DELETE_WINDOW',self.cancel)
+        height=690 if self.for_excel and self.for_weekly else 480
+        ui.center_window(self,parent,840,height); self.deiconify(); self.grab_set(); self.focus_force(); parent.wait_window(self)
+
+    def _card_shell(self,parent,title,auto_status,reason):
+        card=tk.Frame(parent,bg='#F8FAFC',highlightbackground='#D5E3EE',highlightthickness=1)
+        card.pack(fill='x',pady=(0,10))
+        tk.Label(card,text=title,bg='#F8FAFC',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(anchor='w',padx=14,pady=(10,2))
+        tk.Label(card,text=f'자동 판단  :  {auto_status}',bg='#F8FAFC',fg=ui.TEXT,font=('Malgun Gothic',9,'bold')).pack(anchor='w',padx=14,pady=(2,3))
+        tk.Label(card,text='판단 근거',bg='#F8FAFC',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(anchor='w',padx=14,pady=(5,1))
+        tk.Label(card,text=reason,bg='#F8FAFC',fg='#4E6375',font=('Malgun Gothic',8),wraplength=760,justify='left').pack(anchor='w',padx=14,pady=(0,8))
+        return card
+
+    def _weekly_card(self,parent,d,auto_status):
+        card=self._card_shell(parent,'주간회의 Signal',auto_status,weekly_status_reason(d,auto_status))
+        row=tk.Frame(card,bg='#F8FAFC'); row.pack(fill='x',padx=14,pady=(0,7))
+        for val in ('원인/개선 미확인','개선 검증중','개선 완료'):
+            ttk.Radiobutton(row,text=val,variable=self.weekly_var,value=val,style='Mode.TRadiobutton',command=lambda:self.weekly_confirm.set(False)).pack(side='left',padx=(0,18))
+        tk.Checkbutton(card,text='주간회의 상태를 이 선택으로 확인',variable=self.weekly_confirm,command=self._refresh_ok,bg='#F8FAFC',fg=ui.TEXT,activebackground='#F8FAFC',font=('Malgun Gothic',9,'bold')).pack(anchor='w',padx=12,pady=(0,10))
+
+    def _db_card(self,parent,d,auto_status):
+        card=self._card_shell(parent,'Issue DB 상태',auto_status,issue_db_status_reason(d,auto_status))
+        row=tk.Frame(card,bg='#F8FAFC'); row.pack(fill='x',padx=14,pady=(0,7))
+        ttk.Radiobutton(row,text='open  ·  진행/검증 필요',variable=self.db_var,value='open',style='Mode.TRadiobutton',command=lambda:self.db_confirm.set(False)).pack(side='left',padx=(0,24))
+        ttk.Radiobutton(row,text='close  ·  개선 완료',variable=self.db_var,value='close',style='Mode.TRadiobutton',command=lambda:self.db_confirm.set(False)).pack(side='left')
+        tk.Checkbutton(card,text='Issue DB 상태를 이 선택으로 확인',variable=self.db_confirm,command=self._refresh_ok,bg='#F8FAFC',fg=ui.TEXT,activebackground='#F8FAFC',font=('Malgun Gothic',9,'bold')).pack(anchor='w',padx=12,pady=(0,10))
+
+    def _refresh_ok(self):
+        ready=(not self.for_excel or self.db_confirm.get()) and (not self.for_weekly or self.weekly_confirm.get())
+        if ready:
+            self.ok_btn.configure(state='normal',bg=ui.BLUE,cursor='hand2')
+        else:
+            self.ok_btn.configure(state='disabled',bg='#AAB7C2',cursor='arrow')
+
+    def ok(self):
+        if not ((not self.for_excel or self.db_confirm.get()) and (not self.for_weekly or self.weekly_confirm.get())):
+            return
+        self.result={
+            'issue_db': self.db_var.get() if self.for_excel else None,
+            'weekly': self.weekly_var.get() if self.for_weekly else None,
+        }
+        self.destroy()
+
     def cancel(self): self.result=None; self.destroy()
 
 
@@ -192,18 +264,20 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 self.status_var.set('WAITING  ·  이슈기인 확인 필요'); self.update_idletasks(); od=EnterpriseOriginDialog(self,d)
                 if od.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 g['_issue_origin_selected']=od.result
-            pd_result=None; final_status=None
+            pd_result=None; db_status=None; weekly_status=None
             if do_excel:
                 summary=legacy.step7._db_summary(d); self.status_var.set('WAITING  ·  Issue DB 현상 입력 확인 필요'); self.update_idletasks(); pd=EnterpriseProblemDialog(self,summary)
                 if pd.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 pd_result=pd.result; g['_db_problem_selected']=summary if pd.result=='summary' else N(d.get('problem'))
             if do_excel or do_weekly:
                 judged,_reason=legacy.step9._judge_issue_status(d)
-                self.status_var.set('WAITING  ·  이슈 상태 최종 확인 필요'); self.update_idletasks()
+                self.status_var.set('WAITING  ·  상태 판단 최종 확인 필요'); self.update_idletasks()
                 sd=EnterpriseStatusDialog(self,d,judged,do_excel,do_weekly)
                 if sd.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
-                final_status=sd.result
-                g['_issue_status_selected']=final_status
+                db_status=sd.result.get('issue_db')
+                weekly_status=sd.result.get('weekly')
+                if do_excel: g['_issue_status_selected']=db_status
+                if do_weekly: g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
             if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
             if do_weekly: self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks(); po=out/(Path(weekly).stem+'_업데이트.pptx'); b,_=base.weekly(weekly,po,d,g,mode); results.append(b)
@@ -212,8 +286,8 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             if do_weekly: targets.append('주간회의 PPT')
             lines=['[ 업데이트 완료 ]','─'*72,f'이슈 구분       : {"신규 이슈" if mode=="new" else "기존 이슈"}',f'업데이트 대상   : {" + ".join(targets)}'];
             if do_weekly and od: lines.append(f'이슈기인        : {od.result}')
-            if do_weekly: lines.append(f'주간회의 상태   : {weekly_status_from_choice(d,final_status)}')
-            if do_excel: lines.extend([f'Issue DB 현상   : {"현상 요약" if pd_result=="summary" else "전체 내용"}',f'Issue DB 상태   : {final_status}'])
+            if do_weekly: lines.append(f'주간회의 상태   : {weekly_status}')
+            if do_excel: lines.extend([f'Issue DB 현상   : {"현상 요약" if pd_result=="summary" else "전체 내용"}',f'Issue DB 상태   : {db_status}'])
             lines.extend(['']+results+['',f'결과 폴더       : {out}']); self.log.insert('end','\n'.join(lines)); self.status_var.set('COMPLETE  ·  선택한 자료의 업데이트가 완료되었습니다.'); ui.info(self,'업데이트 완료','선택한 자료만 업데이트했습니다.\n\n'+'\n'.join('✓ '+x for x in targets)+f'\n\n결과 폴더\n{out}')
         except Exception as e: self.status_var.set('ERROR  ·  실행 중 오류가 발생했습니다.'); ui.error(self,'실행 오류',repr(e))
 
