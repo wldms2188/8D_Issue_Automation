@@ -2,6 +2,7 @@
 Keeps the validated processing core and replaces presentation/UI only.
 """
 import os
+import re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
