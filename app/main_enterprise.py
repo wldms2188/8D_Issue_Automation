@@ -106,7 +106,13 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         if f: self.vars[k].set(f); self._refresh_target()
     def _refresh_target(self):
         if not hasattr(self,'target_label'): return
+        ppt8d=(self.vars.get('ppt8d').get().strip() if self.vars.get('ppt8d') else '')
         weekly=bool(self.vars.get('pptweekly') and self.vars['pptweekly'].get().strip()); excel=bool(self.vars.get('xlsx') and self.vars['xlsx'].get().strip()); text='주간회의 PPT + Issue DB Excel' if weekly and excel else '주간회의 PPT만 업데이트' if weekly else 'Issue DB Excel만 업데이트' if excel else '주간회의 또는 Issue DB를 선택해 주세요.'; self.target_label.configure(text=text); self.target_weekly.configure(text='WEEKLY  ON' if weekly else 'WEEKLY  OFF',bg='#E7F4ED' if weekly else '#EDF1F4',fg=ui.GREEN if weekly else ui.MUTED); self.target_excel.configure(text='ISSUE DB  ON' if excel else 'ISSUE DB  OFF',bg='#E7F4ED' if excel else '#EDF1F4',fg=ui.GREEN if excel else ui.MUTED)
+        current=self.status_var.get().strip()
+        if ppt8d and ('8D 원본을 선택' in current or not current):
+            self.status_var.set('READY  ·  8D 원본 선택 완료 · 미리보기 가능')
+        elif not ppt8d and current.startswith('READY'):
+            self.status_var.set('READY  ·  8D 원본을 선택해 주세요.')
 
     def preview(self):
         g=self.gui()
