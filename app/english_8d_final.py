@@ -409,6 +409,36 @@ def extract_sections_from_blocks(blocks):
         out[key]='\n'.join(vals).strip()
     return out
 
+def _table_blocks(path):
+    """Read only table cells in slide/shape/row/column order.
+
+    Table item/header meaning is the highest-confidence English section signal.
+    """
+    prs=Presentation(path); blocks=[]
+    for sl in prs.slides:
+        for sh in sl.shapes:
+            if not getattr(sh,'has_table',False):
+                continue
+            for row in sh.table.rows:
+                vals=[]
+                for cell in row.cells:
+                    t=_norm_line(cell.text)
+                    if t:vals.append(t)
+                if vals:blocks.extend(vals)
+    return blocks
+
+def _semantic_fields_and_detected(blocks):
+    fields=extract_sections_from_blocks(blocks or [])
+    detected=set()
+    for block in blocks or []:
+        for raw in str(block or '').replace('\r','\n').splitlines():
+            line=_norm_line(raw)
+            if not line:continue
+            sec,_rest=_marker(line)
+            key=SECTION_FIELDS.get(sec)
+            if key:detected.add(key)
+    return fields,detected
+
 def _shape_blocks(path):
     """Read source in slide/top/left order; tables are emitted cell-by-cell in row order."""
     prs=Presentation(path); blocks=[]
@@ -543,14 +573,28 @@ def extract(path):
     if not d['_english_mode']:
         return d
 
-    # 80%+ English: D-circle geometry owns section boundaries. Text headings can
-    # split only the 4D sub-causes and can never move content across D sections.
+    # 80%+ English priority:
+    #   1) table item/header meaning
+    #   2) semantic headings in the whole source
+    #   3) D-circle/shape geometry only for fields that could not be identified above
+    # No semantic result is rejected or moved just because its geometry disagrees.
+    try:table_blocks=_table_blocks(path)
+    except Exception:table_blocks=[]
+    table_fields,table_detected=_semantic_fields_and_detected(table_blocks)
+    source_fields,source_detected=_semantic_fields_and_detected(blocks)
+
     try:spatial,_geo_detected=_spatial_section_blocks(path,True)
     except Exception:spatial=[]
-    if spatial:
-        rebuilt,detected=_english_fields_from_spatial(spatial)
-        for key in detected:
-            d[key]=rebuilt.get(key,'')
+    geo_fields,geo_detected=_english_fields_from_spatial(spatial) if spatial else ({},set())
+
+    all_keys=('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')
+    for key in all_keys:
+        if key in table_detected:
+            d[key]=table_fields.get(key,'')
+        elif key in source_detected:
+            d[key]=source_fields.get(key,'')
+        elif key in geo_detected:
+            d[key]=geo_fields.get(key,'')
 
     result=enhance_dict(d,raw,allow_label_fallback=False)
     result['_english_ratio']=ratio
