@@ -427,6 +427,94 @@ def _table_blocks(path):
                 if vals:blocks.extend(vals)
     return blocks
 
+def _table_semantic_fields(path):
+    """Extract table sections with explicit support for extra 4D items.
+
+    Root/occurrence cause and escape cause keep their normal destinations.
+    Any other named row while inside 4D is additionally appended to occurrence
+    cause in the requested form:
+
+        - Item name
+        item content
+    """
+    keys=('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')
+    buckets={k:[] for k in keys}
+    detected=set()
+    prs=Presentation(path)
+
+    def add(key,text):
+        text=_norm_line(text)
+        if text and not _is_photo_caption(text):
+            buckets[key].append(text)
+
+    for sl in prs.slides:
+        for sh in sl.shapes:
+            if not getattr(sh,'has_table',False):
+                continue
+            in_4d=False
+            current_key=None
+            for row in sh.table.rows:
+                cells=[_norm_line(cell.text) for cell in row.cells]
+                nonempty=[x for x in cells if x]
+                if not nonempty:
+                    continue
+
+                label=nonempty[0]
+                sec,rest=_marker(label)
+
+                if sec:
+                    if sec in ('1D','7D','8D'):
+                        in_4d=False; current_key=None
+                        continue
+
+                    key=SECTION_FIELDS.get(sec)
+                    in_4d=sec in ('4D','4D_LEAK','4D_SYSTEM')
+                    current_key=key
+                    if key:detected.add(key)
+
+                    row_values=[]
+                    if rest:row_values.append(rest)
+                    row_values.extend(nonempty[1:])
+
+                    # System cause is still preserved in its own field for backward
+                    # compatibility, but because it is "other than occurrence/escape",
+                    # also append it under occurrence cause with its item name.
+                    if sec=='4D_SYSTEM':
+                        content='\n'.join(x for x in row_values if x).strip()
+                        if content:
+                            buckets['cause_4d'].append(f'- {label}\n{content}')
+                            detected.add('cause_4d')
+                            add('system_cause',content)
+                        continue
+
+                    if key:
+                        for value in row_values:add(key,value)
+                    continue
+
+                # Any named row with a value while still inside 4D is an "other 4D item".
+                # Do not discard it just because its item name is not in our dictionary.
+                if in_4d and len(nonempty)>=2:
+                    item=nonempty[0]
+                    content='\n'.join(nonempty[1:]).strip()
+                    if content:
+                        buckets['cause_4d'].append(f'- {item}\n{content}')
+                        detected.add('cause_4d')
+                    continue
+
+                # Single-cell continuation belongs to the last known field.
+                if current_key:
+                    for value in nonempty:add(current_key,value)
+
+    out={k:'' for k in keys}
+    for key,vals in buckets.items():
+        seen=set(); cleaned=[]
+        for x in vals:
+            q=re.sub(r'\s+',' ',x).strip().casefold()
+            if not q or q in seen:continue
+            seen.add(q); cleaned.append(x)
+        out[key]='\n'.join(cleaned).strip()
+    return out,detected
+
 def _semantic_fields_and_detected(blocks):
     fields=extract_sections_from_blocks(blocks or [])
     detected=set()
@@ -578,9 +666,8 @@ def extract(path):
     #   2) semantic headings in the whole source
     #   3) D-circle/shape geometry only for fields that could not be identified above
     # No semantic result is rejected or moved just because its geometry disagrees.
-    try:table_blocks=_table_blocks(path)
-    except Exception:table_blocks=[]
-    table_fields,table_detected=_semantic_fields_and_detected(table_blocks)
+    try:table_fields,table_detected=_table_semantic_fields(path)
+    except Exception:table_fields,table_detected={},set()
     source_fields,source_detected=_semantic_fields_and_detected(blocks)
 
     try:spatial,_geo_detected=_spatial_section_blocks(path,True)
