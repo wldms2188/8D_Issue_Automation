@@ -131,6 +131,29 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(state,'complete')
         self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료')
 
+    def test_project_match_in_8d_filename_returns_literal_match(self):
+        self.assertEqual(
+            ent.project_match_in_8d_filename(
+                r'C:\\tmp\\8D_Report_MBAG_EB565M_Scratch.pptx',
+                'MBAG_EB565M'
+            ),
+            'MBAG_EB565M'
+        )
+        self.assertEqual(
+            ent.project_match_in_8d_filename(
+                r'C:\\tmp\\8D_Report_CustomerA_Model Care 25_Issue.pptx',
+                'Model Care 25'
+            ),
+            'Model Care 25'
+        )
+        self.assertEqual(
+            ent.project_match_in_8d_filename(
+                r'C:\\tmp\\8D_Report_OtherProject.pptx',
+                'MBAG_EB565M'
+            ),
+            ''
+        )
+
     def test_project_only_selection_compares_only_project_part(self):
         mismatch,extracted,selected=ent.customer_project_mismatch(
             {'customer':'CustomerA','task_name':'Model Care 25'},'Model Care 25'
