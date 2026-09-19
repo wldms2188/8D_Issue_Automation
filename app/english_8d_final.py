@@ -192,15 +192,14 @@ def _semantic_section_for_text(text):
     return sec
 
 def _spatial_section_blocks(path,return_detected=False):
-    """Map 2D~6D using geometry, but let explicit section headings correct row offsets.
+    """Map content strictly by the visible D-circle/number regions.
 
-    Some company 8D templates place the D-number marker one visual row above the
-    actual content. In that layout, pure geometry shifts 3D into 2D, 4D into 3D,
-    etc. An explicit heading such as "Containment" or "Root Cause" is therefore
-    authoritative for that content and all following lines in the same region.
+    D marker geometry is authoritative for 2D/3D/4D/5D/6D. Text headings are
+    retained as content and must never move a line into a different D section.
+    If a template has two separate 4D marker columns, the left one defaults to
+    occurrence/root cause and the next one to escape/leak cause.
     """
     prs=Presentation(path); blocks=[]; detected=set()
-    valid_sections=set(SECTION_FIELDS) | {'7D','8D'}
     for sl in prs.slides:
         units=_positioned_units(sl)
         markers=[]
@@ -220,60 +219,108 @@ def _spatial_section_blocks(path,return_detected=False):
                 cols[-1]['markers'].append(m)
                 cols[-1]['cx']=sum(x['cx'] for x in cols[-1]['markers'])/len(cols[-1]['markers'])
 
+        four_cols=sorted({round(m['cx'],2) for m in markers if m['n']==4})
+
         for ci,col in enumerate(cols):
             ms=sorted(col['markers'],key=lambda z:z['cy'])
             next_col_x=min((x['u']['box'][0] for x in cols[ci+1]['markers']),default=float('inf')) if ci+1<len(cols) else float('inf')
             for i,m in enumerate(ms):
                 n=m['n']; mu=m['u']
                 if n<2 or n>6:continue
-                default_sec=str(n)+'D'
-                default_key=SECTION_FIELDS.get(default_sec)
-                if default_key:detected.add(default_key)
+
+                region_sec=str(n)+'D'
+                if n==4 and len(four_cols)>1:
+                    nearest=min(range(len(four_cols)),key=lambda j:abs(four_cols[j]-round(m['cx'],2)))
+                    region_sec='4D' if nearest==0 else '4D_LEAK'
+
+                key=SECTION_FIELDS.get(region_sec)
+                if key:detected.add(key)
+                if region_sec=='4D':
+                    detected.add('cause_4d')
+                elif region_sec=='4D_LEAK':
+                    detected.add('leak_cause')
 
                 top=m['cy']
                 bottom=ms[i+1]['cy'] if i+1<len(ms) else float('inf')
                 mx,my,mw,mh=mu['box']; mright=mx+mw
-
-                region=[]
+                vals=[]
                 for u in units:
                     if u is mu or _d_marker_number(u['text']):continue
-                    ux,uy,uw,uh=u['box']; cx2,cy2=_center_box(u['box'])
-                    if cy2<top or cy2>=bottom:continue
+                    ux,uy,uw,uh=u['box']; _cx,cy=_center_box(u['box'])
+                    if cy<top or cy>=bottom:continue
                     if ux+uw<=mright*1.02 or ux>=next_col_x:continue
-                    region.append((uy,ux,u['order'],u))
-                region.sort(key=lambda z:(z[0],z[1],z[2]))
-
-                local_sec=default_sec
-                emitted_sec=None
-
-                def ensure_section(sec):
-                    nonlocal emitted_sec
-                    if sec!=emitted_sec:
-                        blocks.append(sec)
-                        emitted_sec=sec
-
-                for _uy,_ux,_order,u in region:
                     for raw in u['text'].replace('\r','\n').splitlines():
                         line=_norm_line(raw)
                         if not line or _is_photo_caption(line):continue
-                        sem,rest=_marker(line)
-                        if sem in valid_sections:
-                            # Explicit semantic/D heading wins over a geometrically shifted marker.
-                            local_sec=sem
-                            key=SECTION_FIELDS.get(sem)
-                            if key:detected.add(key)
-                            ensure_section(sem)
-                            if rest:
-                                nested,nested_rest=_marker(rest)
-                                if nested==sem:
-                                    rest=nested_rest
-                                if rest and not _is_photo_caption(rest):
-                                    blocks.append(rest)
-                            continue
+                        vals.append((uy,ux,u['order'],line))
+                vals.sort(key=lambda z:(z[0],z[1],z[2]))
+                blocks.append(region_sec)
+                blocks.extend(v[3] for v in vals)
 
-                        ensure_section(local_sec)
-                        blocks.append(line)
     return (blocks,detected) if return_detected else blocks
+
+def _english_fields_from_spatial(blocks):
+    """Build English 2D~6D fields from D geometry without cross-D semantic reassignment."""
+    out={k:'' for k in ('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d')}
+    buckets={k:[] for k in out}
+    detected=set()
+    current=None
+    sub4='cause_4d'
+    direct={'2D':'problem','3D':'temporary_action','5D':'action_5d','6D':'verification_6d'}
+
+    for block in blocks or []:
+        for raw in str(block or '').replace('\r','\n').splitlines():
+            line=_norm_line(raw)
+            if not line or _is_photo_caption(line):continue
+
+            # These tokens are inserted by the geometry mapper itself.
+            if line in ('2D','3D','4D','4D_LEAK','5D','6D'):
+                current=line
+                if current in direct:
+                    detected.add(direct[current])
+                elif current=='4D':
+                    sub4='cause_4d'; detected.add('cause_4d')
+                else:
+                    sub4='leak_cause'; detected.add('leak_cause')
+                continue
+
+            if current in direct:
+                key=direct[current]
+                sec,rest=_marker(line)
+                # Remove only the heading that agrees with the current geometric D.
+                # A mismatched heading remains literal content; it never moves sections.
+                if sec==current:
+                    if rest:buckets[key].append(rest)
+                else:
+                    buckets[key].append(line)
+                continue
+
+            if current in ('4D','4D_LEAK'):
+                sec,rest=_marker(line)
+                if sec=='4D':
+                    sub4='cause_4d'; detected.add(sub4)
+                    if rest:buckets[sub4].append(rest)
+                    continue
+                if sec=='4D_LEAK':
+                    sub4='leak_cause'; detected.add(sub4)
+                    if rest:buckets[sub4].append(rest)
+                    continue
+                if sec=='4D_SYSTEM':
+                    sub4='system_cause'; detected.add(sub4)
+                    if rest:buckets[sub4].append(rest)
+                    continue
+                # Other semantic headings (3D/5D/6D etc.) do NOT reassign content.
+                buckets[sub4].append(line)
+
+    for key,vals in buckets.items():
+        seen=set(); cleaned=[]
+        for x in vals:
+            q=re.sub(r'\s+',' ',x).strip().casefold()
+            dq=re.sub(r'^[\s•·▪◦\-–—]+','',q)
+            if not dq or dq in seen:continue
+            seen.add(dq); cleaned.append(x)
+        out[key]='\n'.join(cleaned).strip()
+    return out,detected
 
 def extract_sections_from_blocks(blocks):
     """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
@@ -388,7 +435,7 @@ def parse_year_month_extended(text):
     return '',''
 v310.base.parse_year_month=parse_year_month_extended
 
-def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
+def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None,allow_label_fallback=True):
     d=dict(d or {})
     if section_blocks is not None:
         rebuilt=extract_sections_from_blocks(section_blocks)
@@ -404,7 +451,7 @@ def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
         d['occurrence_date']=occ
     for key,labels in FIELD_LABELS.items():
         current=str(d.get(key) or '').strip()
-        if not current:current=_label_extract(source,labels)
+        if not current and allow_label_fallback:current=_label_extract(source,labels)
         if current and looks_english(current):
             d[key+'_en_original']=current
             d[key]=translate_offline(current)
@@ -419,71 +466,46 @@ def _ppt_text(path):
     try:return '\n'.join(_shape_blocks(path))
     except Exception:return ''
 
-def _document_looks_english(raw):
-    """Gate the English parser so the proven Korean extraction path is never rewritten."""
+def english_content_ratio(raw):
+    """Percentage of Latin letters among Latin + Hangul letters in the PPT text."""
     s=str(raw or '')
-    a=len(re.findall(r'[A-Za-z]',s))
-    k=len(re.findall(r'[가-힣]',s))
-    words=len(re.findall(r'[A-Za-z]{2,}',s))
-    return a>=40 and words>=8 and a>max(20,int(k*1.4))
+    en=len(re.findall(r'[A-Za-z]',s))
+    ko=len(re.findall(r'[가-힣]',s))
+    total=en+ko
+    return (100.0*en/total) if total else 0.0
 
-def _semantic_detected_keys(blocks):
-    """Fields whose section heading is explicitly present in source order."""
-    found=set()
-    for block in blocks or []:
-        for raw in str(block or '').replace('\r','\n').splitlines():
-            line=_norm_line(raw)
-            if not line:continue
-            sec,_rest=_marker(line)
-            key=SECTION_FIELDS.get(sec)
-            if key:found.add(key)
-    return found
-
-def _english_section_fields(blocks,spatial):
-    """Prefer explicit English headings; use geometry only to fill truly missing fields.
-
-    This keeps 4D Root Cause / Escape Cause / System Cause tied to their semantic
-    headings instead of allowing a shifted D marker to move 4D content into 3D/5D.
-    """
-    semantic=extract_sections_from_blocks(blocks)
-    detected=_semantic_detected_keys(blocks)
-    spatial_fields=extract_sections_from_blocks(spatial) if spatial else {}
-    out={}
-
-    for key in ('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d'):
-        sem=str(semantic.get(key) or '').strip()
-        geo=str(spatial_fields.get(key) or '').strip()
-
-        # If a real heading was seen, semantic source-order owns that field even
-        # when the body is intentionally blank. Geometry must not steal its neighbour.
-        if key in detected:
-            out[key]=sem
-        elif sem:
-            out[key]=sem
-        elif geo:
-            out[key]=geo
-    return out
+def _document_looks_english(raw):
+    # User rule: English logic only when English content is at least 80%.
+    return english_content_ratio(raw)>=80.0
 
 def extract(path):
-    # Always start from the previously validated extraction chain. It owns Korean
-    # 8D parsing, metadata, images, and the original 4D occurrence/leak/system logic.
+    # Always start from the validated legacy/Korean chain for metadata, images and fallbacks.
     d=_original(path)
     try:blocks=_shape_blocks(path)
     except Exception:blocks=[]
     raw='\n'.join(blocks)
+    ratio=english_content_ratio(raw)
+    d['_english_ratio']=ratio
+    d['_english_mode']=ratio>=80.0
 
-    # Critical isolation: English work must not alter the existing Korean parser.
-    if not _document_looks_english(raw):
+    # Under 80% English: preserve the existing Korean extraction exactly.
+    if not d['_english_mode']:
         return d
 
-    try:spatial,_detected=_spatial_section_blocks(path,True)
+    # 80%+ English: D-circle geometry owns section boundaries. Text headings can
+    # split only the 4D sub-causes and can never move content across D sections.
+    try:spatial,_geo_detected=_spatial_section_blocks(path,True)
     except Exception:spatial=[]
+    if spatial:
+        rebuilt,detected=_english_fields_from_spatial(spatial)
+        for key in detected:
+            d[key]=rebuilt.get(key,'')
 
-    rebuilt=_english_section_fields(blocks,spatial)
-    for key,val in rebuilt.items():
-        d[key]=val
+    result=enhance_dict(d,raw,allow_label_fallback=False)
+    result['_english_ratio']=ratio
+    result['_english_mode']=True
+    return result
 
-    return enhance_dict(d,raw)
 v310.base.extract=extract
 
 def apply_english_choice(d,use_original):
@@ -516,7 +538,7 @@ def translation_coverage(d):
 
 def _ask_translation_choice(self,d,path,action='preview'):
     """Ask separately for preview or update; button labels describe the exact action."""
-    if not d.get('_english_detected'):
+    if not d.get('_english_mode'):
         return False
     pct=translation_coverage(d)
     is_update=(action=='update')
@@ -615,7 +637,7 @@ def _preview_with_translation_choice(self):
         self.log.delete('1.0','end')
         self.log.insert('end','[ 8D 추출 완료 ]\n'+'─'*72+'\n')
         self.log.insert('end',f'원본 파일       : {Path(path).name}\n')
-        if d.get('_english_detected'):
+        if d.get('_english_mode'):
             pct=getattr(self,'_english_translation_percent',translation_coverage(d))
             mode='영문 원문' if use_original else '한글 번역'
             self.log.insert('end',f'미리보기 언어   : {mode} · 자동 한글 번역률 약 {pct}%\n')
@@ -634,7 +656,7 @@ def _run_with_translation_confirmation(self):
 
     probe=extract(path)
     use_original=None
-    if probe.get('_english_detected'):
+    if probe.get('_english_mode'):
         # Always ask again for update, even if the user already previewed the same file.
         use_original=_ask_translation_choice(self,probe,path,'update')
         if use_original is None:
