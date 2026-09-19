@@ -1,6 +1,7 @@
 """Final output type selector: full updated files or update-only reduced files."""
 import copy
 import re
+from collections import Counter
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -40,15 +41,26 @@ def _remove_slide(prs,index):
 
 
 def _ppt_update_only(source,saved):
+    """Keep only genuinely new/changed slides, regardless of slide reordering.
+
+    Comparing source/destination by index makes every old detail page look changed
+    when a new summary/detail page is inserted before it. Match slide signatures as
+    a multiset instead, so unchanged pages are discarded even if their index moved.
+    """
     src=Presentation(source); dst=Presentation(saved)
+    source_counts=Counter(_slide_signature(sl) for sl in src.slides)
     keep=[]
     for i,slide in enumerate(dst.slides):
-        if i>=len(src.slides) or _slide_signature(slide)!=_slide_signature(src.slides[i]):
+        sig=_slide_signature(slide)
+        if source_counts.get(sig,0)>0:
+            source_counts[sig]-=1
+        else:
             keep.append(i)
     if not keep:
         return None,0
+    keep_set=set(keep)
     for i in range(len(dst.slides)-1,-1,-1):
-        if i not in keep:_remove_slide(dst,i)
+        if i not in keep_set:_remove_slide(dst,i)
     target=Path(saved).with_name(Path(saved).stem+'_업데이트사항만'+Path(saved).suffix)
     dst.save(target)
     return target,len(keep)
