@@ -127,6 +127,10 @@ def project_match_in_8d_filename(ppt8d,selected_value):
             return stem[m.start():m.end()]
     return ''
 
+def project_confirmation_value(extracted_value,filename_match):
+    """Display one 8D project value: extracted metadata first, filename match as fallback."""
+    return N(extracted_value) or N(filename_match) or '(과제명 추출 못함)'
+
 def customer_project_mismatch(extracted_d,selected_value):
     extracted=canonical_customer_project_from_8d(extracted_d)
     selected=N(selected_value)
@@ -1032,10 +1036,10 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 mismatch,extracted_task,entered_task=customer_project_mismatch(d,selected_task)
                 filename_match=project_match_in_8d_filename(ppt8d,selected_task)
                 if mismatch:
+                    display_task=project_confirmation_value(extracted_task,filename_match)
                     msg=(
                         '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
-                        f'8D 내용 추출값 : {extracted_task or "(과제명 추출 못함)"}\n'
-                        f'8D 파일명 일치 : {filename_match or "(입력값과 동일 문구 없음)"}\n'
+                        f'8D 내용 추출값 : {display_task}\n'
                         f'입력/선택값    : {entered_task}\n\n'
                         '입력/선택한 고객사/과제명으로 계속 진행할까요?'
                     )
