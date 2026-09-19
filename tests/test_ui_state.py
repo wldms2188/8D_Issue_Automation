@@ -39,6 +39,46 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(ent.weekly_recommended_status({'cause_4d':'','action_5d':'','verification_6d':''}),'원인/개선 미확인')
         self.assertEqual(ent.weekly_status_from_choice({'verification_6d':'DV abnormal'},'close'),'개선 완료')
 
+    def test_weekly_english_completion_variants(self):
+        completed=[
+            'Verification completed.',
+            'Validation is complete.',
+            'All tests passed.',
+            'No abnormality observed after verification.',
+            'No abnomality detected.',
+            'No abnormalities found.',
+            'No recurrence observed.',
+            'Result is within specification.',
+            'Effectiveness confirmed.',
+        ]
+        for text in completed:
+            state,_=ent.weekly_verification_state(text)
+            self.assertEqual(state,'complete',msg=text)
+            self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 완료',msg=text)
+
+    def test_weekly_english_pending_variants(self):
+        pending=[
+            'Verification in progress.',
+            'Validation pending.',
+            'Verification is scheduled.',
+            'To be completed after DV.',
+            'Not completed yet.',
+            'Under validation.',
+            'Monitoring ongoing.',
+            'Awaiting verification result.',
+            'Expected to be completed next week.',
+        ]
+        for text in pending:
+            state,_=ent.weekly_verification_state(text)
+            self.assertEqual(state,'pending',msg=text)
+            self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 검증중',msg=text)
+
+    def test_weekly_failed_result_beats_completed_word(self):
+        text='Verification completed, but final result failed / abnormal.'
+        state,_=ent.weekly_verification_state(text)
+        self.assertEqual(state,'abnormal')
+        self.assertEqual(ent.weekly_recommended_status({'verification_6d':text}),'개선 검증중')
+
     def test_weekly_popup_only_for_final_open_issue_db(self):
         self.assertTrue(ent.weekly_status_confirmation_required('open'))
         self.assertFalse(ent.weekly_status_confirmation_required('close'))
