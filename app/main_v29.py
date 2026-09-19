@@ -19,12 +19,24 @@ from PIL import Image as PILImage
 import main_v28 as base
 
 # ---------- text handling ----------
+_EXCEL_ILLEGAL_CONTROL_RE = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
+
 def v29_one(x, n=None):
-    """Keep meaningful line breaks. Never truncate with an ellipsis."""
+    """Keep meaningful line breaks and remove characters Excel cannot store."""
     s = base.norm(x)
+    # PowerPoint can contain vertical-tab/form-feed control characters (e.g. \x0b)
+    # that openpyxl rejects with IllegalCharacterError. Preserve tabs/newlines but
+    # strip only the XML-forbidden control range.
+    s = _EXCEL_ILLEGAL_CONTROL_RE.sub('', s)
     # Do not collapse newlines. Remove trailing spaces on each line only.
     s = '\n'.join(line.rstrip() for line in s.split('\n'))
     return s.strip()
+
+def _excel_safe_value(value):
+    """Sanitize every string before assigning it to an openpyxl worksheet cell."""
+    if isinstance(value,str):
+        return _EXCEL_ILLEGAL_CONTROL_RE.sub('',value)
+    return value
 
 base.one = v29_one
 
@@ -184,7 +196,7 @@ def v29_add_excel_photo(ws, row, blob):
 def v29_write_row(ws, r, d, g):
     y, m = base.parse_year_month(d.get('occurrence_date'))
     st = base.status(d)
-    cause = '\n'.join(x for x in [d.get('cause_4d'), d.get('leak_cause'), d.get('system_cause')] if v29_one(x))
+    cause = '\n'.join(v29_one(x) for x in [d.get('cause_4d'), d.get('leak_cause'), d.get('system_cause')] if v29_one(x))
     vals = {
         2: datetime.date.today(),
         3: g.get('plm_no', ''),
@@ -205,7 +217,7 @@ def v29_write_row(ws, r, d, g):
         18: st,
     }
     for c, v in vals.items():
-        ws.cell(r, c).value = v
+        ws.cell(r, c).value = _excel_safe_value(v)
     v29_add_excel_photo(ws, r, base.representative_image(d))
     return st
 
