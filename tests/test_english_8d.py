@@ -214,6 +214,28 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Inspection gap',x['cause_4d'])
    self.assertIn('Inspection gap',x['leak_cause'])
 
+ def test_other_4d_table_items_append_under_occurrence_cause(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'extra_4d.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   tb=sl.shapes.add_table(5,2,Inches(0.8),Inches(0.6),Inches(7.5),Inches(5.0)).table
+   rows=[
+    ('Root Cause','Guide interference'),
+    ('Why Made','Design review gap'),
+    ('Escape Cause','Inspection control missing'),
+    ('System Cause','Control plan not linked'),
+    ('Corrective Action','Guide revised'),
+   ]
+   for r,(a,b) in enumerate(rows):
+    tb.cell(r,0).text=a; tb.cell(r,1).text=b
+   prs.save(p)
+   fields,detected=e._table_semantic_fields(p)
+   self.assertIn('Guide interference',fields['cause_4d'])
+   self.assertIn('- Why Made\nDesign review gap',fields['cause_4d'])
+   self.assertIn('- System Cause\nControl plan not linked',fields['cause_4d'])
+   self.assertIn('Inspection control missing',fields['leak_cause'])
+   self.assertIn('Guide revised',fields['action_5d'])
+
  def test_translation_coverage_reports_partial_dictionary_conversion(self):
   x=e.enhance_dict({'problem':'Crack occurred after repeated vehicle evaluation.'})
   pct=e.translation_coverage(x)
