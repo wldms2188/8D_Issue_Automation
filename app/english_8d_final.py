@@ -457,7 +457,7 @@ def apply_english_choice(d,use_original):
 def _count_translatable_english_words(text):
     """Count ordinary English words while ignoring technical IDs/model tokens."""
     s=str(text or '')
-    s=re.sub(r'\b[A-Z0-9][A-Z0-9_.+\\-/()]*\b',' ',s)
+    s=re.sub(r'\\b[A-Z0-9][A-Z0-9_.+\\-/()]*\\b',' ',s)
     return len(re.findall(r'[A-Za-z]{2,}',s))
 
 def translation_coverage(d):
