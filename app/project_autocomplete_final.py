@@ -64,7 +64,11 @@ def _project_entry(self,parent,label,key,hint):
     def choose(*_):
         if not listbox:return
         sel=listbox.curselection()
-        if sel:self.vars[key].set(listbox.get(sel[0])); close(); entry.focus_set()
+        if sel:
+            self.vars[key].set(listbox.get(sel[0]))
+            close()
+            try: entry.icursor('end')
+            except Exception: pass
     def show(*_):
         nonlocal popup,listbox
         close(); vals=canonical_candidates(self.vars[key].get(),self.vars["team"].get().strip())
@@ -75,7 +79,10 @@ def _project_entry(self,parent,label,key,hint):
         listbox.pack(fill="both",expand=True)
         for x0 in vals:listbox.insert("end",x0)
         listbox.bind("<ButtonRelease-1>",choose); listbox.bind("<Return>",choose)
-    entry.bind("<FocusIn>",show,add="+"); entry.bind("<KeyRelease>",lambda e: None if e.keysym in ("Up","Down","Return","Escape","Tab") else show(),add="+")
+    # Open suggestions on an intentional click or typing.  FocusIn used to reopen
+    # the popup immediately after a user selected an item.
+    entry.bind("<Button-1>",lambda _e:self.after_idle(show),add="+")
+    entry.bind("<KeyRelease>",lambda e: None if e.keysym in ("Up","Down","Return","Escape","Tab") else show(),add="+")
     entry.bind("<Escape>",close,add="+")
     tk.Label(parent,text="담당팀 연계 과제 후보 · 입력 시 유사 과제 자동완성",bg="white",fg="#98A3AD",font=("Malgun Gothic",7)).pack(anchor="e")
 
