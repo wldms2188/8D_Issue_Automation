@@ -41,6 +41,9 @@ SECTION_FIELDS={
 }
 # Ordered from specific to broad. 7D/8D intentionally have no destination field.
 SEMANTIC_MARKERS=(
+ ('1D',('team build','team building','team formation','team composition','team members','team member','basic information','general information','팀 구성')),
+ ('7D',('customer response','customer action','horizontal deployment','read across','lessons learned','prevent recurrence','preventive action','prevention action','standardization','고객 대응','고객대응','수평 전개','수평전개','재발 방지','재발방지')),
+ ('8D',('request items','request item','customer request','requests','request','follow up','follow-up','closure','close out','요청 사항','요청사항','후속 조치','후속조치')),
  ('4D_LEAK',('escape root cause','escape cause','non detection cause','non-detection cause','detection cause','유출 원인','유출원인')),
  ('4D_SYSTEM',('systemic cause','system cause','시스템 원인','시스템원인')),
  ('3D',('interim containment action','interim containment','containment action','containment actions','containment','temporary action','temporary actions','immediate action','immediate actions','short term action','short-term action','short term corrective action','interim action','interim actions','protective action','sorting action','customer protection','임시 조치','임시조치','임시 대책','임시대책')),
@@ -144,13 +147,38 @@ def _box(sh):
     try:return (float(sh.left),float(sh.top),float(sh.width),float(sh.height))
     except Exception:return (0,0,0,0)
 
-def _center(sh):
-    x,y,w,h=_box(sh);return x+w/2,y+h/2
+def _center_box(box):
+    x,y,w,h=box
+    return x+w/2,y+h/2
 
 def _shape_text(sh):
     if getattr(sh,'has_table',False):
         return '\n'.join(_norm_line(cell.text) for row in sh.table.rows for cell in row.cells if _norm_line(cell.text))
     return str(getattr(sh,'text','') or '').strip()
+
+def _positioned_units(sl):
+    """Yield text at cell/shape granularity so one large table cannot bleed across D regions."""
+    out=[]
+    for order,sh in enumerate(sl.shapes):
+        sx,sy,sw,shh=_box(sh)
+        if getattr(sh,'has_table',False):
+            tb=sh.table
+            col_lefts=[]; x=sx
+            for col in tb.columns:
+                col_lefts.append(x); x+=float(col.width)
+            row_tops=[]; y=sy
+            for row in tb.rows:
+                row_tops.append(y); y+=float(row.height)
+            for r,row in enumerate(tb.rows):
+                for cc,cell in enumerate(row.cells):
+                    t=str(cell.text or '').strip()
+                    if not t:continue
+                    box=(col_lefts[cc],row_tops[r],float(tb.columns[cc].width),float(row.height))
+                    out.append({'text':t,'box':box,'order':order*10000+r*100+cc,'kind':'cell'})
+        else:
+            t=str(getattr(sh,'text','') or '').strip()
+            if t:out.append({'text':t,'box':(sx,sy,sw,shh),'order':order*10000,'kind':'shape'})
+    return out
 
 def _d_marker_number(text):
     s=_norm_line(text)
@@ -160,56 +188,60 @@ def _d_marker_number(text):
     return circ.get(s,int(re.search(r'[1-8]',s).group()) if re.search(r'[1-8]',s) else None)
 
 def _semantic_section_for_text(text):
-    hits=[]
-    low=_norm_line(text).casefold()
-    for sec,labels in SEMANTIC_MARKERS:
-        for lab in labels:
-            if lab.casefold() in low:
-                hits.append((len(lab),sec))
-    return max(hits)[1] if hits else None
+    sec,_=_marker(text)
+    return sec
 
-def _spatial_section_blocks(path):
-    """Map content by the physical D-marker position, independent of English heading wording."""
-    prs=Presentation(path); blocks=[]
+def _spatial_section_blocks(path,return_detected=False):
+    """Map 2D~6D from D-marker geometry at cell/shape level.
+
+    English headings are evaluated in parallel inside each spatial region. Unknown
+    headings are still retained by geometry; known 7D/8D headings stop spillover.
+    """
+    prs=Presentation(path); blocks=[]; detected=set()
     for sl in prs.slides:
-        shapes=list(sl.shapes); markers=[]
-        for sh in shapes:
-            n=_d_marker_number(_shape_text(sh))
-            if n:markers.append((n,sh))
+        units=_positioned_units(sl)
+        markers=[]
+        for u in units:
+            n=_d_marker_number(u['text'])
+            if n:markers.append((n,u))
         if not markers:continue
-        # Most 8D forms use two columns. A D marker starts a region that extends to
-        # the next D marker below it in the same column; the opposite column is independent.
-        xs=sorted(_center(sh)[0] for _,sh in markers)
-        mid=(min(xs)+max(xs))/2 if len(xs)>1 else None
+
+        xs=sorted(_center_box(u['box'])[0] for _,u in markers)
+        # Two-column 8D sheets are common. Use marker positions, not table centers.
+        mid=(min(xs)+max(xs))/2 if len(xs)>1 and (max(xs)-min(xs))>1 else None
         grouped={}
-        for n,sh in markers:
-            cx,cy=_center(sh); col=0 if mid is None or cx<=mid else 1
-            grouped.setdefault(col,[]).append((cy,n,sh))
+        for n,u in markers:
+            cx,cy=_center_box(u['box']); col=0 if mid is None or cx<=mid else 1
+            grouped.setdefault(col,[]).append((cy,n,u))
         for col,ms in grouped.items():
-            ms.sort()
-            for i,(cy,n,msh) in enumerate(ms):
+            ms.sort(key=lambda z:z[0])
+            for i,(cy,n,mu) in enumerate(ms):
                 if n<2 or n>6:continue
+                key=SECTION_FIELDS.get(str(n)+'D')
+                if key:detected.add(key)
                 top=cy
                 bottom=ms[i+1][0] if i+1<len(ms) else float('inf')
-                mx,my,mw,mh=_box(msh); mright=mx+mw
+                mx,my,mw,mh=mu['box']; mright=mx+mw
                 vals=[]
-                for order,sh in enumerate(shapes):
-                    if sh is msh:continue
-                    sx,sy,sw,shh=_box(sh); cx2,cy2=_center(sh)
-                    scol=0 if mid is None or cx2<=mid else 1
-                    if scol!=col or cy2<top or cy2>=bottom:continue
-                    # Ignore the narrow vertical D-label/section-title band itself.
-                    if sx+sw<=mright*1.05:continue
-                    t=_shape_text(sh)
-                    if not t:continue
-                    for line in t.replace('\r','\n').splitlines():
+                for u in units:
+                    if u is mu or _d_marker_number(u['text']):continue
+                    ux,uy,uw,uh=u['box']; cx2,cy2=_center_box(u['box'])
+                    ucol=0 if mid is None or cx2<=mid else 1
+                    if ucol!=col or cy2<top or cy2>=bottom:continue
+                    # The narrow vertical label band sits left of the actual content area.
+                    if ux+uw<=mright*1.05:continue
+                    for line in u['text'].replace('\r','\n').splitlines():
                         line=_norm_line(line)
-                        if line and not _is_photo_caption(line):vals.append((sy,sx,order,line))
+                        if not line or _is_photo_caption(line):continue
+                        sem,_rest=_marker(line)
+                        # A known heading from another major D section is a semantic guard.
+                        if sem in ('1D','2D','3D','4D','5D','6D','7D','8D') and sem!=str(n)+'D':
+                            continue
+                        vals.append((uy,ux,u['order'],line))
                 vals.sort(key=lambda z:(z[0],z[1],z[2]))
-                if vals:
-                    blocks.append(str(n)+'D')
-                    blocks.extend(v[3] for v in vals)
-    return blocks
+                blocks.append(str(n)+'D')
+                blocks.extend(v[3] for v in vals)
+    return (blocks,detected) if return_detected else blocks
 
 def extract_sections_from_blocks(blocks):
     """Collect every line under 2D~6D. Unsplit 4D defaults to occurrence cause."""
@@ -268,13 +300,15 @@ def _shape_blocks(path):
         blocks.extend(x[3] for x in items)
     return blocks
 
-def enhance_dict(d,raw_text='',section_blocks=None):
+def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
     d=dict(d or {})
     if section_blocks is not None:
         rebuilt=extract_sections_from_blocks(section_blocks)
         # Region-based extraction is authoritative when a section was found.
+        authoritative_keys=set(authoritative_keys or ())
         for key,val in rebuilt.items():
-            if val:d[key]=val
+            if key in authoritative_keys or val:
+                d[key]=val
     source='\n'.join(str(d.get(k) or '') for k in FIELD_LABELS)
     source=(source+'\n'+str(raw_text or '')).strip()
     for key,labels in FIELD_LABELS.items():
@@ -298,12 +332,13 @@ def extract(path):
     d=_original(path)
     try:blocks=_shape_blocks(path)
     except Exception:blocks=[]
-    try:spatial=_spatial_section_blocks(path)
-    except Exception:spatial=[]
-    section_blocks=[]
-    if spatial:section_blocks.extend(spatial)
-    if blocks:section_blocks.extend(blocks)
-    return enhance_dict(d,'\n'.join(blocks),section_blocks)
+    try:spatial,detected=_spatial_section_blocks(path,True)
+    except Exception:spatial,detected=[],set()
+    # When D markers are available, geometry supplies the region while English
+    # headings validate/split it. Do not append the whole slide text again because
+    # a multi-section table would re-introduce 1D/7D/8D content into 2D/6D.
+    section_blocks=spatial if spatial else blocks
+    return enhance_dict(d,'\n'.join(blocks),section_blocks,detected if spatial else None)
 v310.base.extract=extract
 
 def apply_english_choice(d,use_original):
