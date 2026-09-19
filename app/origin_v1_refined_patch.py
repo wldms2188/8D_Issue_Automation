@@ -134,6 +134,50 @@ def _hits_for_text(text):
             evidence[cat]=hits
     return evidence
 
+def _occurrence_site_prior(d):
+    """Return a weak prior from occurrence site; never override a clear 4D cause."""
+    site=_plain((d or {}).get('_origin_occurrence_site') or (d or {}).get('occurrence_site'))
+    compact=_norm(site)
+    if not site:
+        return None,None
+
+    part_sites=(
+        '부품 생산','부품생산','component production','part production',
+        'component manufacturing','part manufacturing','supplier production'
+    )
+    product_sites=(
+        '제품 생산','제품생산','product production','product manufacturing',
+        'pack production','pack manufacturing','assembly production'
+    )
+    if any(_norm(x) in compact for x in part_sites):
+        return '부품',f'발생처가 "{site}"으로 선택되어 부품 기인 가능성을 보조 근거로 반영했습니다.'
+    if any(_norm(x) in compact for x in product_sites):
+        return '공정',f'발생처가 "{site}"으로 선택되어 공정 기인 가능성을 보조 근거로 반영했습니다.'
+    return None,None
+
+def _decide_with_site_prior(evidence,text,d):
+    """Use occurrence-site only as a tie-break/support signal for ambiguous evidence."""
+    if not evidence:
+        prior,reason=_occurrence_site_prior(d)
+        return (prior,reason) if prior else (None,None)
+
+    if len(evidence)==1:
+        return _decide_from_evidence(evidence,text)
+
+    rec,reason=_decide_from_evidence(evidence,text)
+    if rec!='논의 중':
+        return rec,reason
+
+    prior,site_reason=_occurrence_site_prior(d)
+    if prior and prior in evidence:
+        hits=evidence.get(prior) or []
+        return prior,(
+            f'4D 원인 내용에 여러 범주의 단서가 있으나 '
+            f'{", ".join(hits[:3]) or prior} 표현과 발생처 정보가 함께 {prior} 방향을 지지하여 '
+            f'{prior}을(를) 우선 추천합니다. {site_reason}'
+        )
+    return rec,reason
+
 def _decide_from_evidence(evidence,text):
     if not evidence:
         return None,None
@@ -165,11 +209,14 @@ def recommend_origin(d):
     leak=str(d.get('leak_cause') or '').strip()
     system=str(d.get('system_cause') or '').strip()
     if not (occurrence or leak or system):
+        prior,site_reason=_occurrence_site_prior(d)
+        if prior:
+            return prior,site_reason+' 4D 원인 내용이 없어 발생처 정보만 보조적으로 사용했습니다.'
         return 'TBD','4D 원인 내용이 아직 없어 TBD로 표시합니다.'
 
     primary=_hits_for_text(occurrence)
     if primary:
-        rec,reason=_decide_from_evidence(primary,occurrence)
+        rec,reason=_decide_with_site_prior(primary,occurrence,d)
         if rec:
             return rec,reason
 
@@ -177,9 +224,14 @@ def recommend_origin(d):
     supporting='\n'.join(x for x in (leak,system) if x)
     support=_hits_for_text(supporting)
     if support:
-        rec,reason=_decide_from_evidence(support,supporting)
+        rec,reason=_decide_with_site_prior(support,supporting,d)
         if rec:
             return rec,reason
+
+    # Occurrence site is a weak final fallback, not a replacement for explicit cause text.
+    prior,site_reason=_occurrence_site_prior(d)
+    if prior:
+        return prior,site_reason+' 4D 원인 분류 단서가 부족하여 보조적으로 추천합니다.'
 
     return '논의 중','원인 내용은 있으나 부품/설계/공정/기타로 명확히 분류할 근거가 부족합니다.'
 
