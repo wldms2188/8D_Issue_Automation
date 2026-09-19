@@ -1,12 +1,28 @@
 """Enterprise UI v2: balanced focus panels and always-visible workflow progress."""
 import tkinter as tk
 from tkinter import ttk
+from pathlib import Path
 
 import main_enterprise as ent
 import ui_enterprise as ui
 
 base=ent.base
 N=ent.N
+
+def progress_state(status,current=0):
+    s=str(status or '').strip(); low=s.lower(); current=int(current or 0)
+    if 'error' in low or '실패' in s:return current,'오류 발생'
+    if '8d 추출 완료' in low:return max(current,25),'8D 추출 완료'
+    if 'complete' in low or '업데이트 완료' in s:return 100,'업데이트 완료'
+    if '주간' in s or 'weekly' in low or ('ppt' in low and ('업데이트' in s or '저장' in s)):return max(current,85),'주간회의 PPT 업데이트 중'
+    if ('excel' in low and ('업데이트' in s or '저장' in s)) or 'issue db 업데이트' in low:return max(current,70),'Issue DB 업데이트 중'
+    if '이슈기인' in s:return max(current,55),'이슈기인 확인 중'
+    if '현상' in s and ('확인' in s or '선택' in s):return max(current,45),'Issue DB 현상 확인 중'
+    if '매칭' in s or 'match' in low:return max(current,30),'기존 이슈 매칭 확인 중'
+    if '추출' in s or 'analyz' in low:return max(current,15),'8D 내용 추출 중'
+    if 'running' in low:return max(10,current),(s.split('·',1)[-1].strip() if '·' in s else '처리 중')
+    if 'ready' in low:return 0,'실행 대기'
+    return current,(s or '처리 중')
 
 
 class EnterpriseAppV2(ent.EnterpriseApp):
@@ -140,19 +156,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         except Exception:pass
 
     def _sync_progress_from_status(self,*_):
-        s=self.status_var.get().strip(); low=s.lower(); current=int(self.progress_value.get())
-        if 'error' in low or '실패' in s:return self._set_progress(current,'오류 발생')
-        if 'complete' in low or '완료' in s:pct,label=100,'업데이트 완료'
-        elif '주간' in s or 'weekly' in low or ('ppt' in low and ('업데이트' in s or '저장' in s)):pct,label=85,'주간회의 PPT 업데이트 중'
-        elif ('excel' in low and ('업데이트' in s or '저장' in s)) or 'issue db 업데이트' in low:pct,label=70,'Issue DB 업데이트 중'
-        elif '이슈기인' in s:pct,label=55,'이슈기인 확인 중'
-        elif '현상' in s and ('확인' in s or '선택' in s):pct,label=45,'Issue DB 현상 확인 중'
-        elif '매칭' in s or 'match' in low:pct,label=30,'기존 이슈 매칭 확인 중'
-        elif '추출' in s or 'analyz' in low:pct,label=15,'8D 내용 추출 중'
-        elif 'running' in low:pct,label=max(10,current),(s.split('·',1)[-1].strip() if '·' in s else '처리 중')
-        elif 'ready' in low:pct,label=0,'실행 대기'
-        else:pct,label=current,(s or '처리 중')
-        if pct and pct<current:pct=current
+        pct,label=progress_state(self.status_var.get(),self.progress_value.get())
         self._set_progress(pct,label)
 
     def _replace_label_text(self,old,new):
@@ -229,7 +233,15 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         if not g.get('ppt8d','').strip():return ui.warning(self,'입력 확인','8D 원본 PPT를 선택해 주세요.')
         try:
             self.status_var.set('ANALYZING · 8D 내용을 추출하고 있습니다...'); self._set_progress(15,'8D 내용 추출 중')
-            d=base.extract(g['ppt8d']); self.status_var.set('READY · 8D 추출 완료'); self._show_preview_window(d)
+            d=base.extract(g['ppt8d'])
+            self._last_preview_path=g['ppt8d']
+            self.log.delete('1.0','end')
+            self.log.insert('end','[ 8D 추출 완료 ]\n'+'─'*72+'\n')
+            self.log.insert('end',f'원본 파일       : {Path(g["ppt8d"]).name}\n')
+            self.log.insert('end','상태            : 8D 내용 추출 완료 · 미리보기 확인 가능\n')
+            self.log.insert('end','※ 아래 [8D 내용 미리보기] 창에서 2D~8D 추출 내용을 확인해 주세요.\n')
+            self.status_var.set('READY · 8D 추출 완료')
+            self._show_preview_window(d)
         except Exception as e:self.status_var.set('ERROR · 추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
     def run(self):
