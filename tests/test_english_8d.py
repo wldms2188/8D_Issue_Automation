@@ -232,7 +232,8 @@ class English8DTests(unittest.TestCase):
    fields,detected=e._table_semantic_fields(p)
    self.assertIn('Guide interference',fields['cause_4d'])
    self.assertIn('- Why Made\nDesign review gap',fields['cause_4d'])
-   self.assertIn('- System Cause\nControl plan not linked',fields['cause_4d'])
+   self.assertNotIn('System Cause',fields['cause_4d'])
+   self.assertIn('Control plan not linked',fields['system_cause'])
    self.assertIn('Inspection control missing',fields['leak_cause'])
    self.assertIn('Guide revised',fields['action_5d'])
 
@@ -241,6 +242,35 @@ class English8DTests(unittest.TestCase):
   pct=e.translation_coverage(x)
   self.assertGreater(pct,0)
   self.assertLess(pct,100)
+
+ def test_korean_extra_4d_items_append_but_system_cause_stays_separate(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'korean_extra_4d.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   tb=sl.shapes.add_table(6,2,Inches(0.8),Inches(0.6),Inches(8.0),Inches(5.5)).table
+   rows=[
+    ('발생 원인','가이드 간섭'),
+    ('유출 원인','검사 누락'),
+    ('시스템 원인','관리항목 미연계'),
+    ('재현시험','동일 조건에서 불량 재현'),
+    ('추가 검토','공차 영향성 추가 검토'),
+    ('5D 개선 대책','가이드 수정'),
+   ]
+   for r,(a,b) in enumerate(rows):
+    tb.cell(r,0).text=a; tb.cell(r,1).text=b
+   prs.save(p)
+   extras=e._korean_4d_extra_items(p)
+   joined='\n\n'.join(extras)
+   self.assertIn('- 재현시험\n동일 조건에서 불량 재현',joined)
+   self.assertIn('- 추가 검토\n공차 영향성 추가 검토',joined)
+   self.assertNotIn('시스템 원인',joined)
+   base={'cause_4d':'가이드 간섭','leak_cause':'검사 누락','system_cause':'관리항목 미연계'}
+   out=e._augment_korean_4d_extras(p,base)
+   self.assertTrue(out['cause_4d'].startswith('가이드 간섭'))
+   self.assertIn('- 재현시험\n동일 조건에서 불량 재현',out['cause_4d'])
+   self.assertIn('- 추가 검토\n공차 영향성 추가 검토',out['cause_4d'])
+   self.assertEqual(out['leak_cause'],'검사 누락')
+   self.assertEqual(out['system_cause'],'관리항목 미연계')
 
  def test_korean_document_keeps_existing_extractor_unchanged(self):
   old_original=e._original; old_blocks=e._shape_blocks
