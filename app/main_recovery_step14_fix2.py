@@ -1,10 +1,12 @@
 import datetime
 import hashlib
 import subprocess
+import uuid
 from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.oxml.xmlchemy import OxmlElement
 
 import main_recovery_step14 as s14
 import main_recovery_step13 as s13
@@ -74,6 +76,108 @@ def _matching_native_section(prs,d):
         if sc:scored.append((sc,sec))
     if not scored:return None
     scored.sort(key=lambda x:(x[0],len(x[1]['indices'])),reverse=True); return scored[0][1]
+
+def _section_by_name(prs,name):
+    target=s13._k(name)
+    if not target:return None
+    for sec in _native_sections(prs):
+        if s13._k(sec.get('name'))==target:
+            return sec
+    return None
+
+def section_resolution(prs,d):
+    """Resolve exact project section first; otherwise return a safe user-confirmable fallback."""
+    exact=_matching_native_section(prs,d)
+    if exact:
+        return {'mode':'exact','name':N(exact.get('name')),'reason':'고객사_과제명 또는 과제명 기준으로 일치하는 구역을 찾았습니다.','section':exact}
+
+    full,task,customer=_project_parts(d)
+    candidates=[]
+    sections=_native_sections(prs)
+
+    # First fallback: same customer is explicitly present in the native section name.
+    for sec in sections:
+        q=s13._k(sec.get('name'))
+        if customer and customer in q:
+            candidates.append((240,sec,'동일 고객사명이 포함된 구역이 확인되었습니다.'))
+
+    # Second fallback: task/customer text is actually present inside detail pages of a section.
+    for sec in sections:
+        texts=[]
+        for i in sec.get('indices',[]):
+            if 0<=i<len(prs.slides) and _is_detail_like(prs.slides[i]):
+                texts.append(s13._k(s13._slide_text(prs.slides[i])))
+        joined=' '.join(texts)
+        if not joined:continue
+        if task and task in joined:
+            candidates.append((220,sec,'동일 과제명 내용이 포함된 상세 구역이 확인되었습니다.'))
+        elif customer and customer in joined:
+            candidates.append((200,sec,'동일 고객사 내용이 포함된 상세 구역이 확인되었습니다.'))
+
+    if candidates:
+        candidates.sort(key=lambda x:(x[0],len(x[1].get('indices',[]))),reverse=True)
+        score,sec,reason=candidates[0]
+        return {'mode':'suggest','name':N(sec.get('name')),'reason':reason,'section':sec}
+
+    # No native section candidate: detect a nearby detail page by task/customer text only.
+    summaries=_summary_indices(prs)
+    nearby=[]
+    for i,sl in enumerate(prs.slides):
+        if i in summaries or not _is_detail_like(sl):continue
+        q=s13._k(s13._slide_text(sl))
+        if task and task in q:
+            nearby.append((220,i,'동일 과제명 내용이 포함된 상세페이지가 확인되었습니다.'))
+        elif customer and customer in q:
+            nearby.append((190,i,'동일 고객사 내용이 포함된 상세페이지가 확인되었습니다.'))
+    if nearby:
+        nearby.sort(reverse=True)
+        score,i,reason=nearby[0]
+        return {'mode':'suggest_nearby','name':f'상세 page {i+1} 주변','reason':reason,'section':None,'insert_after':i+1}
+
+    return {'mode':'new','name':N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제','reason':'일치하거나 확인 가능한 기존 구역을 찾지 못했습니다. 신규 구역을 생성합니다.','section':None}
+
+def _selected_section(prs,d,g):
+    if str(g.get('_weekly_create_new_section') or '').lower() in ('1','true','yes'):
+        return None
+    name=N(g.get('_weekly_section_override_name'))
+    if name:
+        sec=_section_by_name(prs,name)
+        if sec:return sec
+    return _matching_native_section(prs,d)
+
+def _new_section_name(d):
+    return N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제'
+
+def _create_native_section(prs,name,slide_index):
+    """Create a real PowerPoint native section containing the specified detail slide."""
+    sid=_slide_id_at(prs,slide_index)
+    if sid is None:return None
+    root=prs._element
+    try:
+        lists=root.xpath('./*[local-name()="sectionLst"]')
+    except Exception:
+        lists=[]
+    if lists:
+        section_lst=lists[0]
+    else:
+        section_lst=OxmlElement('p:sectionLst')
+        try:root.insert_element_before(section_lst,'p:sldSz','p:notesSz','p:defaultTextStyle','p:extLst')
+        except Exception:root.append(section_lst)
+
+    base_name=N(name) or '신규 과제'
+    existing={s13._k(x.get('name')) for x in _native_sections(prs)}
+    final_name=base_name
+    n=2
+    while s13._k(final_name) in existing:
+        final_name=f'{base_name} ({n})'; n+=1
+
+    sec=OxmlElement('p:section')
+    sec.set('name',final_name)
+    sec.set('id','{'+str(uuid.uuid4()).upper()+'}')
+    sld_lst=OxmlElement('p:sldIdLst')
+    sld=OxmlElement('p:sldId'); sld.set('id',str(sid))
+    sld_lst.append(sld); sec.append(sld_lst); section_lst.append(sec)
+    return {'name':final_name,'element':sec,'slide_ids':[sid],'indices':[slide_index]}
 
 def _slide_id_at(prs,index):
     sldId=prs.slides._sldIdLst[index]
@@ -156,8 +260,12 @@ def _clear_cloned_issue_content(sl):
                     try:sh.text_frame.clear()
                     except Exception:pass
 
-def _clone_detail_shell(prs,d,insert_at):
-    template_index=_template_detail_index(prs,d); matched_section=_matching_native_section(prs,d); s13._clone_slide_with_rels(prs,template_index); s13._move_last_slide_to(prs,insert_at); sl=prs.slides[insert_at]; _clear_cloned_issue_content(sl); _add_slide_to_native_section(prs,matched_section,insert_at); return sl,template_index,matched_section
+def _clone_detail_shell(prs,d,insert_at,matched_section=None):
+    template_index=_template_detail_index(prs,d)
+    s13._clone_slide_with_rels(prs,template_index); s13._move_last_slide_to(prs,insert_at)
+    sl=prs.slides[insert_at]; _clear_cloned_issue_content(sl)
+    if matched_section:_add_slide_to_native_section(prs,matched_section,insert_at)
+    return sl,template_index,matched_section
 
 def _attachment_key(d):
     raw=(s13._customer_task(d)+'|'+s13._issue_display(d)).encode('utf-8','ignore'); return hashlib.sha1(raw).hexdigest()[:12]
@@ -209,14 +317,58 @@ finally {{
     raise RuntimeError('8D 유첨 페이지 자동 복사 실패: '+last_detail[-800:])
 
 def weekly_fix5(src,out,d,g,mode):
-    prs=Presentation(src); _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode); matched_section=_matching_native_section(prs,d); target=_find_existing_detail(prs,d) if mode=='existing' else None; detail_action='업데이트'
+    prs=Presentation(src)
+    _,_,summary_action=s14._update_summary_by_task(prs,d,g,mode)
+
+    matched_section=_selected_section(prs,d,g)
+    force_new=str(g.get('_weekly_create_new_section') or '').lower() in ('1','true','yes')
+    nearby_after=g.get('_weekly_insert_after_override')
+
+    # Existing issue lookup is constrained by an explicitly chosen native section when possible.
+    target=None
+    if mode=='existing' and not force_new:
+        if matched_section and matched_section.get('indices'):
+            pages=[i for i in matched_section['indices'] if 0<=i<len(prs.slides) and _is_detail_like(prs.slides[i])]
+            issue=s13._k(s13._issue_display(d)); best=None
+            for i in pages:
+                text=s13._slide_text(prs.slides[i]); q=s13._k(text)
+                score=200+s13._detail_structure_score(prs.slides[i])*4
+                if issue and issue in q:score+=150
+                if best is None or score>best[0]:best=(score,i)
+            if best and best[0]>=285:target=best[1]
+        else:
+            target=_find_existing_detail(prs,d)
+
+    detail_action='업데이트'
     if target is None:
-        insert_at=_new_detail_position(prs,d); _,template_index,matched_section=_clone_detail_shell(prs,d,insert_at); target=insert_at; sec_name=N(matched_section.get('name')) if matched_section else '(텍스트 기반 구역)'; detail_action=(f'과제 구역 [{sec_name}] 끝에 상세 페이지 추가 (양식 원본 slide {template_index+1}, 기존 내용 초기화)')
-    s13._update_detail_slide(prs.slides[target],d,g,mode); Path(out).parent.mkdir(parents=True,exist_ok=True)
+        if matched_section and matched_section.get('indices'):
+            insert_at=max(matched_section['indices'])+1
+        elif nearby_after not in (None,''):
+            try:insert_at=max(0,min(len(prs.slides),int(nearby_after)))
+            except Exception:insert_at=len(prs.slides)
+        else:
+            insert_at=len(prs.slides) if force_new else _new_detail_position(prs,d)
+
+        _,template_index,_=_clone_detail_shell(prs,d,insert_at,matched_section)
+        target=insert_at
+
+        if force_new:
+            matched_section=_create_native_section(prs,_new_section_name(d),target)
+            sec_name=N(matched_section.get('name')) if matched_section else '(신규 텍스트 구역)'
+            detail_action=f'신규 과제 구역 [{sec_name}] 생성 후 상세 페이지 추가 (양식 원본 slide {template_index+1})'
+        else:
+            sec_name=N(matched_section.get('name')) if matched_section else '(확인된 상세페이지 주변)'
+            detail_action=f'선택 구역 [{sec_name}]에 상세 페이지 추가 (양식 원본 slide {template_index+1})'
+
+    s13._update_detail_slide(prs.slides[target],d,g,mode)
+    Path(out).parent.mkdir(parents=True,exist_ok=True)
     try:prs.save(out); saved=out
     except PermissionError:
         p=Path(out); saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix)); prs.save(saved)
-    attached=_append_8d_attachments(saved,g.get('ppt8d',''),target,d); sec_name=N(matched_section.get('name')) if matched_section else '텍스트 기반 탐색'; attach_msg=f' / 8D 유첨 {attached}페이지 추가' if attached else ' / 8D 유첨 없음'
+
+    attached=_append_8d_attachments(saved,g.get('ppt8d',''),target,d)
+    sec_name=N(matched_section.get('name')) if matched_section else ('신규 구역' if force_new else '확인된 상세페이지 주변')
+    attach_msg=f' / 8D 유첨 {attached}페이지 추가' if attached else ' / 8D 유첨 없음'
     return ('주간회의 PPT: 요약 '+summary_action+' / 상세 '+detail_action+f' / 배치 구역={sec_name} / 과제명={N(d.get("task_name"))}'+attach_msg,saved)
 
 base.weekly=weekly_fix5
