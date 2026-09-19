@@ -508,40 +508,221 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         except Exception as e: self.status_var.set('ERROR  ·  추출 실패'); ui.error(self,'미리보기 오류',repr(e))
 
     def _confirm_issue_db_status_v1(self,d):
-        """V1-style yes/no confirmation; shown once whenever 5D or 6D exists."""
+        """V1-style custom confirmation window; shown once whenever 5D or 6D exists."""
         if not issue_db_status_confirmation_required(d):
             return 'open'
 
         judged,_reason=legacy.step9._judge_issue_status(d)
         recommended='close' if str(judged).lower()=='close' else 'open'
-        five=N(d.get('action_5d')) or '(5D 내용 없음)'
+        other='open' if recommended=='close' else 'close'
         six=N(d.get('verification_6d')) or '(6D 내용 없음)'
-        reason=issue_db_status_reason(d,recommended)
+        result={'value':None}
 
-        if recommended=='close':
-            prompt=(
-                '5D/6D 내용 기준으로 close를 추천합니다.\n\n'
-                f'판단 이유\n{reason}\n\n'
-                '[5D 개선대책]\n'
-                f'{five}\n\n'
-                '[6D 효과검증]\n'
-                f'{six}\n\n'
-                '이슈 상태를 close로 처리하시겠습니까?\n'
-                '아니오를 선택하면 open으로 처리합니다.'
-            )
-            return 'close' if messagebox.askyesno('Issue DB 상태 확인',prompt,parent=self) else 'open'
+        dlg=tk.Toplevel(self)
+        dlg.withdraw()
+        dlg.title('이슈 상태 확인')
+        dlg.configure(bg='white')
+        dlg.resizable(False,False)
+        dlg.transient(self)
 
-        prompt=(
-            '5D/6D 내용 기준으로 open을 추천합니다.\n\n'
-            f'판단 이유\n{reason}\n\n'
-            '[5D 개선대책]\n'
-            f'{five}\n\n'
-            '[6D 효과검증]\n'
-            f'{six}\n\n'
-            '이슈 상태를 open으로 처리하시겠습니까?\n'
-            '아니오를 선택하면 close로 처리합니다.'
+        head=tk.Frame(dlg,bg=ui.NAVY,height=72)
+        head.pack(fill='x')
+        head.pack_propagate(False)
+        tk.Label(
+            head,text='이슈 상태 확인',
+            bg=ui.NAVY,fg='white',
+            font=('Malgun Gothic',16,'bold')
+        ).pack(side='left',padx=30)
+
+        body=tk.Frame(dlg,bg='white')
+        body.pack(fill='both',expand=True,padx=34,pady=24)
+
+        top=tk.Frame(body,bg='white')
+        top.pack(fill='x',pady=(0,12))
+        tk.Label(
+            top,text='?',width=2,height=1,
+            bg=ui.BLUE,fg='white',
+            font=('Malgun Gothic',17,'bold')
+        ).pack(side='left',anchor='n',padx=(0,18))
+        tk.Label(
+            top,
+            text=f'5D/6D 내용 기준으로 {recommended}로 판단되었습니다.',
+            bg='white',fg=ui.TEXT,
+            font=('Malgun Gothic',12,'bold'),
+            justify='left'
+        ).pack(side='left',anchor='n',pady=4)
+
+        content=tk.Frame(body,bg='white')
+        content.pack(fill='both',expand=True,padx=(58,0))
+
+        tk.Label(
+            content,text='판단 이유(6D 원문)',
+            bg='white',fg=ui.TEXT,
+            font=('Malgun Gothic',10,'bold')
+        ).pack(anchor='w',pady=(0,6))
+
+        tk.Frame(content,bg='#8E9AA5',height=1).pack(fill='x',pady=(0,7))
+
+        six_wrap=tk.Frame(content,bg='white')
+        six_wrap.pack(fill='x')
+        six_box=tk.Text(
+            six_wrap,height=7,wrap='word',
+            bg='white',fg=ui.TEXT,
+            relief='flat',bd=0,
+            font=('Malgun Gothic',10),
+            padx=2,pady=2
         )
-        return 'open' if messagebox.askyesno('Issue DB 상태 확인',prompt,parent=self) else 'close'
+        six_scroll=tk.Scrollbar(six_wrap,command=six_box.yview)
+        six_box.configure(yscrollcommand=six_scroll.set)
+        six_scroll.pack(side='right',fill='y')
+        six_box.pack(side='left',fill='both',expand=True)
+        six_box.insert('1.0',six)
+        six_box.configure(state='disabled')
+
+        tk.Frame(content,bg='#8E9AA5',height=1).pack(fill='x',pady=(7,12))
+
+        def show_full_preview():
+            preview=tk.Toplevel(dlg)
+            preview.withdraw()
+            preview.title('8D 전체내용 확인')
+            preview.configure(bg='white')
+            preview.resizable(True,True)
+            preview.transient(dlg)
+
+            ph=tk.Frame(preview,bg=ui.NAVY,height=60)
+            ph.pack(fill='x')
+            ph.pack_propagate(False)
+            tk.Label(
+                ph,text='8D 전체내용 확인',
+                bg=ui.NAVY,fg='white',
+                font=('Malgun Gothic',12,'bold')
+            ).pack(side='left',padx=22)
+
+            pb=tk.Frame(preview,bg='white')
+            pb.pack(fill='both',expand=True,padx=22,pady=18)
+
+            wrap=tk.Frame(pb,bg='white')
+            wrap.pack(fill='both',expand=True)
+            box=tk.Text(
+                wrap,wrap='word',
+                bg='#F7F9FB',fg=ui.TEXT,
+                relief='flat',
+                highlightthickness=1,
+                highlightbackground=ui.BORDER,
+                font=('Malgun Gothic',9),
+                padx=12,pady=10
+            )
+            sb=tk.Scrollbar(wrap,command=box.yview)
+            box.configure(yscrollcommand=sb.set)
+            sb.pack(side='right',fill='y')
+            box.pack(side='left',fill='both',expand=True)
+
+            labels=[
+                ('이슈명','issue_name'),
+                ('고객사','customer'),
+                ('고객사/과제명','task_name'),
+                ('발생일자','occurrence_date'),
+                ('2D 현상','problem'),
+                ('3D 임시조치','temporary_action'),
+                ('4D 발생원인','cause_4d'),
+                ('4D 유출원인','leak_cause'),
+                ('4D 시스템원인','system_cause'),
+                ('5D 개선대책','action_5d'),
+                ('6D 효과검증','verification_6d'),
+            ]
+            box.insert('end','[ 8D 추출 전체내용 ]\n'+'─'*70+'\n')
+            for label,key in labels:
+                box.insert('end',f'\n{label}\n')
+                box.insert('end',f'{N(d.get(key)) or "-"}\n')
+            box.configure(state='disabled')
+
+            def close_preview():
+                try:preview.grab_release()
+                except Exception:pass
+                preview.destroy()
+                try:
+                    dlg.grab_set()
+                    dlg.focus_force()
+                except Exception:
+                    pass
+
+            pf=tk.Frame(preview,bg='#F6F8FA',height=62)
+            pf.pack(fill='x')
+            pf.pack_propagate(False)
+            tk.Button(
+                pf,text='닫기',command=close_preview,
+                width=12,bd=0,
+                font=('Malgun Gothic',9,'bold'),
+                bg=ui.BLUE,fg='white',
+                pady=7,cursor='hand2'
+            ).pack(side='right',padx=20,pady=13)
+
+            preview.protocol('WM_DELETE_WINDOW',close_preview)
+            ui.center_window(preview,dlg,760,620)
+            preview.deiconify()
+            preview.grab_set()
+            preview.focus_force()
+
+        tk.Button(
+            content,
+            text='5D 포함 전체내용 확인하기',
+            command=show_full_preview,
+            bd=0,
+            bg='#E5EBF0',fg=ui.TEXT,
+            activebackground='#DDE5EB',
+            font=('Malgun Gothic',9,'bold'),
+            padx=14,pady=7,
+            cursor='hand2'
+        ).pack(anchor='w',pady=(0,18))
+
+        tk.Label(
+            content,
+            text=(
+                f'이슈 상태를 {recommended}로 처리하시겠습니까?\n'
+                f'아니오를 선택하면 {other}으로 처리합니다.'
+            ),
+            bg='white',fg=ui.TEXT,
+            font=('Malgun Gothic',10),
+            justify='left'
+        ).pack(anchor='w')
+
+        foot=tk.Frame(dlg,bg='#F6F8FA',height=72)
+        foot.pack(fill='x')
+        foot.pack_propagate(False)
+        btns=tk.Frame(foot,bg='#F6F8FA')
+        btns.pack(side='right',padx=22,pady=14)
+
+        def choose(value):
+            result['value']=value
+            try:dlg.grab_release()
+            except Exception:pass
+            dlg.destroy()
+
+        tk.Button(
+            btns,text='아니오',
+            command=lambda:choose(other),
+            width=12,bd=0,
+            font=('Malgun Gothic',9,'bold'),
+            bg='#E5EBF0',fg=ui.TEXT,
+            pady=8,cursor='hand2'
+        ).pack(side='left',padx=5)
+
+        tk.Button(
+            btns,text='확인',
+            command=lambda:choose(recommended),
+            width=12,bd=0,
+            font=('Malgun Gothic',9,'bold'),
+            bg=ui.BLUE,fg='white',
+            pady=8,cursor='hand2'
+        ).pack(side='left',padx=5)
+
+        dlg.protocol('WM_DELETE_WINDOW',lambda:choose(None))
+        ui.center_window(dlg,self,720,570)
+        dlg.deiconify()
+        dlg.grab_set()
+        dlg.focus_force()
+        self.wait_window(dlg)
+        return result['value']
 
     def _confirm_weekly_status_v1(self,d):
         """Show a separate weekly Signal chooser only when the Issue DB remains open."""
