@@ -42,20 +42,23 @@ def _event_name(d):
 
 
 def _page1_issue(d):
-    """Remove customer_task_ prefix only for page-1 issue column."""
+    """Remove customer_task prefix and document-type words from page-1 issue."""
     issue=N(d.get('issue_name')); customer=N(d.get('customer')); task=N(d.get('task_name'))
     if not issue:
         return ''
+    result=issue
     toks=[x.strip() for x in issue.split('_') if x.strip()]
     if customer and task:
         for i in range(len(toks)-1):
             if C(toks[i])==C(customer) and C(toks[i+1])==C(task):
                 rest=toks[i+2:]
-                return '_'.join(rest) if rest else issue
-        prefix=f'{customer}_{task}_'
-        if C(issue).startswith(C(prefix)):
-            return issue[len(prefix):].lstrip('_ ')
-    return issue
+                result='_'.join(rest) if rest else issue
+                break
+        else:
+            prefix=f'{customer}_{task}_'
+            if C(issue).startswith(C(prefix)):
+                result=issue[len(prefix):].lstrip('_ ')
+    return v319._clean_issue_label(result)
 
 
 _SYMPTOM_WORDS=(
