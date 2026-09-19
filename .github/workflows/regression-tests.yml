@@ -4,7 +4,13 @@ on:
   push:
     branches:
       - test/v308-synthetic
+  pull_request:
+    branches:
+      - test/v308-synthetic
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   regression:
@@ -27,14 +33,11 @@ jobs:
         run: python -m unittest tests.test_origin_classifier -v
       - name: Project catalog regression
         run: python -m unittest tests.test_project_catalog -v
-
       - name: Project weekly matching regression
         run: python -m unittest tests.test_project_weekly_match -v
       - name: Output version regression
         run: python -m unittest tests.test_output_versioning -v
-
       - name: English 8D regression
         run: python -m unittest tests.test_english_8d -v
-
       - name: Problem summary regression
         run: python -m unittest tests.test_problem_summary_blocks -v
