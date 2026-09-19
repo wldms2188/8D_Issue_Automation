@@ -20,6 +20,12 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
   self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
 
+ def test_active_base_task_uses_canonical_customer_project(self):
+  d={'customer':'MBAG','task_name':'MBAG_EB-L(EU)'}
+  self.assertEqual(w.s13.base.task(d),'MBAG_EB-L(EU)')
+  d2={'customer':'OLD','task_name':'Ford_V710'}
+  self.assertEqual(w.s13._customer_task(d2),'OLD_Ford_V710')
+
  def test_repeated_customer_prefix_is_collapsed(self):
   d={'customer':'MBAG','task_name':'MBAG_MBAG_EB-L(EU)'}
   self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
