@@ -1,5 +1,7 @@
-import sys,unittest
+import sys,unittest,tempfile
 from pathlib import Path
+from pptx import Presentation
+from pptx.util import Inches
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import english_8d_final as e
 
@@ -89,5 +91,48 @@ class English8DTests(unittest.TestCase):
   for blocks,expected in variants:
    x=e.extract_sections_from_blocks(blocks)
    for key,val in expected.items():self.assertIn(val,x[key],msg=(blocks,key,x))
+
+ def test_semantic_7d_8d_boundaries_stop_6d_without_numbers(self):
+  x=e.extract_sections_from_blocks([
+   '6D','Validation','DV passed',
+   'Customer Response','Horizontal deployment done',
+   'Request Items','Customer request A'])
+  self.assertIn('DV passed',x['verification_6d'])
+  self.assertNotIn('Horizontal deployment done',x['verification_6d'])
+  self.assertNotIn('Customer request A',x['verification_6d'])
+
+ def test_authoritative_spatial_fields_clear_legacy_bleed(self):
+  d={'problem':'Member Alice\nQuality Bob','verification_6d':'Customer Response\nRequest Items'}
+  x=e.enhance_dict(d,section_blocks=['2D','Scratch in strap','6D','DV passed'],
+                   authoritative_keys={'problem','verification_6d'})
+  self.assertEqual(x['problem'],'Scratch in strap')
+  self.assertEqual(x['verification_6d'],'DV passed')
+
+ def test_spatial_cell_mapping_prevents_1d_and_7d_8d_bleed(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'layout.pptx'
+   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+   marker_y=[0.5,2.0,3.5,5.0]
+   for idx,y in enumerate(marker_y,1):
+    sh=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.4),Inches(0.3)); sh.text=f'{idx}D'
+   for idx,y in enumerate(marker_y,5):
+    sh=sl.shapes.add_textbox(Inches(5.1),Inches(y),Inches(0.4),Inches(0.3)); sh.text=f'{idx}D'
+   lt=sl.shapes.add_table(4,2,Inches(0.7),Inches(0.5),Inches(4.0),Inches(6.0)).table
+   rt=sl.shapes.add_table(4,2,Inches(5.7),Inches(0.5),Inches(4.0),Inches(6.0)).table
+   left=[('Member','Alice'),('Defect Phenomenon','Scratch in strap'),('Containment','Stop shipment'),('Root cause','Guide interference')]
+   right=[('Corrective action','Guide revised'),('Validation','DV passed'),('Customer Response','Horizontal deployment done'),('Request Items','Customer request A')]
+   for r,(a,b) in enumerate(left):
+    lt.rows[r].height=Inches(1.5); lt.cell(r,0).text=a; lt.cell(r,1).text=b
+   for r,(a,b) in enumerate(right):
+    rt.rows[r].height=Inches(1.5); rt.cell(r,0).text=a; rt.cell(r,1).text=b
+   prs.save(p)
+   blocks=e._spatial_section_blocks(p)
+   x=e.extract_sections_from_blocks(blocks)
+   self.assertIn('Scratch in strap',x['problem'])
+   self.assertNotIn('Alice',x['problem'])
+   self.assertNotIn('Member',x['problem'])
+   self.assertIn('DV passed',x['verification_6d'])
+   self.assertNotIn('Horizontal deployment done',x['verification_6d'])
+   self.assertNotIn('Customer request A',x['verification_6d'])
 
 if __name__=='__main__':unittest.main()
