@@ -59,12 +59,17 @@ def _team_autocomplete_entry(self, parent, label, key, hint):
         entry.icursor("end")
         close_popup()
         entry.focus_set()
+        close_popup()
 
     def show_candidates(_event=None):
         nonlocal popup, listbox
-        value = self.vars[key].get()
-        candidates = matches_for(value)
+        value = self.vars[key].get().strip()
         close_popup()
+        # Once a standard team has been selected, keep the suggestion list hidden.
+        # It will reappear only after the user edits the text to a non-exact value.
+        if value in TEAMS:
+            return
+        candidates = matches_for(value)
         if not candidates:
             return
         self.update_idletasks()
