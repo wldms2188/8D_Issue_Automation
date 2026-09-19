@@ -161,6 +161,49 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         rec,_=clf.recommend_origin(d)
         self.assertEqual(rec,'기타')
 
+    def test_bilingual_process_clues_include_bolt_loosening_and_fastening(self):
+        korean=[
+            '볼트 풀림이 발생했으며 체결토크 부족이 원인으로 확인됨',
+            '체결 미흡으로 조립 중 풀림 발생',
+            '너트 풀림 및 체결불량이 확인됨',
+        ]
+        english=[
+            'Bolt loosening occurred due to insufficient fastening torque.',
+            'Scratch caused by loosening of the unloading hoist bracket fixing bolt.',
+            'Fastener loosening was reproduced after under-torque assembly.',
+            'Loose bolt was confirmed after the fastening process.',
+        ]
+        for text in korean+english:
+            rec,_=clf.recommend_origin({'cause_4d':text})
+            self.assertEqual(rec,'공정',msg=(rec,text))
+
+    def test_bilingual_design_clues_include_spec_and_tolerance_language(self):
+        korean=[
+            '설계 스펙 미흡으로 공차 간섭 발생',
+            '규격 미흡 및 치수 부적합이 원인',
+            '설계 요구사항과 실제 공차 조건이 불일치',
+        ]
+        english=[
+            'Design specification was insufficient for the required clearance.',
+            'Tolerance stack-up exceeded the design spec limit.',
+            'Design requirement and geometry caused interference.',
+        ]
+        for text in korean+english:
+            rec,_=clf.recommend_origin({'cause_4d':text})
+            self.assertEqual(rec,'설계',msg=(rec,text))
+
+    def test_occurrence_site_reason_does_not_expose_screen_or_ppt_source(self):
+        for site,expected in [('제품 생산','공정'),('부품 생산','부품')]:
+            rec,reason=clf.recommend_origin({
+                'cause_4d':'원인 추가 검토 중',
+                'occurrence_site':'다른 값',
+                '_origin_occurrence_site':site,
+            })
+            self.assertEqual(rec,expected)
+            self.assertIn(f'"{site}" 중 발생한 이슈이며',reason)
+            self.assertNotIn('화면 선택값',reason)
+            self.assertNotIn('8D 원문값',reason)
+
     def test_gui_occurrence_site_overrides_conflicting_ppt_site(self):
         d={
             'cause_4d':'원인 추가 검토 중',
@@ -169,7 +212,7 @@ class OriginClassifierSyntheticTests(unittest.TestCase):
         }
         rec,reason=clf.recommend_origin(d)
         self.assertEqual(rec,'공정')
-        self.assertIn('화면 선택값',reason)
+        self.assertIn('중 발생한 이슈이며',reason)
 
         d={
             'cause_4d':'원인 추가 검토 중',
