@@ -66,29 +66,38 @@ def _ppt_update_only(source,saved):
     return target,len(keep)
 
 
+def _row_signature(ws,r,max_col):
+    return tuple(str(ws.cell(r,c).value or '') for c in range(1,max_col+1))
+
 def _excel_update_only(source,saved):
+    """Keep header rows plus genuinely new/changed data rows.
+
+    Use row-signature multiset matching instead of comparing by row number, so a
+    newly inserted Issue DB row does not make every following shifted row look changed.
+    """
     src=load_workbook(source,rich_text=True)
     dst=load_workbook(saved,rich_text=True)
     ws0=src['Sheet1'] if 'Sheet1' in src.sheetnames else src.active
     ws=dst['Sheet1'] if 'Sheet1' in dst.sheetnames else dst.active
+    max_col=max(ws0.max_column,ws.max_column)
+
+    source_counts=Counter(_row_signature(ws0,r,max_col) for r in range(7,ws0.max_row+1))
     changed=[]
-    max_row=max(ws0.max_row,ws.max_row); max_col=max(ws0.max_column,ws.max_column)
-    for r in range(1,max_row+1):
-        different=False
-        for c in range(1,max_col+1):
-            a=ws0.cell(r,c).value if r<=ws0.max_row and c<=ws0.max_column else None
-            b=ws.cell(r,c).value if r<=ws.max_row and c<=ws.max_column else None
-            if str(a or '')!=str(b or ''):
-                different=True; break
-        if different:changed.append(r)
-    if not changed:return None,0
-    # Issue DB contract: rows 1-6 are fixed header/template rows.
-    # In update-only output, always preserve them exactly and keep only changed data rows from row 7 onward.
-    changed=[r for r in changed if r>=7]
-    if not changed:return None,0
-    keep=set(range(1,7))|set(changed)
+    for r in range(7,ws.max_row+1):
+        sig=_row_signature(ws,r,max_col)
+        if source_counts.get(sig,0)>0:
+            source_counts[sig]-=1
+        else:
+            changed.append(r)
+
+    if not changed:
+        return None,0
+
+    keep=set(range(1,min(7,ws.max_row+1)))|set(changed)
     for r in range(ws.max_row,0,-1):
-        if r not in keep:ws.delete_rows(r,1)
+        if r not in keep:
+            ws.delete_rows(r,1)
+
     target=Path(saved).with_name(Path(saved).stem+'_업데이트사항만'+Path(saved).suffix)
     dst.save(target)
     return target,len(changed)
@@ -124,8 +133,8 @@ def _select_and_finish(parent,title,message):
         excel=parent.vars.get('xlsx').get().strip() if parent.vars.get('xlsx') else ''
         try:
             if weekly:
-                saved=_latest_version(weekly)
-                if saved:
+                saved=Path(getattr(parent,'_last_saved_outputs',{}).get('weekly','')) if getattr(parent,'_last_saved_outputs',{}).get('weekly') else _latest_version(weekly)
+                if saved and Path(saved).exists():
                     reduced,n=_ppt_update_only(weekly,saved)
                     if reduced:
                         made.append(f'주간회의: 업데이트 페이지 {n}개')
@@ -134,8 +143,8 @@ def _select_and_finish(parent,title,message):
         except Exception as e:errors.append('주간회의 축약본 생성 실패: '+str(e))
         try:
             if excel:
-                saved=_latest_version(excel)
-                if saved:
+                saved=Path(getattr(parent,'_last_saved_outputs',{}).get('excel','')) if getattr(parent,'_last_saved_outputs',{}).get('excel') else _latest_version(excel)
+                if saved and Path(saved).exists():
                     reduced,n=_excel_update_only(excel,saved)
                     if reduced:
                         made.append(f'Issue DB: 업데이트 행 {n}개')
