@@ -25,7 +25,7 @@ RULES = {
         'transport','storage','handling','customer use','external impact','environmental condition','usage condition',
     ),
 }
-NEGATIONS=('문제없음','이상없음','정상','원인아님','무관','영향없음','no issue','no problem','normal','not cause','not related','no impact')
+NEGATIONS=('문제없음','이상없음','정상','원인아님','무관','영향없음','no issue','no problem','no abnormality','normal','not cause','not a cause','not related','no impact')
 MIXERS=('동시에','복합','및','그리고')
 
 
@@ -43,7 +43,7 @@ def _negated(q, term):
         return False
     for pos in positions:
         # Negation normally follows the subject phrase (e.g. 공정조건 문제없음).
-        after=q[pos+len(t):pos+len(t)+32]
+        after=q[pos+len(t):pos+len(t)+48]
         if not any(n in after for n in NEGATIONS):
             return False
     return True
