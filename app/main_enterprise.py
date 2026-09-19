@@ -99,6 +99,11 @@ WEEKLY_SIGNAL_COLORS={
     '개선 검증중':'#FFC000',
     '개선 완료':'#00B050',
 }
+WEEKLY_SIGNAL_DISPLAY={
+    '원인/개선 미확인':'원인/개선 미확인',
+    '개선 검증중':'개선 검증 중',
+    '개선 완료':'개선 완료',
+}
 
 class EnterpriseWeeklyStatusDialog(tk.Toplevel):
     """Weekly Signal confirmation using the same visual pattern as 이슈기인 확인."""
@@ -125,7 +130,7 @@ class EnterpriseWeeklyStatusDialog(tk.Toplevel):
         top=tk.Frame(card,bg='#EEF5FA'); top.pack(fill='x',padx=12,pady=(9,2))
         tk.Label(top,text='추천',bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(side='left')
         tk.Label(top,text='●',bg='#EEF5FA',fg=WEEKLY_SIGNAL_COLORS[recommended],font=('Malgun Gothic',12,'bold')).pack(side='left',padx=(9,4))
-        tk.Label(top,text=recommended,bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(side='left')
+        tk.Label(top,text=WEEKLY_SIGNAL_DISPLAY[recommended],bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(side='left')
         tk.Label(card,text=reason,bg='#EEF5FA',fg='#4E6375',font=('Malgun Gothic',8),wraplength=690,justify='left').pack(anchor='w',padx=12,pady=(0,9))
 
         self.var=tk.StringVar(value=recommended)
@@ -133,7 +138,7 @@ class EnterpriseWeeklyStatusDialog(tk.Toplevel):
         for value in ('원인/개선 미확인','개선 검증중','개선 완료'):
             opt=tk.Frame(row,bg='white'); opt.pack(side='left',padx=(0,18))
             tk.Label(opt,text='●',bg='white',fg=WEEKLY_SIGNAL_COLORS[value],font=('Malgun Gothic',11,'bold')).pack(side='left',padx=(0,3))
-            ttk.Radiobutton(opt,text=value+('  · 추천' if value==recommended else ''),variable=self.var,value=value,style='Mode.TRadiobutton').pack(side='left')
+            ttk.Radiobutton(opt,text=WEEKLY_SIGNAL_DISPLAY[value]+('  · 추천' if value==recommended else ''),variable=self.var,value=value,style='Mode.TRadiobutton').pack(side='left')
 
         foot=tk.Frame(self,bg='#F6F8FA',height=62); foot.pack(fill='x'); foot.pack_propagate(False)
         b=tk.Frame(foot,bg='#F6F8FA'); b.pack(side='right',padx=20,pady=12)
