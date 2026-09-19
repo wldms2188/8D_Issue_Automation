@@ -93,16 +93,17 @@ def weekly_verification_state(text):
     if any(re.search(p,q) for p in normal_patterns):
         return 'complete','이상 없음/재발 없음 표현 감지'
 
-    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_COMPLETE_TERMS):
-        return 'complete','완료/정상/검증 완료 표현 감지'
-
+    # Explicit abnormal/fail results override a generic word such as "completed".
+    # Negated abnormality was already handled above.
     if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_ABNORMAL_TERMS):
         return 'abnormal','이상/실패/재발 표현 감지'
-
-    if re.search(r'\b(?:complet(?:e|ed)|verif(?:ied|ication complete(?:d)?)|validat(?:ed|ion complete(?:d)?)|pass(?:ed)?|normal|acceptable|satisfactory)\b',q):
-        return 'complete','완료/정상/검증 완료 표현 감지'
     if re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',q):
         return 'abnormal','이상/실패/재발 표현 감지'
+
+    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_COMPLETE_TERMS):
+        return 'complete','완료/정상/검증 완료 표현 감지'
+    if re.search(r'\b(?:complet(?:e|ed)|verif(?:ied|ication complete(?:d)?)|validat(?:ed|ion complete(?:d)?)|pass(?:ed)?|normal|acceptable|satisfactory)\b',q):
+        return 'complete','완료/정상/검증 완료 표현 감지'
     return 'unknown','6D 내용은 있으나 완료/진행 상태를 확정할 표현이 명확하지 않음'
 
 def weekly_recommended_status(d):
