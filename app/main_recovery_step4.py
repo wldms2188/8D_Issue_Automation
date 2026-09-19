@@ -46,6 +46,79 @@ def _title_shape_by_geometry(sl):
     return candidates[0][1]
 
 
+def _owner_shape(sl):
+    candidates=[]
+    for sh in v310.walk(sl):
+        if not hasattr(sh,'text_frame'):
+            continue
+        t=N(getattr(sh,'text',''))
+        if '담당자' not in t:
+            continue
+        try:
+            x=float(sh.left)/EMU; y=float(sh.top)/EMU
+        except Exception:
+            continue
+        if y<=0.80:
+            candidates.append((-x,y,sh))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda z:(z[1],z[0]))
+    return candidates[0][2]
+
+def _estimated_text_width_in(sh,text):
+    """Approximate rendered one-line width using the title's existing font size."""
+    pt=11.0
+    try:
+        runs=[r for p in sh.text_frame.paragraphs for r in p.runs]
+        sizes=[r.font.size.pt for r in runs if r.font.size]
+        if sizes:
+            pt=max(sizes)
+    except Exception:
+        pass
+    em=pt/72.0
+    units=0.0
+    for ch in N(text):
+        if ord(ch)>=0x2E80:
+            units+=1.0
+        elif ch.isspace():
+            units+=0.35
+        elif ch in '._-()/[]':
+            units+=0.45
+        else:
+            units+=0.58
+    return units*em
+
+def _title_owner_overlap_risk(sl,title_sh,title_text):
+    owner=_owner_shape(sl)
+    if title_sh is None or owner is None:
+        return False
+    try:
+        tx=float(title_sh.left)/EMU; ty=float(title_sh.top)/EMU
+        tw=float(title_sh.width)/EMU; th=float(title_sh.height)/EMU
+        ox=float(owner.left)/EMU; oy=float(owner.top)/EMU
+        oh=float(owner.height)/EMU
+    except Exception:
+        return False
+    vertical=min(ty+th,oy+oh)-max(ty,oy)
+    if vertical<=0:
+        return False
+    available=max(.25,ox-tx-.12)
+    # Box overlap is definitely unsafe; otherwise estimate one-line text overflow.
+    return tx+tw>ox-.08 or _estimated_text_width_in(title_sh,title_text)>available
+
+def _title_without_selected_project(d,kind,event):
+    """Build a page-2 title only from the 8D itself, never from the GUI project selection."""
+    issue=v319._clean_issue_label(d.get('issue_name'))
+    if issue:
+        return issue
+    if kind=='시험' and event:
+        return f'{event} 이슈 발생'
+    if kind=='빌드' and event:
+        return f'{event} 빌드 이슈 발생'
+    customer=N(d.get('customer'))
+    return v319._trim_before_customer(d.get('issue_name'),customer) or '이슈 발생'
+
+
 def _set_title_exact(sh,text):
     if sh is None or not hasattr(sh,'text_frame'):
         return False
@@ -83,12 +156,16 @@ def _force_page2_header(sl,d,g):
     title_sh,issue_sh=v319._find_page2_header_shapes(sl)
     if title_sh is None:
         title_sh=_title_shape_by_geometry(sl)
+
+    # Owner text must be finalized first because its real geometry is the collision boundary.
+    step1._update_team_owner(sl,g)
+    if _title_owner_overlap_risk(sl,title_sh,title):
+        title=_title_without_selected_project(d,kind,event)
     _set_title_exact(title_sh,title)
 
     if issue_sh is not None:
         issue=v319._trim_before_customer(d.get('issue_name'),customer)
         v319._set_issue_line(issue_sh,issue)
-    step1._update_team_owner(sl,g)
 
 
 def weekly(src,out,d,g,mode):
