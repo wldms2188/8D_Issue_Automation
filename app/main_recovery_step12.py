@@ -68,33 +68,32 @@ def _update_page2_step12(sl,d,g,mode):
     v310.remove_previous_auto(sl)
     imgs=d.get('_section_images',{}) or {}
     english_mode=bool(d.get('_english_mode'))
-    if english_mode:
-        zones,texts,fonts=step11._english_template_anchored_layout(d,imgs)
-    else:
-        zones,texts,fonts=step11._layout_with_4d_placeholders(d,imgs)
+    # Images and text must stay inside the visual D rectangle printed by the
+    # weekly template.  Do not let a long 2D block borrow space from 3D.
+    zones,texts,fonts=step11._strict_template_layout(d,imgs)
 
     texts['4D_CAUSE']=_labeled_4d_text(d,'4D_CAUSE')
     texts['4D_LEAK']=_labeled_4d_text(d,'4D_LEAK')
 
-    if v310.is_new(mode):
-        for label,key in [('2D','2D'),('3D','3D'),('5D','5D'),('6D','6D')]:
-            z=zones[key]
-            v310.move_marker_unit(sl,label,max(.10,z['x']-.18),max(.10,z['y']-.35))
+    # Align marker/title units for BOTH new and existing issues. A previously
+    # generated page may contain markers moved by an older dynamic layout.
+    for label,key in [('2D','2D'),('3D','3D'),('5D','5D'),('6D','6D')]:
+        z=zones[key]
+        v310.move_marker_unit(sl,label,max(.10,z['x']-.18),max(.10,z['y']-.35))
 
     for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
         v319._render(sl,key,zones[key],texts[key],imgs.get(key,[]),fonts[key])
 
-    if english_mode:
-        # Prevent visual text overflow beyond the geometry even when the source
-        # contains exceptionally long English sentences.
-        for sh in sl.shapes:
-            name=str(getattr(sh,'name',''))
-            if name.startswith('AUTO_8D_TEXT_') and hasattr(sh,'text_frame'):
-                try:
-                    sh.text_frame.word_wrap=True
-                    sh.text_frame.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-                except Exception:
-                    pass
+    # Prevent visual text overflow beyond the fixed D geometry for both Korean
+    # and English.  Images are already fit inside the same fixed rectangle.
+    for sh in sl.shapes:
+        name=str(getattr(sh,'name',''))
+        if name.startswith('AUTO_8D_TEXT_') and hasattr(sh,'text_frame'):
+            try:
+                sh.text_frame.word_wrap=True
+                sh.text_frame.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            except Exception:
+                pass
 
     v319._page2_meta(sl,d,g)
 
