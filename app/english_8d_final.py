@@ -92,7 +92,7 @@ def _marker(line):
     """Return (section, remainder). D-number has priority over wording."""
     s=_norm_line(line)
     if not s:return None,s
-    m=re.match(r'^\s*([2-8])\s*[dD]\b[\s.:：\-–—)]*(.*)$',s)
+    m=re.match(r'^\s*([1-8])\s*[dD]\b[\s.:：\-–—)]*(.*)$',s)
     if m:
         n=m.group(1); rest=m.group(2).strip()
         if n in ('1','7','8'): return n+'D',rest
@@ -130,7 +130,8 @@ def _is_photo_caption(line):
     if not s or len(s)>80:return False
     q=s.strip('[]() ').casefold()
     if re.fullmatch(r'(before|after)( improvement)?',q):return True
-    if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True\n    if any(x in q for x in ('photo','image','picture','close-up','close up')):return True
+    if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True
+    if any(x in q for x in ('photo','image','picture','close-up','close up')):return True
     if (s.startswith('[') and s.endswith(']')) and any(x in q for x in CAPTION_HINTS):return True
     return False
 
