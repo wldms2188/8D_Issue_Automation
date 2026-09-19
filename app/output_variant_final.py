@@ -16,7 +16,7 @@ def _latest_version(source_path):
     src=Path(source_path)
     out=src.parent/'자동화_결과'
     root=src.stem
-    pat=re.compile(rf'^{re.escape(root)}_v0[.](\\d+){re.escape(src.suffix)}$',re.I)
+    pat=re.compile(rf'^{re.escape(root)}_v0[.](\d+){re.escape(src.suffix)}$',re.I)
     found=[]
     if out.exists():
         for p in out.iterdir():
