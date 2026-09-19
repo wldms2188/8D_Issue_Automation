@@ -152,6 +152,15 @@ def _d_marker_number(text):
     circ={'①':1,'②':2,'③':3,'④':4,'⑤':5,'⑥':6,'⑦':7,'⑧':8}
     return circ.get(s,int(re.search(r'[1-8]',s).group()) if re.search(r'[1-8]',s) else None)
 
+def _semantic_section_for_text(text):
+    hits=[]
+    low=_norm_line(text).casefold()
+    for sec,labels in SEMANTIC_MARKERS:
+        for lab in labels:
+            if lab.casefold() in low:
+                hits.append((len(lab),sec))
+    return max(hits)[1] if hits else None
+
 def _spatial_section_blocks(path):
     """Map content by the physical D-marker position, independent of English heading wording."""
     prs=Presentation(path); blocks=[]
