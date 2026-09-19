@@ -30,10 +30,10 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         w,h=self._initial_window_size(sw,sh)
         self.minsize(min(1080,w),min(760,h))
-        # Center horizontally. Vertically, bias slightly upward so the bottom
-        # result/status message area stays clear of the Windows taskbar.
+        # Center horizontally and bias the window clearly upward so the
+        # bottom status/result area does not sit against the Windows taskbar.
         x=max(0,(sw-w)//2)
-        y=max(20,(sh-h)//2-20)
+        y=max(10,(sh-h)//2-50)
         self.geometry(f'{w}x{h}+{x}+{y}')
         # Keep a normal resizable window. Height is enlarged by _initial_window_size().
         try: self.log.configure(height=6)
