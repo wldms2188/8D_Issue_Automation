@@ -6,6 +6,7 @@ from openpyxl.drawing.image import Image as XLImage
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import final_output_polish as f
 import output_variant_final as o
+import main_v29 as v29
 
 class OutputVersionTests(unittest.TestCase):
  def test_version_path_increments_existing_versions(self):
@@ -19,6 +20,20 @@ class OutputVersionTests(unittest.TestCase):
    src=p/'weekly.pptx'; src.touch()
    (out/'weekly_v0.2.pptx').touch(); (out/'weekly_v0.10.pptx').touch()
    self.assertEqual(o._latest_version(src).name,'weekly_v0.10.pptx')
+ def test_excel_illegal_powerpoint_controls_are_removed(self):
+  bad='불량 Phenomenon\x0bB2 sample\x0c visual OQC\x00 inspection'
+  clean=v29.v29_one(bad)
+  self.assertNotIn('\x0b',clean)
+  self.assertNotIn('\x0c',clean)
+  self.assertNotIn('\x00',clean)
+  self.assertIn('Phenomenon',clean)
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td)/'safe.xlsx'
+   wb=Workbook(); ws=wb.active
+   ws.cell(1,1).value=v29._excel_safe_value(bad)
+   wb.save(p)
+   self.assertTrue(p.exists())
+
  def test_excel_update_only_keeps_only_inserted_or_changed_row(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td); src=p/'issue.xlsx'; dst=p/'issue_v0.1.xlsx'
