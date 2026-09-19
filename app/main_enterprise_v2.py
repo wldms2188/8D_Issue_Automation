@@ -183,7 +183,7 @@ class EnterpriseAppV2(ent.EnterpriseApp):
 
     def _install_input_checks(self):
         self._field_marks={}; self._confirm_vars={}; self._confirm_marks={}
-        for label,key in [('담당팀','team'),('담당자','owner'),('발생 샘플','sample'),('PMS/PLM 이슈번호','plm_no')]:
+        for label,key in [('담당팀','team'),('고객사/과제명','task_name'),('담당자','owner'),('발생 샘플','sample'),('PMS/PLM 이슈번호','plm_no')]:
             row=self._find_labeled_row(label)
             if not row:continue
             row.pack_configure(pady=1); m=self._status_mark(row); self._field_marks[key]=m
@@ -205,7 +205,8 @@ class EnterpriseAppV2(ent.EnterpriseApp):
         m=self._field_marks.get(key)
         if not m:return
         val=self.vars[key].get().strip()
-        if key=='plm_no' and not self.vars['xlsx'].get().strip():m.configure(text='—',fg='#9BA8B2'); return
+        # Keep the mark visible even when Issue DB is currently OFF.  The user
+        # wants a consistent ○/✓ affordance on every standard input row.
         m.configure(text='✓' if val else '○',fg=ui.GREEN if val else '#AAB5BE')
     def _confirm_dropdown(self,key):self._confirm_vars[key].set(True); self._paint_confirm(key)
     def _toggle_confirm(self,key):self._confirm_vars[key].set(not self._confirm_vars[key].get()); self._paint_confirm(key)
