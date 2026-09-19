@@ -30,11 +30,19 @@ def _norm(s):
 
 
 def _negated(q, term):
-    pos=q.find(_norm(term))
-    if pos < 0:
+    """True only when every occurrence of term is locally negated."""
+    t=_norm(term)
+    if not t:
         return False
-    around=q[max(0,pos-8):pos+len(_norm(term))+10]
-    return any(n in around for n in NEGATIONS)
+    positions=[m.start() for m in re.finditer(re.escape(t),q)]
+    if not positions:
+        return False
+    for pos in positions:
+        # Negation normally follows the subject phrase (e.g. 공정조건 문제없음).
+        after=q[pos+len(t):pos+len(t)+12]
+        if not any(n in after for n in NEGATIONS):
+            return False
+    return True
 
 
 def recommend_origin(d):
