@@ -318,6 +318,56 @@ def _shape_blocks(path):
         blocks.extend(x[3] for x in items)
     return blocks
 
+OCCURRENCE_LABELS=(
+    '발생','발생일','발생일자','발생 일자',
+    'occurrence','occurence','occurrence date','occurence date','date of occurrence'
+)
+_DATE_RE=re.compile(
+    r"(?<!\d)(?:'?\d{2}|\d{4})\s*[./-]\s*\d{1,2}"
+    r"(?:\s*[./-]\s*\d{1,2})?"
+    r"(?:\s*[~～]\s*(?:\d{1,2}(?:\s*[./-]\s*\d{1,2})?))?"
+)
+
+def _date_token(text):
+    m=_DATE_RE.search(str(text or ''))
+    return re.sub(r'\s+','',m.group(0)) if m else ''
+
+def _occurrence_date_from_blocks(blocks):
+    lines=[]
+    for block in blocks or []:
+        lines.extend(_norm_line(x) for x in str(block or '').replace('\r','\n').splitlines() if _norm_line(x))
+    labels=tuple(x.casefold() for x in OCCURRENCE_LABELS)
+    for i,line in enumerate(lines):
+        low=line.casefold().strip()
+        # Exact heading or heading followed by punctuation/date. Generic Korean
+        # "발생" is accepted only as a heading, never inside "발생원인".
+        matched=None
+        for lab in sorted(labels,key=len,reverse=True):
+            if low==lab or re.match(r'^'+re.escape(lab)+r'\s*[:：\-–—]?\s*',low):
+                tail=re.sub(r'^'+re.escape(lab)+r'\s*[:：\-–—]?\s*','',line,flags=re.I)
+                if low==lab or _date_token(tail):
+                    matched=lab; break
+        if not matched:
+            continue
+        same=_date_token(line)
+        if same:return same
+        for nxt in lines[i+1:i+4]:
+            tok=_date_token(nxt)
+            if tok:return tok
+    return ''
+
+_original_parse_year_month=getattr(v310.base,'parse_year_month',None)
+def parse_year_month_extended(text):
+    s=str(text or '')
+    m=re.search(r"(?<!\d)'?(\d{2}|\d{4})\s*[./-]\s*(\d{1,2})",s)
+    if m:
+        y=m.group(1)
+        return (y if len(y)==4 else '20'+y, str(int(m.group(2))))
+    if _original_parse_year_month:
+        return _original_parse_year_month(text)
+    return '',''
+v310.base.parse_year_month=parse_year_month_extended
+
 def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
     d=dict(d or {})
     if section_blocks is not None:
@@ -329,6 +379,9 @@ def enhance_dict(d,raw_text='',section_blocks=None,authoritative_keys=None):
                 d[key]=val
     source='\n'.join(str(d.get(k) or '') for k in FIELD_LABELS)
     source=(source+'\n'+str(raw_text or '')).strip()
+    occ=_occurrence_date_from_blocks(section_blocks if section_blocks is not None else str(raw_text or '').splitlines())
+    if occ:
+        d['occurrence_date']=occ
     for key,labels in FIELD_LABELS.items():
         current=str(d.get(key) or '').strip()
         if not current:current=_label_extract(source,labels)
@@ -367,26 +420,58 @@ def apply_english_choice(d,use_original):
             if original:d[key]=original
     return d
 
-# English status terms must behave like their Korean equivalents.
+# Korean/English 6D status terms use one decision engine for Issue DB and weekly Signal.
 _original_status=v310.base.status
+
+_PENDING_STATUS=(
+    '진행 중','진행중','검증 중','검증중','예정','계획','미완료',
+    'in progress','ongoing','planned','plan to','pending','scheduled','tbd',
+    'to be verified','under verification','under validation','not completed'
+)
+_CLOSE_STATUS=(
+    '검증 완료','검증완료','개선 완료','개선완료','정상','이상 없음','이상없음','양호',
+    'no abnormality','not abnormal','no defect','no issue','normal result',
+    'verification complete','verification completed','effectiveness confirmed',
+    'validated','verified','completed','complete','passed','pass','acceptable'
+)
+_OPEN_STATUS=(
+    '불량','이상 발생','이상발생','미흡','재발','부적합','ng','nok',
+    'abnormal','abnomal','abnormality','fail','failed','failure',
+    'not ok','out of spec','out-of-spec','oos','defect remains','issue remains',
+    'recurred','recurrence','not acceptable'
+)
+
+def _status_decision(text):
+    raw=str(text or '').strip()
+    if not raw:return 'open','6D 내용 없음'
+    q=re.sub(r'\s+',' ',raw).casefold()
+    if any(x.casefold() in q for x in _PENDING_STATUS):
+        return 'open','진행/예정 표현 감지'
+    # Explicit normal/no-abnormal wording must win before "abnormality" checks.
+    if any(x.casefold() in q for x in _CLOSE_STATUS):
+        return 'close','완료/정상 표현 감지'
+    if any(x.casefold() in q for x in _OPEN_STATUS):
+        return 'open','이상/실패 표현 감지'
+    if re.search(r'\b(?:abnormal|abnomal|ng|nok|fail(?:ed|ure)?|oos)\b',q):
+        return 'open','이상/실패 표현 감지'
+    if re.search(r'\b(?:pass(?:ed)?|verified|validated|complete(?:d)?|normal|ok)\b',q):
+        return 'close','완료/정상 표현 감지'
+    # 6D text exists but does not prove completion: propose open and require final user confirmation.
+    return 'open','6D 내용은 있으나 완료/정상 판단어가 명확하지 않음'
+
 def status_bilingual(d):
-    v=str(d.get('verification_6d') or '').strip()
-    q=re.sub(r'\s+',' ',v).casefold()
-    if any(x in q for x in ('in progress','ongoing','planned','plan to','pending','scheduled','tbd','to be verified','under verification')):
-        return v310.impl.base.STATUS['verify'] if hasattr(v310.impl.base,'STATUS') else '개선 검증중'
-    if any(x in q for x in ('verification complete','verification completed','verified','validated','effectiveness confirmed','completed','passed')):
+    decision,_reason=_status_decision(d.get('verification_6d'))
+    if decision=='close':
         return v310.impl.base.STATUS['complete'] if hasattr(v310.impl.base,'STATUS') else '개선 완료'
+    if str(d.get('action_5d') or '').strip() or str(d.get('verification_6d') or '').strip():
+        return v310.impl.base.STATUS['verify'] if hasattr(v310.impl.base,'STATUS') else '개선 검증중'
     return _original_status(d)
 v310.base.status=status_bilingual
 
-_original_judge=step9._judge_issue_status
 def judge_status_bilingual(d):
     text=str(d.get('verification_6d') or '').strip()
-    if not text:return 'open',''
-    q=re.sub(r'\s+',' ',text).casefold()
-    if any(x in q for x in ('진행 중','진행중','예정','in progress','ongoing','planned','plan to','pending','scheduled','tbd','to be verified','under verification')):
-        return 'open',text
-    return 'close',text
+    decision,_reason=_status_decision(text)
+    return decision,text
 step9._judge_issue_status=judge_status_bilingual
 
 _original_run=v3.EnterpriseAppV3.run
