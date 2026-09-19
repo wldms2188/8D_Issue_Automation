@@ -214,6 +214,7 @@ def extract_sections_from_blocks(blocks):
         for raw in str(block or '').replace('\r','\n').splitlines():
             line=_norm_line(raw)
             if not line:continue
+            if _is_photo_caption(line):continue
             sec,rest=_marker(line)
             if sec:
                 current=sec
@@ -225,6 +226,7 @@ def extract_sections_from_blocks(blocks):
             if current in buckets:
                 buckets[current].append(line)
     for sec,key in SECTION_FIELDS.items():
+        if not key:continue
         vals=[]; seen=set()
         for x in buckets[sec]:
             q=re.sub(r'\s+',' ',x).strip().casefold()
@@ -290,7 +292,12 @@ def extract(path):
     d=_original(path)
     try:blocks=_shape_blocks(path)
     except Exception:blocks=[]
-    return enhance_dict(d,'\n'.join(blocks),blocks)
+    try:spatial=_spatial_section_blocks(path)
+    except Exception:spatial=[]
+    section_blocks=[]
+    if spatial:section_blocks.extend(spatial)
+    if blocks:section_blocks.extend(blocks)
+    return enhance_dict(d,'\n'.join(blocks),section_blocks)
 v310.base.extract=extract
 
 def apply_english_choice(d,use_original):
