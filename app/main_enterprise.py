@@ -94,6 +94,61 @@ class EnterpriseOriginDialog(tk.Toplevel):
     def cancel(self): self.result=None; self.destroy()
 
 
+WEEKLY_SIGNAL_COLORS={
+    '원인/개선 미확인':'#FF0000',
+    '개선 검증중':'#FFC000',
+    '개선 완료':'#00B050',
+}
+
+class EnterpriseWeeklyStatusDialog(tk.Toplevel):
+    """Weekly Signal confirmation using the same visual pattern as 이슈기인 확인."""
+    def __init__(self,parent,d,recommended):
+        super().__init__(parent); self.withdraw(); self.result=None
+        self.title('주간회의 상태 확인'); self.configure(bg=ui.WHITE); self.resizable(False,False); self.transient(parent)
+        recommended=N(recommended) if N(recommended) in WEEKLY_SIGNAL_COLORS else '원인/개선 미확인'
+        five=N(d.get('action_5d')) or '(5D 개선대책 내용 없음)'
+        six=N(d.get('verification_6d')) or '(6D 효과검증 내용 없음)'
+        reason=weekly_status_reason(d,recommended)
+
+        head=tk.Frame(self,bg=ui.NAVY,height=58); head.pack(fill='x'); head.pack_propagate(False)
+        tk.Label(head,text='주간회의 상태 확인',bg=ui.NAVY,fg='white',font=('Malgun Gothic',12,'bold')).pack(side='left',padx=22)
+
+        body=tk.Frame(self,bg='white'); body.pack(fill='both',expand=True,padx=24,pady=18)
+        tk.Label(body,text='8D 진행 내용을 기준으로 주간회의 Signal을 확인합니다.',bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold')).pack(anchor='w')
+        tk.Label(body,text='판단 기준이 된 5D / 6D 내용',bg='white',fg=ui.MUTED,font=('Malgun Gothic',8,'bold')).pack(anchor='w',pady=(14,5))
+        box=tk.Text(body,height=8,wrap='word',bg='#F7F9FB',fg=ui.TEXT,relief='flat',highlightthickness=1,highlightbackground=ui.BORDER,font=('Malgun Gothic',9),padx=10,pady=8)
+        box.pack(fill='x')
+        box.insert('1.0',f'[5D 개선대책]\n{five}\n\n[6D 효과검증]\n{six}')
+        box.configure(state='disabled')
+
+        card=tk.Frame(body,bg='#EEF5FA',highlightbackground='#D5E3EE',highlightthickness=1); card.pack(fill='x',pady=12)
+        top=tk.Frame(card,bg='#EEF5FA'); top.pack(fill='x',padx=12,pady=(9,2))
+        tk.Label(top,text='추천',bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(side='left')
+        tk.Label(top,text='●',bg='#EEF5FA',fg=WEEKLY_SIGNAL_COLORS[recommended],font=('Malgun Gothic',12,'bold')).pack(side='left',padx=(9,4))
+        tk.Label(top,text=recommended,bg='#EEF5FA',fg=ui.NAVY,font=('Malgun Gothic',10,'bold')).pack(side='left')
+        tk.Label(card,text=reason,bg='#EEF5FA',fg='#4E6375',font=('Malgun Gothic',8),wraplength=690,justify='left').pack(anchor='w',padx=12,pady=(0,9))
+
+        self.var=tk.StringVar(value=recommended)
+        row=tk.Frame(body,bg='white'); row.pack(fill='x',pady=(2,5))
+        for value in ('원인/개선 미확인','개선 검증중','개선 완료'):
+            opt=tk.Frame(row,bg='white'); opt.pack(side='left',padx=(0,18))
+            tk.Label(opt,text='●',bg='white',fg=WEEKLY_SIGNAL_COLORS[value],font=('Malgun Gothic',11,'bold')).pack(side='left',padx=(0,3))
+            ttk.Radiobutton(opt,text=value+('  · 추천' if value==recommended else ''),variable=self.var,value=value,style='Mode.TRadiobutton').pack(side='left')
+
+        foot=tk.Frame(self,bg='#F6F8FA',height=62); foot.pack(fill='x'); foot.pack_propagate(False)
+        b=tk.Frame(foot,bg='#F6F8FA'); b.pack(side='right',padx=20,pady=12)
+        self._button(b,'취소',self.cancel,False).pack(side='left',padx=4)
+        self._button(b,'확인',self.ok,True).pack(side='left',padx=4)
+
+        self.protocol('WM_DELETE_WINDOW',self.cancel)
+        ui.center_window(self,parent,760,575); self.deiconify(); self.grab_set(); self.focus_force(); parent.wait_window(self)
+
+    def _button(self,p,text,cmd,primary):
+        return tk.Button(p,text=text,command=cmd,width=12,bd=0,font=('Malgun Gothic',9,'bold'),bg=ui.BLUE if primary else '#E5EBF0',fg='white' if primary else ui.TEXT,pady=7,cursor='hand2')
+    def ok(self): self.result=self.var.get(); self.destroy()
+    def cancel(self): self.result=None; self.destroy()
+
+
 class EnterpriseProblemDialog(tk.Toplevel):
     def __init__(self,parent,summary):
         super().__init__(parent); self.withdraw(); self.result=None; self.title('Issue DB 현상 입력'); self.configure(bg='white'); self.resizable(False,False); self.transient(parent)
@@ -261,28 +316,11 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         return final_status
 
     def _confirm_weekly_status_v1(self,d):
-        """Confirm weekly Signal separately, using the same V1-style rationale dialog."""
-        judged,reason=legacy.step9._judge_issue_status(d)
-        recommended=weekly_status_from_choice(d,judged)
-        sixd=N(reason) or N(d.get('verification_6d')) or '(6D 내용 없음)'
+        """Show a separate weekly Signal chooser only when the Issue DB remains open."""
+        recommended=weekly_status_from_choice(d,'open')
+        dlg=EnterpriseWeeklyStatusDialog(self,d,recommended)
+        return dlg.result
 
-        # V1-like confirmation is required only for a completion recommendation.
-        # Non-complete states remain conservative and are not promoted automatically.
-        if recommended!='개선 완료':
-            return recommended
-
-        prompt=(
-            '6D까지 작성되어 있으며, 아래 6D 내용에 진행 중/예정 표현이 없어 개선 완료로 추천됩니다.\n\n'
-            '추천 이유(6D 내용)\n'
-            '────────────────────\n'
-            f'{sixd}\n'
-            '────────────────────\n\n'
-            '주간회의 Signal을 개선 완료로 처리하시겠습니까?\n'
-            '아니오를 선택하면 개선 검증중으로 처리합니다.'
-        )
-        if messagebox.askyesno('주간회의 상태 확인',prompt,parent=self):
-            return '개선 완료'
-        return '개선 검증중' if N(d.get('action_5d')) or N(d.get('verification_6d')) else '원인/개선 미확인'
 
     def _confirm_weekly_section(self,weekly,d,g):
         """Resolve weekly section safely and ask before using any fallback area."""
@@ -364,8 +402,19 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 db_status=self._confirm_issue_db_status_v1(d)
                 g['_issue_status_selected']=db_status
             if do_weekly:
-                self.status_var.set('WAITING  ·  주간회의 상태 확인 필요'); self.update_idletasks()
-                weekly_status=self._confirm_weekly_status_v1(d)
+                # When Issue DB is finally close, weekly Signal is unambiguously 개선 완료
+                # and no extra weekly popup is shown. Only an open result needs a separate choice.
+                status_for_weekly=db_status
+                if status_for_weekly is None:
+                    judged,_reason=legacy.step9._judge_issue_status(d)
+                    status_for_weekly='close' if str(judged).lower()=='close' else 'open'
+                if status_for_weekly=='close':
+                    weekly_status='개선 완료'
+                else:
+                    self.status_var.set('WAITING  ·  주간회의 상태 확인 필요'); self.update_idletasks()
+                    weekly_status=self._confirm_weekly_status_v1(d)
+                    if weekly_status is None:
+                        self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
             if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
