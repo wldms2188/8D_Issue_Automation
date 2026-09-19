@@ -133,7 +133,8 @@ def _is_photo_caption(line):
     if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True
     if (s.startswith('[') and s.endswith(']')) and any(x in q for x in CAPTION_HINTS):return True
     return False
-\ndef _box(sh):
+
+def _box(sh):
     try:return (float(sh.left),float(sh.top),float(sh.width),float(sh.height))
     except Exception:return (0,0,0,0)
 
