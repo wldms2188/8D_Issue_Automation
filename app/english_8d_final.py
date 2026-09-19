@@ -330,14 +330,16 @@ def _english_fields_from_spatial(blocks):
             if not line or _is_photo_caption(line):continue
 
             # These tokens are inserted by the geometry mapper itself.
-            if line in ('2D','3D','4D','4D_LEAK','5D','6D'):
+            if line in ('2D','3D','4D','4D_LEAK','4D_SYSTEM','5D','6D'):
                 current=line
                 if current in direct:
                     detected.add(direct[current])
                 elif current=='4D':
                     sub4='cause_4d'; detected.add('cause_4d')
-                else:
+                elif current=='4D_LEAK':
                     sub4='leak_cause'; detected.add('leak_cause')
+                else:
+                    sub4='system_cause'; detected.add('system_cause')
                 continue
 
             if current in direct:
@@ -351,7 +353,7 @@ def _english_fields_from_spatial(blocks):
                     buckets[key].append(line)
                 continue
 
-            if current in ('4D','4D_LEAK'):
+            if current in ('4D','4D_LEAK','4D_SYSTEM'):
                 four_key,rest=_four_d_subfield(line)
                 if four_key:
                     sub4=four_key; detected.add(sub4)
