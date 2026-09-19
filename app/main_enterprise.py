@@ -27,36 +27,95 @@ def target_ready_status(ppt8d,current):
     if not ppt8d and current.startswith('READY'):
         return 'READY  ·  8D 원본을 선택해 주세요.'
     return current
-def weekly_recommended_status(d):
-    """Previously agreed weekly Signal logic.
+WEEKLY_PENDING_TERMS=(
+    '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
+    '예정','추정','계획','계획 중','계획중','미완료','완료 예정','추가 검토','모니터링 중','모니터링중',
+    'in progress','ongoing','pending','planned','scheduled','tbd','tbc','wip',
+    'under verification','under validation','under review','in review',
+    'under evaluation','in evaluation','under monitoring','monitoring ongoing',
+    'to be verified','to be validated','to be completed','to be confirmed',
+    'not completed','not complete','not verified','not validated',
+    'awaiting verification','awaiting validation','awaiting result','awaiting results',
+    'follow-up ongoing','follow up ongoing','verification pending','validation pending',
+    'planned completion','scheduled completion','target completion','will be verified',
+    'will be validated','will be completed','expected to be completed'
+)
+WEEKLY_COMPLETE_TERMS=(
+    '검증 완료','검증완료','개선 완료','개선완료','확인 완료','확인완료',
+    '정상','이상 없음','이상없음','양호','문제 없음','문제없음','재발 없음','재발없음',
+    'verification complete','verification completed','verification is complete',
+    'validation complete','validation completed','validation is complete',
+    'effectiveness confirmed','effectiveness verified','effectiveness validated',
+    'completed','complete','successfully completed',
+    'validated','verified','passed','pass','all tests passed','test passed',
+    'acceptable','satisfactory','normal result','normal condition','result normal',
+    'no abnormality','no abnormalities','no abnomality','no abnomalities',
+    'without abnormality','without abnormalities','no issue','no issues',
+    'no defect','no defects','no recurrence','no recurrence observed',
+    'no abnormality observed','no abnormality detected','no abnormality found',
+    'no abnomality observed','no abnomality detected','no abnomality found',
+    'within spec','within specification','meets spec','meets specification',
+    'met spec','met specification','criteria met','requirement met','requirements met'
+)
+WEEKLY_ABNORMAL_TERMS=(
+    '불량','이상 발생','이상발생','미흡','재발','부적합','실패','ng','nok','oos',
+    'abnormal','abnomal','abnormality','abnomality','abnormalities','abnomalities',
+    'fail','failed','failure','not ok','out of spec','out-of-spec',
+    'defect remains','issue remains','recurred','recurrence','not acceptable',
+    'criteria not met','requirement not met','requirements not met'
+)
 
-    Priority:
-    1) 6D completion wording -> 개선 완료
-    2) 6D pending/verification/planned/abnormal wording -> 개선 검증중
-    3) Any progress in 4D/5D/6D -> 개선 검증중
-    4) No 4D/5D/6D progress -> 원인/개선 미확인
-    """
+def _normalize_weekly_status_text(text):
+    q=re.sub(r'\s+',' ',N(text)).casefold().strip()
+    # Common spelling errors in customer 8D files.
+    q=q.replace('abnomalities','abnormalities').replace('abnomality','abnormality').replace('abnomal','abnormal')
+    return q
+
+def weekly_verification_state(text):
+    """Return complete/pending/abnormal/unknown from Korean or English 6D wording."""
+    q=_normalize_weekly_status_text(text)
+    if not q:
+        return 'unknown','6D 내용 없음'
+
+    # Ongoing/planned wording has priority even when a sentence also contains
+    # words such as "complete" (e.g. "completion planned").
+    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_PENDING_TERMS):
+        return 'pending','진행 중/검증 중/예정 표현 감지'
+
+    # Negated abnormality is a normal/completed result, not an abnormal result.
+    normal_patterns=(
+        r'\bno\s+(?:further\s+|additional\s+)?abnormalit(?:y|ies)\b',
+        r'\bwithout\s+(?:any\s+)?abnormalit(?:y|ies)\b',
+        r'\bno\s+(?:further\s+|additional\s+)?defects?\b',
+        r'\bno\s+(?:further\s+|additional\s+)?issues?\b',
+        r'\bno\s+recurrence\b',
+    )
+    if any(re.search(p,q) for p in normal_patterns):
+        return 'complete','이상 없음/재발 없음 표현 감지'
+
+    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_COMPLETE_TERMS):
+        return 'complete','완료/정상/검증 완료 표현 감지'
+
+    if any(_normalize_weekly_status_text(x) in q for x in WEEKLY_ABNORMAL_TERMS):
+        return 'abnormal','이상/실패/재발 표현 감지'
+
+    if re.search(r'\b(?:complet(?:e|ed)|verif(?:ied|ication complete(?:d)?)|validat(?:ed|ion complete(?:d)?)|pass(?:ed)?|normal|acceptable|satisfactory)\b',q):
+        return 'complete','완료/정상/검증 완료 표현 감지'
+    if re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',q):
+        return 'abnormal','이상/실패/재발 표현 감지'
+    return 'unknown','6D 내용은 있으나 완료/진행 상태를 확정할 표현이 명확하지 않음'
+
+def weekly_recommended_status(d):
+    """Recommend weekly Signal using the same Korean/English 6D state rules."""
     cause=N(d.get('cause_4d'))
     action=N(d.get('action_5d'))
     verify=N(d.get('verification_6d'))
-    q=re.sub(r'\s+',' ',verify).casefold()
+    state,_reason=weekly_verification_state(verify)
 
-    pending=(
-        '진행 중','진행중','검증 중','검증중','예정','추정','완료 예정','계획','확인 중','확인중',
-        'in progress','ongoing','under verification','under validation','pending','planned','scheduled','tbd',
-        'to be verified','not completed','abnormal','abnomal','failed','failure','ng','nok','oos','재발','불량'
-    )
-    complete=(
-        '검증 완료','검증완료','개선 완료','개선완료','이상 없음','이상없음','정상',
-        'verification complete','verification completed','effectiveness confirmed',
-        'validated','verified','completed','passed','no abnormality','normal result'
-    )
-
-    # "완료 예정" must remain yellow, so pending is checked before completion.
-    if verify and any(x.casefold() in q for x in pending):
-        return '개선 검증중'
-    if verify and any(x.casefold() in q for x in complete):
+    if state=='complete':
         return '개선 완료'
+    if state in ('pending','abnormal'):
+        return '개선 검증중'
     if cause or action or verify:
         return '개선 검증중'
     return '원인/개선 미확인'
@@ -76,31 +135,32 @@ def issue_db_status_reason(d,judged):
     """Human-readable reason for the Issue DB open/close proposal."""
     judged='close' if str(judged or '').lower()=='close' else 'open'
     sixd=N(d.get('verification_6d'))
+    state,reason=weekly_verification_state(sixd)
     if not sixd:
         return '6D 효과검증 내용이 없어 완료 여부를 확인하기 어렵습니다.'
-    q=sixd.lower().replace(' ','')
-    if judged=='close':
-        if any(x in q for x in ('완료','정상','이상없음','검증완료','verificationcomplete','completed','passed','validated','verified','noabnormality')):
-            return '6D에서 완료·정상·검증완료 의미의 표현이 확인되었습니다.'
-        return '6D 효과검증 결과가 완료 상태로 보입니다.'
-    if any(x in q for x in ('진행중','검증중','확인중','예정','계획','inprogress','ongoing','pending','planned','scheduled','tbd')):
-        return '6D에서 진행 중·검증 중·예정 의미의 표현이 확인되었습니다.'
-    if any(x in q for x in ('불량','이상','실패','재발','abnormal','failed','failure','nok','oos')):
+    if judged=='close' and state=='complete':
+        return '6D에서 완료·정상·이상 없음·검증 완료 의미의 표현이 확인되었습니다.'
+    if state=='pending':
+        return '6D에서 진행 중·검증 중·예정·계획 의미의 표현이 확인되었습니다.'
+    if state=='abnormal':
         return '6D에서 이상·실패·재발 의미의 표현이 확인되었습니다.'
     return '6D에 완료를 확정할 표현이 명확하지 않습니다.'
 
 def weekly_status_reason(d,weekly_status):
     st=N(weekly_status)
     cause=N(d.get('cause_4d')); action=N(d.get('action_5d')); verify=N(d.get('verification_6d'))
-    q=re.sub(r'\s+',' ',verify).casefold()
+    state,_reason=weekly_verification_state(verify)
+
     if st=='개선 완료':
-        return '6D 효과검증에서 검증 완료·완료·정상 의미의 표현이 확인되었습니다.'
+        if state=='complete':
+            return '6D 효과검증에서 완료·정상·이상 없음·검증 완료 의미의 표현이 확인되었습니다.'
+        return '6D 효과검증 결과가 완료 상태로 선택되었습니다.'
+
     if st=='개선 검증중':
-        pending=('진행 중','진행중','검증 중','검증중','예정','추정','완료 예정','계획','확인 중','확인중',
-                 'in progress','ongoing','pending','planned','scheduled','under verification','under validation',
-                 'abnormal','abnomal','failed','failure','ng','nok','oos','재발','불량')
-        if verify and any(x.casefold() in q for x in pending):
-            return '6D에서 진행 중·검증 중·예정·추정 또는 미완료/이상 상태를 의미하는 표현이 확인되었습니다.'
+        if state=='pending':
+            return '6D에서 진행 중·검증 중·예정·계획 또는 미완료 상태를 의미하는 표현이 확인되었습니다.'
+        if state=='abnormal':
+            return '6D에서 이상·실패·재발 의미의 표현이 확인되어 개선 검증 중으로 추천합니다.'
         if verify:
             return '6D 내용은 있으나 검증 완료가 명확히 확인되지 않아 개선 검증 중으로 추천합니다.'
         if action:
@@ -108,6 +168,7 @@ def weekly_status_reason(d,weekly_status):
         if cause:
             return '4D 원인 내용은 확인되지만 개선 완료 단계는 아니므로 개선 검증 중으로 추천합니다.'
     return '4D 원인, 5D 개선대책, 6D 효과검증 내용이 모두 확인되지 않아 원인/개선 미확인으로 추천합니다.'
+
 
 
 
@@ -439,8 +500,8 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         )
         choice=ui.dialog(
             self,'주간회의 구역 확인',msg,'question',
-            (('새 구역 생성','new'),('이 구역에 업데이트','use')),
-            width=620,height=340
+            (('새 구역 생성','new'),('해당 구역 업데이트','use')),
+            width=620,height=340,button_width=14
         )
         if choice is None:
             return False
