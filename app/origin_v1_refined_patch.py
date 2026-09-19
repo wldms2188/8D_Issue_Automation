@@ -18,14 +18,16 @@ RULES = {
     ),
     '설계': (
         # Korean
-        '설계','도면','공차','사양','구조','치수','강성','간섭','설계마진','공차설계',
-        '구조간섭','사양미흡','설계변경','도면변경',
+        '설계','도면','공차','사양','규격','스펙','구조','치수','강성','간섭','설계마진','공차설계',
+        '구조간섭','사양미흡','규격 미흡','규격미흡','스펙 미흡','스펙미흡','설계변경','도면변경',
+        '설계 요구사항','설계요구사항','치수 부적합','치수부적합','공차 부적정','공차부적정',
         # English: design / drawing / dimensional / specification origin
         'design','design issue','design defect','design margin','insufficient design margin',
         'design review','design change','drawing','drawing error','drawing change',
         'tolerance','tolerance stack','tolerance stack up','tolerance stack-up',
         'clearance','insufficient clearance','interference','structural interference',
-        'geometry','geometric','spec','specification',
+        'geometry','geometric','spec','specification','spec limit','specification limit',
+        'design spec','design specification','requirement','design requirement',
         'specification issue','structural','stiffness','strength margin','design selection',
         'design requirement','design criteria','cad','layout interference',
     ),
@@ -33,10 +35,15 @@ RULES = {
         # Korean
         '공정','작업','조립','체결','토크','용접','설비','가공','도포','압착','공정조건',
         '작업조건','작업표준','공정산포','토크산포','용접조건','도포조건',
+        '볼트 풀림','볼트풀림','체결 풀림','체결풀림','체결불량','체결 불량','체결 미흡','체결미흡',
+        '체결력 부족','체결력부족','토크 부족','토크부족','볼트 체결','볼트체결','너트 풀림','너트풀림',
         # English: manufacturing / assembly / equipment / parameter origin
         'process','manufacturing process','process condition','process parameter',
         'process variation','manufacturing variation','work condition','work instruction',
-        'assembly','assembly condition','assembly error','fastening','torque','torque variation',
+        'assembly','assembly condition','assembly error','fastening','fastening condition','fastening failure',
+        'fastener loosening','loosened fastener','bolt loosening','loose bolt','fixing bolt',
+        'bolt fastening','bolt torque','insufficient torque','under torque','under-torque',
+        'torque','torque variation',
         'welding','weld','welding condition','coating','coating condition','dispensing',
         'adhesive application','pressing','press fit','crimp','crimping','riveting','curing',
         'equipment','machine','machine setting','equipment setting','fixture','jig',
@@ -155,11 +162,10 @@ def _occurrence_site_prior(d):
         '제품 생산','제품생산','product production','product manufacturing',
         'pack production','pack manufacturing','assembly production'
     )
-    source='화면 선택값' if selected else '8D 원문값'
     if any(_norm(x) in compact for x in part_sites):
-        return '부품',f'발생처 {source}이 "{site}"이므로 부품 기인 가능성을 보조 근거로 반영했습니다.'
+        return '부품',f'"{site}" 중 발생한 이슈이며, 추가 원인 분류 단서가 부족해 부품 기인 가능성을 보조 근거로 반영했습니다.'
     if any(_norm(x) in compact for x in product_sites):
-        return '공정',f'발생처 {source}이 "{site}"이므로 공정 기인 가능성을 보조 근거로 반영했습니다.'
+        return '공정',f'"{site}" 중 발생한 이슈이며, 추가 원인 분류 단서가 부족해 공정 기인 가능성을 보조 근거로 반영했습니다.'
     return None,None
 
 def _decide_with_site_prior(evidence,text,d):
@@ -180,8 +186,8 @@ def _decide_with_site_prior(evidence,text,d):
         hits=evidence.get(prior) or []
         return prior,(
             f'4D 원인 내용에 여러 범주의 단서가 있으나 '
-            f'{", ".join(hits[:3]) or prior} 표현과 발생처 정보가 함께 {prior} 방향을 지지하여 '
-            f'{prior}을(를) 우선 추천합니다. {site_reason}'
+            f'{", ".join(hits[:3]) or prior} 관련 표현이 확인되고, '
+            f'{site_reason}'
         )
     return rec,reason
 
@@ -218,7 +224,7 @@ def recommend_origin(d):
     if not (occurrence or leak or system):
         prior,site_reason=_occurrence_site_prior(d)
         if prior:
-            return prior,site_reason+' 4D 원인 내용이 없어 발생처 정보만 보조적으로 사용했습니다.'
+            return prior,site_reason
         return 'TBD','4D 원인 내용이 아직 없어 TBD로 표시합니다.'
 
     primary=_hits_for_text(occurrence)
@@ -238,7 +244,7 @@ def recommend_origin(d):
     # Occurrence site is a weak final fallback, not a replacement for explicit cause text.
     prior,site_reason=_occurrence_site_prior(d)
     if prior:
-        return prior,site_reason+' 4D 원인 분류 단서가 부족하여 보조적으로 추천합니다.'
+        return prior,site_reason
 
     return '논의 중','원인 내용은 있으나 부품/설계/공정/기타로 명확히 분류할 근거가 부족합니다.'
 
