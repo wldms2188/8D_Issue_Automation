@@ -101,7 +101,7 @@ def _marker(line):
             low=rest.casefold()
             if any(x in low for x in ('escape cause','escape root cause','non detection','non-detection','유출원인','유출 원인')): sec='4D_LEAK'
             elif any(x in low for x in ('system cause','systemic cause','시스템원인','시스템 원인')): sec='4D_SYSTEM'
-        return sec,_strip_semantic_label(rest,sec)
+        return sec,rest
     low=s.casefold()
     for sec,labels in SEMANTIC_MARKERS:
         for lab in labels:
@@ -130,7 +130,7 @@ def _is_photo_caption(line):
     if not s or len(s)>80:return False
     q=s.strip('[]() ').casefold()
     if re.fullmatch(r'(before|after)( improvement)?',q):return True
-    if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True
+    if re.fullmatch(r'.{0,30}(process|photo|image|view)',q):return True\n    if any(x in q for x in ('photo','image','picture','close-up','close up')):return True
     if (s.startswith('[') and s.endswith(']')) and any(x in q for x in CAPTION_HINTS):return True
     return False
 
