@@ -68,7 +68,9 @@ def _force_page2_header(sl,d,g):
     customer=N(d.get('customer'))
     task=N(d.get('task_name'))
     kind,event=step3._event_name(d)
-    prefix=f'{customer}_{task}'.strip('_')
+    # task_name can already be "고객사_과제명" (A_B).  Reuse the same
+    # canonical weekly-task formatter so the title never becomes A_A_B.
+    prefix=v319._weekly_task(d)
     if kind=='시험' and event:
         title=f'{prefix}_{event} 이슈 발생'.strip('_')
     elif kind=='빌드' and event:
