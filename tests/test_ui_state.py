@@ -33,6 +33,11 @@ class UIStateTests(unittest.TestCase):
         self.assertEqual(ent.weekly_status_from_choice(d,'open'),'개선 검증중')
         self.assertEqual(ent.weekly_status_from_choice(d,'close'),'개선 완료')
 
+    def test_weekly_popup_only_for_final_open_issue_db(self):
+        self.assertTrue(ent.weekly_status_confirmation_required('open'))
+        self.assertFalse(ent.weekly_status_confirmation_required('close'))
+        self.assertFalse(ent.weekly_status_confirmation_required(None))
+
     def test_weekly_selected_status_is_independent_from_issue_db(self):
         d={'action_5d':'fix','verification_6d':'DV abnormal'}
         g={'_issue_status_selected':'open','_weekly_status_selected':'개선 완료'}
