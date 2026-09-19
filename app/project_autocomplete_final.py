@@ -52,11 +52,8 @@ def _project_entry(self,parent,label,key,hint):
     if key!="task_name": return _original_entry(self,parent,label,key,hint)
     row=tk.Frame(parent,bg="white"); row.pack(fill="x",pady=4)
     tk.Label(row,text=label,bg="white",fg=ui.TEXT,font=("Malgun Gothic",9),width=17,anchor="w").pack(side="left")
-    # Reserve the same right-side mark/gutter used by the other enterprise
-    # input rows.  Without this, the long autocomplete entry can run underneath
-    # the example text / ○ confirmation column on narrower card widths.
     wrap=tk.Frame(row,bg="white")
-    wrap.pack(side="left",fill="x",expand=True,padx=(0,34))
+    wrap.pack(side="left",fill="x",expand=True)
     entry=ttk.Entry(wrap,textvariable=self.vars[key]); entry.pack(fill="x")
     popup=None; listbox=None
     def close(*_):
@@ -89,10 +86,10 @@ def _project_entry(self,parent,label,key,hint):
     entry.bind("<KeyRelease>",lambda e: None if e.keysym in ("Up","Down","Return","Escape","Tab") else show(),add="+")
     entry.bind("<Escape>",close,add="+")
     tk.Label(
-        parent,
+        wrap,
         text="담당팀 연계 과제 후보 · 입력 시 유사 과제 자동완성",
-        bg="white",fg="#98A3AD",font=("Malgun Gothic",7)
-    ).pack(anchor="e",padx=(0,34))
+        bg="white",fg="#98A3AD",font=("Malgun Gothic",7),anchor="e"
+    ).pack(fill="x",anchor="e")
 
 def _confirm_project(self):
     v=self.vars.get("task_name").get().strip() if self.vars.get("task_name") else ""
