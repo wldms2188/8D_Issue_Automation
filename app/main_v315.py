@@ -77,7 +77,7 @@ def _group_4d_marker_titles(sl):
             continue
         try:
             group=sl.shapes.add_group_shape([unit,title])
-            group.name='AUTO_8D_4D_UNIT'
+            group.name='TEMPLATE_4D_UNIT_GROUPED'
         except Exception:
             pass
 
@@ -122,7 +122,7 @@ def _clone_unit(sl,unit,x,y):
                 dup=sh; break
         if dup is None:
             dup=list(sl.shapes)[-1]
-        dup.name='AUTO_8D_4D_LEFT'
+        dup.name='TEMPLATE_4D_UNIT_CLONE'
         _move_unit(dup,x,y)
         return dup
     except Exception:
