@@ -1091,7 +1091,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                     msg=(
                         '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
                         f'8D 내용 추출값 : {display_task}\n'
-                        f'입력/선택값    : {entered_task}\n\n'
+                        f'입력/선택값    : {selected_task}\n\n'
                         '입력/선택한 고객사/과제명으로 계속 진행할까요?'
                     )
                     choice=ui.dialog(
