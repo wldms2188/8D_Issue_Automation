@@ -101,6 +101,32 @@ def _project_part_for_compare(value):
             return s[i+1:].strip()
     return s
 
+def project_match_in_8d_filename(ppt8d,selected_value):
+    """Return the exact selected customer/project phrase found in the 8D filename.
+
+    Full customer_project is tried first.  For project-only selections, or when
+    the full phrase is not present, the project part is tried as a literal phrase.
+    The returned text preserves the filename's spelling/case for the confirmation UI.
+    """
+    selected=N(selected_value)
+    if not selected or not ppt8d:
+        return ''
+    try:
+        stem=Path(ppt8d).stem
+    except Exception:
+        stem=N(ppt8d)
+    candidates=[]
+    if selected:
+        candidates.append(selected)
+    project=_project_part_for_compare(selected)
+    if project and _customer_project_key(project)!=_customer_project_key(selected):
+        candidates.append(project)
+    for cand in candidates:
+        m=re.search(re.escape(cand),stem,re.I)
+        if m:
+            return stem[m.start():m.end()]
+    return ''
+
 def customer_project_mismatch(extracted_d,selected_value):
     extracted=canonical_customer_project_from_8d(extracted_d)
     selected=N(selected_value)
@@ -1004,11 +1030,13 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
             self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip()
             if selected_task:
                 mismatch,extracted_task,entered_task=customer_project_mismatch(d,selected_task)
+                filename_match=project_match_in_8d_filename(ppt8d,selected_task)
                 if mismatch:
                     msg=(
                         '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
-                        f'8D 확인값     : {extracted_task or "(과제명 추출 못함)"}\n'
-                        f'입력/선택값   : {entered_task}\n\n'
+                        f'8D 내용 추출값 : {extracted_task or "(과제명 추출 못함)"}\n'
+                        f'8D 파일명 일치 : {filename_match or "(입력값과 동일 문구 없음)"}\n'
+                        f'입력/선택값    : {entered_task}\n\n'
                         '입력/선택한 고객사/과제명으로 계속 진행할까요?'
                     )
                     choice=ui.dialog(
