@@ -1,5 +1,6 @@
 import sys,unittest
 from pathlib import Path
+from pptx import Presentation
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import project_weekly_match_final as w
 import main_recovery_step14_fix2 as core
@@ -26,5 +27,12 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
 
  def test_issue_display_removes_8d_and_report_words(self):
   self.assertEqual(v319._clean_issue_label('8D_Report_Crack 발생'),'Crack 발생')
+
+ def test_create_native_section_for_new_project(self):
+  prs=Presentation(); prs.slides.add_slide(prs.slide_layouts[6])
+  sec=core._create_native_section(prs,'NEW_PROJECT',0)
+  self.assertIsNotNone(sec)
+  sections=core._native_sections(prs)
+  self.assertTrue(any(x['name']=='NEW_PROJECT' and 0 in x['indices'] for x in sections))
 
 if __name__=='__main__':unittest.main()
