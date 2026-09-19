@@ -41,3 +41,5 @@ jobs:
         run: python -m unittest tests.test_english_8d -v
       - name: Problem summary regression
         run: python -m unittest tests.test_problem_summary_blocks -v
+      - name: UI state regression
+        run: python -m unittest tests.test_ui_state -v
