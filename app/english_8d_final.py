@@ -419,31 +419,71 @@ def _ppt_text(path):
     try:return '\n'.join(_shape_blocks(path))
     except Exception:return ''
 
+def _document_looks_english(raw):
+    """Gate the English parser so the proven Korean extraction path is never rewritten."""
+    s=str(raw or '')
+    a=len(re.findall(r'[A-Za-z]',s))
+    k=len(re.findall(r'[가-힣]',s))
+    words=len(re.findall(r'[A-Za-z]{2,}',s))
+    return a>=40 and words>=8 and a>max(20,int(k*1.4))
+
+def _semantic_detected_keys(blocks):
+    """Fields whose section heading is explicitly present in source order."""
+    found=set()
+    for block in blocks or []:
+        for raw in str(block or '').replace('\r','\n').splitlines():
+            line=_norm_line(raw)
+            if not line:continue
+            sec,_rest=_marker(line)
+            key=SECTION_FIELDS.get(sec)
+            if key:found.add(key)
+    return found
+
+def _english_section_fields(blocks,spatial):
+    """Prefer explicit English headings; use geometry only to fill truly missing fields.
+
+    This keeps 4D Root Cause / Escape Cause / System Cause tied to their semantic
+    headings instead of allowing a shifted D marker to move 4D content into 3D/5D.
+    """
+    semantic=extract_sections_from_blocks(blocks)
+    detected=_semantic_detected_keys(blocks)
+    spatial_fields=extract_sections_from_blocks(spatial) if spatial else {}
+    out={}
+
+    for key in ('problem','temporary_action','cause_4d','leak_cause','system_cause','action_5d','verification_6d'):
+        sem=str(semantic.get(key) or '').strip()
+        geo=str(spatial_fields.get(key) or '').strip()
+
+        # If a real heading was seen, semantic source-order owns that field even
+        # when the body is intentionally blank. Geometry must not steal its neighbour.
+        if key in detected:
+            out[key]=sem
+        elif sem:
+            out[key]=sem
+        elif geo:
+            out[key]=geo
+    return out
+
 def extract(path):
+    # Always start from the previously validated extraction chain. It owns Korean
+    # 8D parsing, metadata, images, and the original 4D occurrence/leak/system logic.
     d=_original(path)
     try:blocks=_shape_blocks(path)
     except Exception:blocks=[]
-    try:spatial,detected=_spatial_section_blocks(path,True)
-    except Exception:spatial,detected=[],set()
-
     raw='\n'.join(blocks)
-    if spatial:
-        # Geometry is primary, but a D marker can sit one row below its real section.
-        # After semantic remapping that can leave the earlier section empty. Fill only
-        # those empty sections from source-order semantic headings; never overwrite a
-        # non-empty spatial result.
-        spatial_fields=extract_sections_from_blocks(spatial)
-        source_fields=extract_sections_from_blocks(blocks)
-        for key in spatial_fields:
-            sval=str(spatial_fields.get(key) or '').strip()
-            fval=str(source_fields.get(key) or '').strip()
-            if key in detected:
-                d[key]=sval or fval
-            elif sval:
-                d[key]=sval
-        return enhance_dict(d,raw)
 
-    return enhance_dict(d,raw,blocks,None)
+    # Critical isolation: English work must not alter the existing Korean parser.
+    if not _document_looks_english(raw):
+        return d
+
+    try:spatial,_detected=_spatial_section_blocks(path,True)
+    except Exception:spatial=[]
+
+    rebuilt=_english_section_fields(blocks,spatial)
+    for key,val in rebuilt.items():
+        d[key]=val
+
+    return enhance_dict(d,raw)
 v310.base.extract=extract
 
 def apply_english_choice(d,use_original):
