@@ -569,8 +569,17 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                     weekly_status=weekly_recommended_status(d)
                 g['_weekly_status_selected']=weekly_status
             anchor=xlsx if do_excel else weekly; out=Path(anchor).parent/'자동화_결과'; out.mkdir(exist_ok=True); results=[]
-            if do_excel: self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks(); xo=out/(Path(xlsx).stem+'_업데이트.xlsx'); a,_=base.update_excel(xlsx,xo,d,g,new=(mode=='new')); results.append(a)
-            if do_weekly: self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks(); po=out/(Path(weekly).stem+'_업데이트.pptx'); b,_=base.weekly(weekly,po,d,g,mode); results.append(b)
+            self._last_saved_outputs={}
+            if do_excel:
+                self.status_var.set('RUNNING  ·  Issue DB 업데이트 중...'); self.update_idletasks()
+                xo=out/(Path(xlsx).stem+'_업데이트.xlsx')
+                a,xsaved=base.update_excel(xlsx,xo,d,g,new=(mode=='new'))
+                self._last_saved_outputs['excel']=str(xsaved); results.append(a)
+            if do_weekly:
+                self.status_var.set('RUNNING  ·  주간회의 PPT 업데이트 중...'); self.update_idletasks()
+                po=out/(Path(weekly).stem+'_업데이트.pptx')
+                b,psaved=base.weekly(weekly,po,d,g,mode)
+                self._last_saved_outputs['weekly']=str(psaved); results.append(b)
             self.log.delete('1.0','end'); targets=[]
             if do_excel: targets.append('Issue DB Excel')
             if do_weekly: targets.append('주간회의 PPT')
