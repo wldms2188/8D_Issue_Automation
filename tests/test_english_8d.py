@@ -127,7 +127,7 @@ class English8DTests(unittest.TestCase):
     rt.rows[r].height=Inches(1.5); rt.cell(r,0).text=a; rt.cell(r,1).text=b
    prs.save(p)
    blocks=e._spatial_section_blocks(p)
-   x=e.extract_sections_from_blocks(blocks)
+   x,_=e._english_fields_from_spatial(blocks)
    self.assertIn('Scratch in strap',x['problem'])
    self.assertNotIn('Alice',x['problem'])
    self.assertNotIn('Member',x['problem'])
@@ -135,71 +135,47 @@ class English8DTests(unittest.TestCase):
    self.assertNotIn('Horizontal deployment done',x['verification_6d'])
    self.assertNotIn('Customer request A',x['verification_6d'])
 
- def test_extract_recovers_2d_when_marker_is_below_real_heading(self):
-  with tempfile.TemporaryDirectory() as td:
-   p=Path(td)/'marker_below_heading.pptx'
-   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
-   # Real 2D heading/content are above the visual 2D marker.
-   sh=sl.shapes.add_textbox(Inches(0.9),Inches(0.15),Inches(4.5),Inches(0.7))
-   sh.text='Problem Description\nScratch on metal strap'
-   for label,y in [('2D',0.8),('3D',2.2),('4D',3.6),('5D',5.0)]:
-    m=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); m.text=label
-   sh=sl.shapes.add_textbox(Inches(0.9),Inches(1.0),Inches(4.5),Inches(0.7)); sh.text='Containment\nStop shipment'
-   sh=sl.shapes.add_textbox(Inches(0.9),Inches(2.4),Inches(4.5),Inches(0.7)); sh.text='Root Cause\nGuide interference'
-   prs.save(p)
-   x=e.extract(p)
-   self.assertIn('Scratch on metal strap',x['problem'])
-   self.assertNotIn('Stop shipment',x['problem'])
-   self.assertIn('Stop shipment',x['temporary_action'])
-   self.assertIn('Guide interference',x['cause_4d'])
+ def test_geometry_region_does_not_move_content_from_mismatched_heading(self):
+  x,detected=e._english_fields_from_spatial([
+   '2D','Containment','Scratch on metal strap',
+   '3D','Root Cause','Stop shipment',
+   '4D','Corrective Action','Guide interference',
+   '5D','Verification','Guide revised',
+   '6D','Problem Description','DV passed'])
+  self.assertIn('Containment',x['problem'])
+  self.assertIn('Scratch on metal strap',x['problem'])
+  self.assertIn('Root Cause',x['temporary_action'])
+  self.assertIn('Stop shipment',x['temporary_action'])
+  self.assertIn('Corrective Action',x['cause_4d'])
+  self.assertIn('Guide interference',x['cause_4d'])
+  self.assertIn('Verification',x['action_5d'])
+  self.assertIn('Guide revised',x['action_5d'])
+  self.assertIn('Problem Description',x['verification_6d'])
+  self.assertIn('DV passed',x['verification_6d'])
 
- def test_spatial_semantic_heading_corrects_one_row_shift(self):
-  with tempfile.TemporaryDirectory() as td:
-   p=Path(td)/'shifted_layout.pptx'
-   prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
-   # D markers are intentionally one visual row ahead of the semantic content.
-   for label,y in [('2D',0.5),('3D',2.0),('4D',3.5),('5D',5.0)]:
-    sh=sl.shapes.add_textbox(Inches(0.1),Inches(y),Inches(0.5),Inches(0.3)); sh.text=label
-   contents=[
-    ('Containment\nStop shipment',0.7),
-    ('Root Cause\nGuide interference confirmed',2.2),
-    ('Corrective Action\nGuide revised',3.7),
-   ]
-   for text,y in contents:
-    sh=sl.shapes.add_textbox(Inches(0.9),Inches(y),Inches(4.5),Inches(0.8)); sh.text=text
-   prs.save(p)
-   blocks=e._spatial_section_blocks(p)
-   x=e.extract_sections_from_blocks(blocks)
-   self.assertNotIn('Stop shipment',x['problem'])
-   self.assertIn('Stop shipment',x['temporary_action'])
-   self.assertIn('Guide interference confirmed',x['cause_4d'])
-   self.assertIn('Guide revised',x['action_5d'])
+ def test_4d_subheadings_split_only_within_4d(self):
+  x,detected=e._english_fields_from_spatial([
+   '4D','Root Cause','Guide interference',
+   'Escape Cause','Inspection gap',
+   'System Cause','Control plan missing',
+   '5D','Root Cause','Guide revised'])
+  self.assertIn('Guide interference',x['cause_4d'])
+  self.assertIn('Inspection gap',x['leak_cause'])
+  self.assertIn('Control plan missing',x['system_cause'])
+  # "Root Cause" inside the geometrical 5D area stays in 5D; it cannot move back to 4D.
+  self.assertIn('Root Cause',x['action_5d'])
+  self.assertIn('Guide revised',x['action_5d'])
+
+ def test_language_gate_uses_80_percent_english_threshold(self):
+  self.assertTrue(e._document_looks_english('A'*80+'가'*20))
+  self.assertFalse(e._document_looks_english('A'*79+'가'*21))
+  self.assertAlmostEqual(e.english_content_ratio('A'*80+'가'*20),80.0)
 
  def test_translation_coverage_reports_partial_dictionary_conversion(self):
   x=e.enhance_dict({'problem':'Crack occurred after repeated vehicle evaluation.'})
   pct=e.translation_coverage(x)
   self.assertGreater(pct,0)
   self.assertLess(pct,100)
-
- def test_english_semantic_4d_beats_shifted_geometry(self):
-  blocks=[
-   '2D Problem Description','Scratch on strap',
-   '3D Containment','Stop shipment',
-   '4D Root Cause','Guide interference',
-   'Escape Cause','Inspection gap',
-   'System Cause','Control plan missing',
-   '5D Corrective Action','Guide revised',
-   '6D Verification','DV passed']
-  # Deliberately wrong one-row-shifted geometry must not override headings.
-  spatial=['2D','Stop shipment','3D','Guide interference','4D','Guide revised','5D','DV passed']
-  x=e._english_section_fields(blocks,spatial)
-  self.assertIn('Scratch on strap',x['problem'])
-  self.assertIn('Stop shipment',x['temporary_action'])
-  self.assertIn('Guide interference',x['cause_4d'])
-  self.assertIn('Inspection gap',x['leak_cause'])
-  self.assertIn('Control plan missing',x['system_cause'])
-  self.assertIn('Guide revised',x['action_5d'])
-  self.assertIn('DV passed',x['verification_6d'])
 
  def test_korean_document_keeps_existing_extractor_unchanged(self):
   old_original=e._original; old_blocks=e._shape_blocks
