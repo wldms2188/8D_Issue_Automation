@@ -181,6 +181,38 @@ class English8DTests(unittest.TestCase):
   self.assertGreater(pct,0)
   self.assertLess(pct,100)
 
+ def test_english_semantic_4d_beats_shifted_geometry(self):
+  blocks=[
+   '2D Problem Description','Scratch on strap',
+   '3D Containment','Stop shipment',
+   '4D Root Cause','Guide interference',
+   'Escape Cause','Inspection gap',
+   'System Cause','Control plan missing',
+   '5D Corrective Action','Guide revised',
+   '6D Verification','DV passed']
+  # Deliberately wrong one-row-shifted geometry must not override headings.
+  spatial=['2D','Stop shipment','3D','Guide interference','4D','Guide revised','5D','DV passed']
+  x=e._english_section_fields(blocks,spatial)
+  self.assertIn('Scratch on strap',x['problem'])
+  self.assertIn('Stop shipment',x['temporary_action'])
+  self.assertIn('Guide interference',x['cause_4d'])
+  self.assertIn('Inspection gap',x['leak_cause'])
+  self.assertIn('Control plan missing',x['system_cause'])
+  self.assertIn('Guide revised',x['action_5d'])
+  self.assertIn('DV passed',x['verification_6d'])
+
+ def test_korean_document_keeps_existing_extractor_unchanged(self):
+  old_original=e._original; old_blocks=e._shape_blocks
+  try:
+   e._original=lambda _p:{'cause_4d':'기존 발생원인','leak_cause':'기존 유출원인','system_cause':'기존 시스템원인'}
+   e._shape_blocks=lambda _p:['4D 발생 원인','한글 원인 내용','유출 원인','한글 유출 내용']
+   x=e.extract('dummy.pptx')
+   self.assertEqual(x['cause_4d'],'기존 발생원인')
+   self.assertEqual(x['leak_cause'],'기존 유출원인')
+   self.assertEqual(x['system_cause'],'기존 시스템원인')
+  finally:
+   e._original=old_original; e._shape_blocks=old_blocks
+
  def test_5d_heading_and_first_row_are_not_duplicated(self):
   x=e.extract_sections_from_blocks([
    '5D','Corrective Action','Guide revised','Corrective Action','Guide revised',
