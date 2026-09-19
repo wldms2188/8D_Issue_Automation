@@ -27,6 +27,33 @@ def target_ready_status(ppt8d,current):
     if not ppt8d and current.startswith('READY'):
         return 'READY  ·  8D 원본을 선택해 주세요.'
     return current
+
+def split_customer_project(value):
+    """Split canonical A_B into customer A and full customer_project A_B.
+
+    Underscores inside parentheses are part of the project name and are ignored.
+    """
+    s=N(value)
+    depth=0
+    for i,ch in enumerate(s):
+        if ch=='(':
+            depth+=1
+        elif ch==')' and depth:
+            depth-=1
+        elif ch=='_' and depth==0:
+            return s[:i].strip(),s
+    return '',s
+
+def apply_selected_customer_project(d,selected):
+    d=dict(d or {})
+    selected=N(selected)
+    if not selected:
+        return d
+    customer,full=split_customer_project(selected)
+    d['task_name']=full
+    if customer:
+        d['customer']=customer
+    return d
 WEEKLY_PENDING_TERMS=(
     '진행 중','진행중','검증 중','검증중','확인 중','확인중','검토 중','검토중',
     '예정','추정','계획','계획 중','계획중','미완료','완료 예정','추가 검토','모니터링 중','모니터링중',
@@ -524,8 +551,9 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         if xlsx and not os.path.exists(xlsx): return ui.warning(self,'입력 확인','선택한 Issue DB Excel 파일을 찾을 수 없습니다.')
         if g.get('occurrence_site') not in legacy.OCCURRENCE_SITES: return ui.warning(self,'입력 확인','발생처를 선택해 주세요.')
         try:
-            self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip();
-            if selected_task: d['task_name']=selected_task
+            self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip()
+            if selected_task:
+                d=apply_selected_customer_project(d,selected_task)
             mode=self.mode.get(); do_weekly=bool(weekly); do_excel=bool(xlsx); excel_row=None
             if do_weekly:
                 if not self._confirm_weekly_section(weekly,d,g):
