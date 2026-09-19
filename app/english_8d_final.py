@@ -586,7 +586,9 @@ def _english_section_images(path):
     out={k:[] for k in keys}
     prs=Presentation(path)
 
-    for si,sl in enumerate(prs.slides):
+    # User rule: ONLY source 8D page 1 supplies Issue DB / weekly images.
+    # Never borrow or mix pictures from later source pages.
+    for si,sl in enumerate(prs.slides[:1]):
         regions=_d_regions_for_slide(sl,prs)
         if not regions:
             continue
@@ -1030,20 +1032,23 @@ def extract(path):
     d['_english_ratio']=ratio
     d['_english_mode']=ratio>=80.0
 
-    # Under 80% English: keep the existing Korean extraction and add only
-    # extra 4D table items (e.g. 재현시험/추가 검토) below 발생원인.
-    if not d['_english_mode']:
-        return _augment_korean_4d_extras(path,d)
-
-    # In English mode, rebuild image ownership from the same D-region geometry
-    # used for text.  Do not inherit legacy nearest-heading image assignments.
+    # Image policy is shared by Korean and English:
+    #   - only page 1 of the source 8D is eligible,
+    #   - each picture belongs only to the D region that physically contains it,
+    #   - Issue DB representative image is built only from page-1 2D pictures.
     try:
-        english_images=_english_section_images(path)
-        d['_section_images']=english_images
-        rep=v310.composite(english_images.get('2D',[]))
+        page1_images=_english_section_images(path)
+        d['_section_images']=page1_images
+        rep=v310.composite(page1_images.get('2D',[]))
         d['_images']=[(1,1,1,rep)] if rep else []
     except Exception:
         d['_section_images']={k:[] for k in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D')}
+        d['_images']=[]
+
+    # Under 80% English: keep the existing Korean text extraction and add only
+    # extra 4D table items (e.g. 재현시험/추가 검토) below 발생원인.
+    if not d['_english_mode']:
+        return _augment_korean_4d_extras(path,d)
 
     # 80%+ English extraction now mirrors the Korean table logic:
     #   1) Matching table/header label inside the correct D region.
