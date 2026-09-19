@@ -22,7 +22,8 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         # Use most of the available desktop so the result/status area is visible
         # at common Windows DPI settings, while keeping a small taskbar margin.
         w=max(1000,min(1380,int(sw)-40))
-        h=max(720,min(980,int(sh)-45))
+        # Taller default window, but keep normal windowed mode instead of maximizing.
+        h=max(820,min(1000,int(sh)-70))
         return min(w,int(sw)),min(h,int(sh))
 
     def _compact_layout(self):
@@ -31,12 +32,7 @@ class EnterpriseAppV3(v2.EnterpriseAppV2):
         w,h=self._initial_window_size(sw,sh)
         self.minsize(min(1080,w),min(740,h))
         self.geometry(f'{w}x{h}+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}')
-        # Production UI should open maximized on Windows, matching the validated enterprise layout.
-        # Keep the calculated geometry as a safe fallback on environments that do not support zoomed state.
-        try:
-            self.state('zoomed')
-        except Exception:
-            pass
+        # Keep a normal resizable window. Height is enlarged by _initial_window_size().
         try: self.log.configure(height=5)
         except Exception: pass
         for z in getattr(self, 'dropzones', {}).values():
