@@ -254,6 +254,19 @@ ACTION_COMPLETE_TERMS=(
     'countermeasure applied','action completed','action implemented','done','finished'
 )
 
+def _weekly_term_present(text,term):
+    """Match short English status tokens as whole words, not inside other words.
+
+    Example: NG must not match 'pending' or 'during'.
+    """
+    q=_normalize_weekly_status_text(text)
+    t=_normalize_weekly_status_text(term)
+    if not t:
+        return False
+    if re.fullmatch(r'[a-z0-9]+',t):
+        return bool(re.search(r'(?<![a-z0-9])'+re.escape(t)+r'(?![a-z0-9])',q))
+    return t in q
+
 def _normalize_weekly_status_text(text):
     q=re.sub(r'\s+',' ',N(text)).casefold().strip()
     # Common spelling errors in customer 8D files.
@@ -319,7 +332,7 @@ def _result_tail_state(q):
             normal_mask=re.sub(p,' ',normal_mask)
 
         abnormal=(
-            any(x in normal_mask for x in abnormal_terms)
+            any(_weekly_term_present(normal_mask,x) for x in abnormal_terms)
             or bool(re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',normal_mask))
         )
         if abnormal:
@@ -366,7 +379,7 @@ def weekly_verification_state(text):
         abnormal_scan=re.sub(p,' ',abnormal_scan)
 
     abnormal=(
-        any(_normalize_weekly_status_text(x) in abnormal_scan for x in WEEKLY_ABNORMAL_TERMS)
+        any(_weekly_term_present(abnormal_scan,x) for x in WEEKLY_ABNORMAL_TERMS)
         or bool(re.search(r'\b(?:abnormalit(?:y|ies)|abnormal|ng|nok|fail(?:ed|ure)?|oos|recur(?:red|rence))\b',abnormal_scan))
     )
     if abnormal:
