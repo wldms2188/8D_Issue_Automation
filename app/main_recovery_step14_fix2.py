@@ -288,8 +288,8 @@ $ppt = $null
 $pres = $null
 try {{
     $ppt = New-Object -ComObject PowerPoint.Application
-    try { $ppt.DisplayAlerts = 1 } catch {}
-    try { $ppt.AutomationSecurity = 3 } catch {}
+    try {{ $ppt.DisplayAlerts = 1 }} catch {{}}
+    try {{ $ppt.AutomationSecurity = 3 }} catch {{}}
     $pres = $ppt.Presentations.Open('{out_q}', 0, 0, 0)
     for ($i = $pres.Slides.Count; $i -ge 1; $i--) {{
         $nm = [string]$pres.Slides.Item($i).Name
