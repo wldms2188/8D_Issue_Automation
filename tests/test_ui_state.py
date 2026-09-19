@@ -1,8 +1,9 @@
-import sys, unittest
+import sys, unittest, io
 from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
+from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 
 import main_enterprise as ent
@@ -44,6 +45,52 @@ class UIStateTests(unittest.TestCase):
     def test_final_update_complete_is_100(self):
         pct,label=v2.progress_state('COMPLETE · 선택한 자료의 업데이트가 완료되었습니다.',85)
         self.assertEqual((pct,label),(100,'업데이트 완료'))
+
+    def test_weekly_2d_and_3d_images_stay_inside_their_native_rectangles(self):
+        prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+
+        def blob(seed):
+            im=Image.new('RGB',(320,180),(20*seed%255,50*seed%255,80*seed%255))
+            b=io.BytesIO(); im.save(b,'PNG'); return b.getvalue()
+
+        b2=blob(2); b3=blob(3)
+        d={
+            'problem':'2D phenomenon',
+            'temporary_action':'3D containment',
+            'cause_4d':'root cause',
+            'leak_cause':'escape cause',
+            'system_cause':'',
+            'action_5d':'action',
+            'verification_6d':'verification',
+            '_section_images':{
+                '2D':[(b2,(0,0,100,100),0)],
+                '3D':[(b3,(0,0,100,100),0)],
+                '4D_CAUSE':[],'4D_LEAK':[],'5D':[],'6D':[],
+            },
+        }
+        step12._update_page2_step12(sl,d,{},'existing')
+
+        found={}
+        for sh in sl.shapes:
+            name=str(getattr(sh,'name',''))
+            if name in ('AUTO_8D_IMG_2D','AUTO_8D_IMG_3D'):
+                found[name]=sh
+        self.assertEqual(set(found),{'AUTO_8D_IMG_2D','AUTO_8D_IMG_3D'})
+
+        for key in ('2D','3D'):
+            sh=found['AUTO_8D_IMG_'+key]
+            z=v310.ZONES[key]
+            x=float(sh.left)/v310.EMU; y=float(sh.top)/v310.EMU
+            w=float(sh.width)/v310.EMU; h=float(sh.height)/v310.EMU
+            self.assertGreaterEqual(x,z['x']-.01)
+            self.assertGreaterEqual(y,z['y']-.01)
+            self.assertLessEqual(x+w,z['x']+z['w']+.01)
+            self.assertLessEqual(y+h,z['y']+z['h']+.01)
+
+        # 2D can never extend down into the 3D content rectangle.
+        s2=found['AUTO_8D_IMG_2D']
+        bottom2=(float(s2.top)+float(s2.height))/v310.EMU
+        self.assertLess(bottom2,v310.ZONES['3D']['y'])
 
     def test_english_weekly_native_zones_never_overlap(self):
         long_2d=('Scratch was observed during visual OQC inspection after unloading process. ' * 10).strip()
