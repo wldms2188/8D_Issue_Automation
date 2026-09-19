@@ -127,6 +127,38 @@ def project_match_in_8d_filename(ppt8d,selected_value):
             return stem[m.start():m.end()]
     return ''
 
+def catalog_projects_in_8d_filename(ppt8d,team=''):
+    """Lazy-load the UI catalog to avoid import cycles during startup."""
+    try:
+        import project_autocomplete_final as catalog
+        return catalog.filename_project_candidates(ppt8d,team)
+    except Exception:
+        return []
+
+def _same_project_for_confirmation(a,b):
+    ac,_=split_customer_project(N(a))
+    bc,_=split_customer_project(N(b))
+    if ac and bc:
+        left,right=a,b
+    else:
+        left,right=_project_part_for_compare(a),_project_part_for_compare(b)
+    return _customer_project_key(left)==_customer_project_key(right)
+
+def project_confirmation_mismatch(extracted_d,selected_value,ppt8d,team=''):
+    """Compare selection against filename/catalog detection first, then PPT metadata."""
+    selected=N(selected_value)
+    candidates=catalog_projects_in_8d_filename(ppt8d,team)
+    if candidates:
+        matches=[x for x in candidates if _same_project_for_confirmation(x,selected)]
+        # One unambiguous filename candidate matching the selection needs no warning.
+        if len(candidates)==1 and matches:
+            return False,candidates
+        # Multiple overlapping catalog projects are intentionally shown for confirmation.
+        return True,candidates
+
+    mismatch,extracted,_selected=customer_project_mismatch(extracted_d,selected)
+    return mismatch,([extracted] if extracted else [])
+
 def project_confirmation_value(extracted_value,filename_match):
     """Display one 8D project value: extracted metadata first, filename match as fallback."""
     return N(extracted_value) or N(filename_match) or '(과제명 추출 못함)'
@@ -1033,10 +1065,16 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         try:
             self.status_var.set('RUNNING  ·  8D 원본 분석 중...'); self.update_idletasks(); d=base.extract(ppt8d); selected_task=g.get('task_name','').strip()
             if selected_task:
-                mismatch,extracted_task,entered_task=customer_project_mismatch(d,selected_task)
+                mismatch,filename_projects=project_confirmation_mismatch(
+                    d,selected_task,ppt8d,g.get('team','').strip()
+                )
+                extracted_task=canonical_customer_project_from_8d(d)
                 filename_match=project_match_in_8d_filename(ppt8d,selected_task)
                 if mismatch:
-                    display_task=project_confirmation_value(extracted_task,filename_match)
+                    if filename_projects:
+                        display_task=' / '.join(filename_projects)
+                    else:
+                        display_task=project_confirmation_value(extracted_task,filename_match)
                     msg=(
                         '8D에서 확인된 고객사/과제명과 입력값이 다릅니다.\n\n'
                         f'8D 내용 추출값 : {display_task}\n'
