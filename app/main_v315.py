@@ -42,10 +42,44 @@ def _top_4d_units(sl):
 
 
 def _nearby_title(sl, marker):
+    """Prefer the native 4D item-name text next to the 4D circle."""
     try:
+        mx,my,mw,mh=box(marker)
+        ranked=[]
+        for sh in sl.shapes:
+            if sh is marker or not hasattr(sh,'text_frame'):
+                continue
+            t=N(getattr(sh,'text',''))
+            if not t or t=='4D' or '담당자' in t or 'signal' in t.lower():
+                continue
+            sx,sy,sw,shh=box(sh)
+            if abs(sy-my)>.85*v310.EMU or sx<mx-.35*v310.EMU or sx>mx+3.0*v310.EMU:
+                continue
+            q=t.lower().replace(' ','')
+            semantic=0 if any(k in q for k in ('원인','분석','cause','analysis','root')) else 1
+            score=semantic*10*v310.EMU+abs(sy-my)+abs(sx-(mx+mw))
+            ranked.append((score,sh))
+        if ranked:
+            ranked.sort(key=lambda x:x[0])
+            return ranked[0][1]
         return v310.nearby_title(sl, marker, '4D')
     except Exception:
         return None
+
+def _group_4d_marker_titles(sl):
+    """Group each ungrouped 4D circle with its nearby item-name before moving/cloning."""
+    units=list(_top_4d_units(sl))
+    for unit in units:
+        if getattr(unit,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:
+            continue
+        title=_nearby_title(sl,unit)
+        if title is None:
+            continue
+        try:
+            group=sl.shapes.add_group_shape([unit,title])
+            group.name='AUTO_8D_4D_UNIT'
+        except Exception:
+            pass
 
 
 def _delete_shape(sh):
@@ -96,7 +130,8 @@ def _clone_unit(sl,unit,x,y):
 
 
 def _ensure_4d_units(sl, has_cause, has_leak, left_xy, right_xy):
-    """Make the visible 4D units exactly match available 4D contents."""
+    """Make visible 4D marker+title groups match the two 4D content zones."""
+    _group_4d_marker_titles(sl)
     units=_top_4d_units(sl)
 
     # No 4D content: remove every visible 4D marker/title unit.
@@ -105,14 +140,19 @@ def _ensure_4d_units(sl, has_cause, has_leak, left_xy, right_xy):
             _delete_4d_unit(sl,u)
         return
 
-    # Need a source unit. If template has none, create a simple marker fallback.
+    # Need a source unit. If template has none, create a marker + item-name group.
     if not units:
-        sh=sl.shapes.add_shape(1, Inches(right_xy[0] if has_leak else left_xy[0]),
-                               Inches(right_xy[1] if has_leak else left_xy[1]),
-                               Inches(.42), Inches(.42))
-        sh.name='AUTO_8D_4D_MARKER'
-        v310.set_text(sh,'4D',8)
-        units=[sh]
+        x,y=(right_xy if has_leak else left_xy)
+        sh=sl.shapes.add_shape(1,Inches(x),Inches(y),Inches(.42),Inches(.42))
+        sh.name='AUTO_8D_4D_MARKER'; v310.set_text(sh,'4D',8)
+        title=sl.shapes.add_textbox(Inches(x+.48),Inches(y),Inches(1.15),Inches(.42))
+        title.name='AUTO_8D_4D_TITLE'; v310.set_text(title,'원인 분석',8)
+        try:
+            group=sl.shapes.add_group_shape([sh,title])
+            group.name='AUTO_8D_4D_UNIT'
+            units=[group]
+        except Exception:
+            units=[sh]
 
     if has_cause and has_leak:
         # Keep one unit on the right and one on the left; remove any extras.
