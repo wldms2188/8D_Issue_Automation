@@ -30,6 +30,7 @@ def _clean_issue_label(text):
     """Remove document-type words from user-facing issue names."""
     s=N(text)
     if not s:return ''
+    s=re.sub(r'(?i)(?<![A-Za-z0-9])8D\s*REPORT(?![A-Za-z0-9])',' ',s)
     s=re.sub(r'(?i)(?<![A-Za-z0-9])(?:8D|REPORT)(?![A-Za-z0-9])',' ',s)
     s=re.sub(r'[ _/|:-]{2,}','_',s)
     s=re.sub(r'\s+',' ',s)
