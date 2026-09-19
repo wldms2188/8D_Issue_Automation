@@ -1,6 +1,7 @@
 import sys,tempfile,unittest
 from pathlib import Path
 from pptx import Presentation
+from openpyxl import Workbook,load_workbook
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import final_output_polish as f
 import output_variant_final as o
@@ -17,6 +18,29 @@ class OutputVersionTests(unittest.TestCase):
    src=p/'weekly.pptx'; src.touch()
    (out/'weekly_v0.2.pptx').touch(); (out/'weekly_v0.10.pptx').touch()
    self.assertEqual(o._latest_version(src).name,'weekly_v0.10.pptx')
+ def test_excel_update_only_keeps_only_inserted_or_changed_row(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=Path(td); src=p/'issue.xlsx'; dst=p/'issue_v0.1.xlsx'
+   a=Workbook(); ws=a.active; ws.title='Sheet1'
+   for r in range(1,7):
+    ws.cell(r,1).value=f'HEADER{r}'
+   ws.cell(7,10).value='A_PROJECT1'; ws.cell(7,14).value='old1'
+   ws.cell(8,10).value='A_PROJECT2'; ws.cell(8,14).value='old2'
+   ws.cell(9,10).value='A_PROJECT3'; ws.cell(9,14).value='old3'
+   a.save(src)
+
+   b=load_workbook(src); w=b['Sheet1']
+   w.insert_rows(8,1)
+   w.cell(8,10).value='A_NEWPROJECT'; w.cell(8,14).value='new issue'
+   b.save(dst)
+
+   reduced,n=o._excel_update_only(src,dst)
+   self.assertEqual(n,1)
+   rw=load_workbook(reduced)['Sheet1']
+   self.assertEqual(rw.max_row,7)
+   self.assertEqual(rw.cell(7,10).value,'A_NEWPROJECT')
+   self.assertEqual(rw.cell(7,14).value,'new issue')
+
  def test_update_only_ignores_unchanged_slides_that_shift_index(self):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td); src=p/'weekly.pptx'; dst=p/'weekly_v0.1.pptx'
