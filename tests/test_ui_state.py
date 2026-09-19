@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 
 import main_enterprise as ent
+import main_recovery_step12 as step12
 import main_enterprise_v2 as v2
 import main_enterprise_v3 as v3
 
@@ -31,6 +32,18 @@ class UIStateTests(unittest.TestCase):
         d={'action_5d':'fix','verification_6d':'DV abnormal'}
         self.assertEqual(ent.weekly_status_from_choice(d,'open'),'개선 검증중')
         self.assertEqual(ent.weekly_status_from_choice(d,'close'),'개선 완료')
+
+    def test_weekly_selected_status_is_independent_from_issue_db(self):
+        d={'action_5d':'fix','verification_6d':'DV abnormal'}
+        g={'_issue_status_selected':'open','_weekly_status_selected':'개선 완료'}
+        self.assertEqual(step12._signal_status_from_g(d,g),'개선 완료')
+
+    def test_status_reasons_are_separate(self):
+        d={'action_5d':'Guide revised','verification_6d':'Validation is in progress.'}
+        db_reason=ent.issue_db_status_reason(d,'open')
+        weekly_reason=ent.weekly_status_reason(d,'개선 검증중')
+        self.assertIn('open',db_reason)
+        self.assertIn('주간회의 Signal',weekly_reason)
 
 if __name__=='__main__':
     unittest.main()
