@@ -56,6 +56,28 @@ class English8DTests(unittest.TestCase):
   self.assertIn('Occurrence A',x['cause_4d'])
   self.assertIn('Detection control missing',x['leak_cause'])
 
+ def test_english_no_abnomality_and_completed_are_close(self):
+  for text in [
+   'No abnomality observed.',
+   'No abnormalities detected.',
+   'Verification completed.',
+   'Validation complete.',
+   'All tests passed.',
+   'No recurrence observed.',
+  ]:
+   self.assertEqual(e.judge_status_bilingual({'verification_6d':text})[0],'close',msg=text)
+
+ def test_english_planned_ongoing_and_failed_are_open(self):
+  for text in [
+   'Verification scheduled next week.',
+   'Validation pending.',
+   'To be completed.',
+   'Under verification.',
+   'Monitoring ongoing.',
+   'Verification completed but result failed.',
+  ]:
+   self.assertEqual(e.judge_status_bilingual({'verification_6d':text})[0],'open',msg=text)
+
  def test_english_pending_status_is_open(self):
   self.assertEqual(e.judge_status_bilingual({'verification_6d':'Validation is in progress.'})[0],'open')
   self.assertEqual(e.judge_status_bilingual({'verification_6d':'Verification completed and passed.'})[0],'close')
