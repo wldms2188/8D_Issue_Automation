@@ -26,18 +26,27 @@ LEFT = ('2D','3D','4D_CAUSE')
 RIGHT = ('4D_LEAK','5D','6D')
 
 
+def _clean_issue_label(text):
+    """Remove document-type words from user-facing issue names."""
+    s=N(text)
+    if not s:return ''
+    s=re.sub(r'(?i)(?<![A-Za-z0-9])(?:8D|REPORT)(?![A-Za-z0-9])',' ',s)
+    s=re.sub(r'[ _/|:-]{2,}','_',s)
+    s=re.sub(r'\s+',' ',s)
+    return s.strip(' _-/|:')
+
 def _trim_before_customer(issue, customer):
-    """Keep issue text from the customer token onward; remove any prefix before customer."""
+    """Keep issue text from the customer token onward; remove document-type words."""
     issue=N(issue); customer=N(customer)
     if not issue or not customer:
-        return issue
+        return _clean_issue_label(issue)
     toks=[x.strip() for x in issue.split('_') if x.strip()]
     for i,t in enumerate(toks):
         if C(t)==C(customer):
-            return '_'.join(toks[i:])
+            return _clean_issue_label('_'.join(toks[i:]))
     # Fallback if customer is embedded in a token or separators are irregular.
     m=re.search(re.escape(customer), issue, re.I)
-    return issue[m.start():].strip(' _-/') if m else issue
+    return _clean_issue_label(issue[m.start():].strip(' _-/') if m else issue)
 
 
 def _weekly_task(d):
