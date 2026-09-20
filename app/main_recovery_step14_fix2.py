@@ -280,6 +280,31 @@ def _static_cloned_detail_shape(sh):
     # zone is old issue content and should not survive template cloning.
     return any(x in joined for x in ('signal','이슈기인','발생단계'))
 
+def _clear_cloned_table_content(sh):
+    """Preserve table geometry/formatting but clear prior issue values from its cells."""
+    if not getattr(sh,'has_table',False):
+        return
+    try:
+        tb=sh.table
+        for r in range(len(tb.rows)):
+            for c in range(len(tb.columns)):
+                cell=tb.cell(r,c)
+                text=N(cell.text)
+                q=s13._k(text)
+                if not text:
+                    continue
+                # Keep fixed labels/metadata headings; clear only old issue values.
+                if _static_detail_label(text) or any(x in q for x in ('signal','이슈기인','발생단계')):
+                    continue
+                try:
+                    cell.text=''
+                except Exception:
+                    try:cell.text_frame.clear()
+                    except Exception:pass
+    except Exception:
+        pass
+
+
 def _remove_shape(sh):
     try:
         el=sh._element
@@ -299,10 +324,18 @@ def _clear_cloned_issue_content(sl):
         # enough to treat it as old issue content.
         if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
             continue
+
+        # TABLES ARE TEMPLATE STRUCTURE: never delete them. Keep borders/fills/size
+        # and clear only prior issue values so the copied shell can be reused.
+        if getattr(sh,'has_table',False):
+            _clear_cloned_table_content(sh)
+            continue
+
         if _static_cloned_detail_shape(sh):
             continue
-        # Delete old pictures, tables, groups, text boxes, charts and manually
-        # added autoshapes/callouts. Only the fixed D labels/metadata shell survives.
+
+        # Remove copied visual issue artifacts: photos, arrows, rectangles, lines,
+        # callouts, charts and non-static groups/text objects in D content areas.
         _remove_shape(sh)
 
 def _clone_detail_shell(prs,d,insert_at,matched_section=None):
