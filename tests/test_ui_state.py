@@ -46,7 +46,7 @@ class UIStateTests(unittest.TestCase):
         pct,label=v2.progress_state('COMPLETE · 선택한 자료의 업데이트가 완료되었습니다.',85)
         self.assertEqual((pct,label),(100,'업데이트 완료'))
 
-    def test_weekly_2d_and_3d_images_stay_inside_their_native_rectangles(self):
+    def test_weekly_2d_and_3d_images_stay_inside_their_calculated_rectangles(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
 
         def blob(seed):
@@ -68,6 +68,7 @@ class UIStateTests(unittest.TestCase):
                 '4D_CAUSE':[],'4D_LEAK':[],'5D':[],'6D':[],
             },
         }
+        zones,_,_=step11._adaptive_cascade_layout(d,d['_section_images'])
         step12._update_page2_step12(sl,d,{},'existing')
 
         found={}
@@ -79,7 +80,7 @@ class UIStateTests(unittest.TestCase):
 
         for key in ('2D','3D'):
             sh=found['AUTO_8D_IMG_'+key]
-            z=v310.ZONES[key]
+            z=zones[key]
             x=float(sh.left)/v310.EMU; y=float(sh.top)/v310.EMU
             w=float(sh.width)/v310.EMU; h=float(sh.height)/v310.EMU
             self.assertGreaterEqual(x,z['x']-.01)
@@ -87,10 +88,10 @@ class UIStateTests(unittest.TestCase):
             self.assertLessEqual(x+w,z['x']+z['w']+.01)
             self.assertLessEqual(y+h,z['y']+z['h']+.01)
 
-        # 2D can never extend down into the 3D content rectangle.
+        # 2D can never extend down into the calculated 3D content rectangle.
         s2=found['AUTO_8D_IMG_2D']
         bottom2=(float(s2.top)+float(s2.height))/v310.EMU
-        self.assertLess(bottom2,v310.ZONES['3D']['y'])
+        self.assertLessEqual(bottom2,zones['3D']['y']+.01)
 
     def test_english_weekly_native_zones_never_overlap(self):
         long_2d=('Scratch was observed during visual OQC inspection after unloading process. ' * 10).strip()
@@ -274,6 +275,28 @@ class UIStateTests(unittest.TestCase):
         self.assertNotIn('VERY_LONG_SELECTED_PROJECT_NAME',title.text)
         self.assertIn('MBAG_EB565M_Scratch',title.text)
 
+    def test_long_4d_moves_up_when_3d_is_short_and_stays_on_slide(self):
+        d={
+            'problem':'짧은 현상',
+            'temporary_action':'격리',
+            'customer_response':'',
+            'cause_4d':('체결 조건 편차로 인해 접촉 저항이 증가하였고 재현 시험에서 동일 현상이 확인됨. ' * 14).strip(),
+            'leak_cause':'검출 기준 보완 필요',
+            'system_cause':'',
+            'action_5d':'개선 적용',
+            'verification_6d':'검증 중',
+            '_section_images':{},
+        }
+        zones,_,fonts=step11._adaptive_cascade_layout(d,{})
+        # Short 2D/3D must release space so occurrence 4D rises above its native Y.
+        self.assertLess(zones['4D_CAUSE']['y'],v310.ZONES['4D_CAUSE']['y'])
+        # Long 4D may grow, but must never run below the safe page bottom.
+        self.assertLessEqual(zones['4D_CAUSE']['y']+zones['4D_CAUSE']['h'],step11.v319.BOTTOM+.001)
+        # No overlap in the left chain.
+        self.assertLessEqual(zones['2D']['y']+zones['2D']['h']+step11.v319.GAP,zones['3D']['y']+.001)
+        self.assertLessEqual(zones['3D']['y']+zones['3D']['h']+step11.v319.GAP,zones['4D_CAUSE']['y']+.001)
+        self.assertGreaterEqual(fonts['4D_CAUSE'],6.0)
+
     def test_4d_marker_and_title_are_grouped_and_follow_zone_positions(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
         for x,y in ((1.0,1.0),(7.0,1.0)):
@@ -295,7 +318,7 @@ class UIStateTests(unittest.TestCase):
         units=v315._top_4d_units(sl)
         self.assertEqual(len(units),2)
         self.assertTrue(all(u.shape_type==MSO_SHAPE_TYPE.GROUP for u in units))
-        zones,_,_=step11._strict_template_layout(d,{})
+        zones,_,_=step11._adaptive_cascade_layout(d,{})
         expected=[
             (max(.10,zones['4D_CAUSE']['x']-.18),max(.10,zones['4D_CAUSE']['y']-.35)),
             (max(.10,zones['4D_LEAK']['x']-.18),max(.10,zones['4D_LEAK']['y']-.35)),
