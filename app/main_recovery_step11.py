@@ -41,6 +41,81 @@ def _layout_with_4d_placeholders(d, imgs):
     return {**lz,**rz},texts,{**lf,**rf}
 
 
+def _adaptive_cascade_layout(d,imgs):
+    """Cascade D blocks using actual content height while keeping them non-overlapping.
+
+    Short 2D/3D content releases vertical space to the following section, so a long
+    4D can move upward.  If 4D still needs more room, its box grows downward up to
+    the safe slide bottom.  Text is auto-fit only after available geometry is used.
+    """
+    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    if not N(d.get('cause_4d')):
+        texts['4D_CAUSE']='검토 중'
+    if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
+        texts['4D_LEAK']='검토 중'
+
+    chains=(('2D','3D','4D_CAUSE'),('4D_LEAK','5D','6D'))
+    zones={}; fonts={}
+    bottom=v319.BOTTOM
+    gap=v319.GAP
+
+    for keys in chains:
+        top=v310.ZONES[keys[0]]['y']
+        available=bottom-top-gap*(len(keys)-1)
+        fs={k:v319.MAX_FONT for k in keys}
+        hs={k:v319._need_h(k,texts[k],bool(imgs.get(k)),fs[k]) for k in keys}
+
+        # Use geometry first; reduce only the section that gains the most room.
+        while sum(hs.values())>available+.01:
+            options=[]
+            for k in keys:
+                if fs[k]<=6.0:
+                    continue
+                nf=max(6.0,fs[k]-.5)
+                nh=v319._need_h(k,texts[k],bool(imgs.get(k)),nf)
+                options.append((hs[k]-nh,k,nf,nh))
+            if not options:
+                break
+            gain,k,nf,nh=max(options,key=lambda x:x[0])
+            if gain<=.005:
+                break
+            fs[k]=nf; hs[k]=nh
+
+        # If content is still larger than the slide, fit the geometry to the
+        # remaining column height. Auto-fit in step12 preserves all text inside.
+        overflow=sum(hs.values())-available
+        if overflow>0:
+            mins={k:v318.v316.v312.MIN_H[k]*.82 for k in keys}
+            room=overflow
+            for k in sorted(keys,key=lambda x:hs[x]-mins[x],reverse=True):
+                if room<=.001:
+                    break
+                reducible=max(0.0,hs[k]-mins[k])
+                cut=min(reducible,room)
+                hs[k]-=cut
+                room-=cut
+            if room>0:
+                scale=available/max(sum(hs.values()),.01)
+                hs={k:max(.42,hs[k]*scale) for k in keys}
+
+        y=top
+        for k in keys:
+            z=dict(v310.ZONES[k])
+            z['y']=y
+            z['h']=max(.42,hs[k])
+            zones[k]=z
+            fonts[k]=fs[k]
+            y+=z['h']+gap
+
+        # Hard safety: last section may touch, but never cross, the slide bottom.
+        last=keys[-1]
+        end=zones[last]['y']+zones[last]['h']
+        if end>bottom:
+            zones[last]['h']=max(.42,bottom-zones[last]['y'])
+
+    return zones,texts,fonts
+
+
 def _strict_template_layout(d,imgs):
     """Keep every D inside its original weekly-template content rectangle.
 
