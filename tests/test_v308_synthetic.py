@@ -24,7 +24,7 @@ def add_text(slide,text,x,y,w=3,h=.5,size=12):
 
 def make_weekly(path):
     prs=Presentation(); prs.slide_width=Inches(11); prs.slide_height=Inches(7.5); blank=prs.slide_layouts[6]
-    s1=prs.slides[0]; tb=s1.shapes.add_table(2,6,Inches(.4),Inches(.5),Inches(10),Inches(1.2)).table
+    s1=prs.slides.add_slide(blank); tb=s1.shapes.add_table(2,6,Inches(.4),Inches(.5),Inches(10),Inches(1.2)).table
     for i,h in enumerate(['이슈','과제명','문제/현상','진행 현황','Signal','기타']):tb.cell(0,i).text=h
     add_text(s1,'000팀 주요 논의 사항',.5,2,5,.5,16)
     s2=prs.slides.add_slide(blank)
@@ -34,7 +34,8 @@ def make_weekly(path):
 
 def make_source(path):
     prs=Presentation(); prs.slide_width=Inches(11); prs.slide_height=Inches(7.5); blank=prs.slide_layouts[6]
-    add_text(prs.slides[0],'고객사: Ford',.5,.3,3,.4); add_text(prs.slides[0],'Ford_TestTask',.5,.8,4,.4)
+    first=prs.slides.add_slide(blank)
+    add_text(first,'고객사: Ford',.5,.3,3,.4); add_text(first,'Ford_TestTask',.5,.8,4,.4)
     sections=[('2D','Problem: battery leakage observed'),('3D','Temporary action: quarantine lot and inspect'),('4D','Cause: sealing process variation'),('5D','Action: update process control and fixture'),('6D','Verification: reliability test passed')]
     for label,text in sections:
         sl=prs.slides.add_slide(blank); add_text(sl,label,.5,.4,1,.4,16); add_text(sl,text,.5,1,6,.7,12)
