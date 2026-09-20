@@ -245,22 +245,55 @@ def _overlap_ratio(sh,zone):
 
 def _content_zones():return [(.38,2.35,5.05,1.30),(.38,3.72,5.05,1.50),(.38,5.18,5.05,2.05),(5.58,2.30,5.10,1.25),(5.58,3.56,5.10,2.10),(5.58,5.72,5.10,1.25)]
 def _static_detail_label(text):return s13._k(text) in {'2d','3d','4d','5d','6d','7d','현상','임시대책필요시','원인분석','개선대책','유효성점검','수평전개','signal','이슈기인','발생단계'}
+def _shape_texts(sh):
+    vals=[]
+    t=N(getattr(sh,'text',''))
+    if t:vals.append(t)
+    if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:
+        for child in v310.walk(sh):
+            if child is sh:continue
+            t=N(getattr(child,'text',''))
+            if t:vals.append(t)
+    if getattr(sh,'has_table',False):
+        try:
+            tb=sh.table
+            for r in range(len(tb.rows)):
+                for c in range(len(tb.columns)):
+                    t=N(tb.cell(r,c).text)
+                    if t:vals.append(t)
+        except Exception:pass
+    return vals
+
+def _static_cloned_detail_shape(sh):
+    texts=_shape_texts(sh)
+    if any(_static_detail_label(t) for t in texts):
+        return True
+    joined=' '.join(s13._k(t) for t in texts)
+    # Keep the fixed metadata/header structure. Everything else inside a D content
+    # zone is old issue content and should not survive template cloning.
+    return any(x in joined for x in ('signal','이슈기인','발생단계'))
+
+def _remove_shape(sh):
+    try:
+        el=sh._element
+        parent=el.getparent()
+        if parent is not None:
+            parent.remove(el)
+            return True
+    except Exception:pass
+    return False
+
 def _clear_cloned_issue_content(sl):
+    """Turn a copied existing detail page into a clean reusable shell."""
     v310.remove_previous_auto(sl); zones=_content_zones()
     for sh in list(sl.shapes):
-        if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.GROUP:continue
-        if not any(_overlap_ratio(sh,z)>=0.35 for z in zones):continue
-        if getattr(sh,'shape_type',None)==MSO_SHAPE_TYPE.PICTURE:
-            try:sh._element.getparent().remove(sh._element)
-            except Exception:pass
+        if not any(_overlap_ratio(sh,z)>=0.35 for z in zones):
             continue
-        if hasattr(sh,'text_frame'):
-            old=N(getattr(sh,'text',''))
-            if old and not _static_detail_label(old):
-                try:sh.text=''
-                except Exception:
-                    try:sh.text_frame.clear()
-                    except Exception:pass
+        if _static_cloned_detail_shape(sh):
+            continue
+        # Delete old pictures, tables, groups, text boxes and manually added
+        # autoshapes/callouts inside D content areas. New content is rendered later.
+        _remove_shape(sh)
 
 def _clone_detail_shell(prs,d,insert_at,matched_section=None):
     template_index=_template_detail_index(prs,d)
