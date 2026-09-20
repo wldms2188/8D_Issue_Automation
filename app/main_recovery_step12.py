@@ -68,9 +68,10 @@ def _update_page2_step12(sl,d,g,mode):
     v310.remove_previous_auto(sl)
     imgs=d.get('_section_images',{}) or {}
     english_mode=bool(d.get('_english_mode'))
-    # Images and text must stay inside the visual D rectangle printed by the
-    # weekly template.  Do not let a long 2D block borrow space from 3D.
-    zones,texts,fonts=step11._strict_template_layout(d,imgs)
+    # Cascade by actual content height. Short 3D allows 4D to move upward;
+    # long 4D can grow downward to the safe slide bottom. Images remain inside
+    # the same calculated D box and all marker/title units are moved with it.
+    zones,texts,fonts=step11._adaptive_cascade_layout(d,imgs)
 
     texts['4D_CAUSE']=_labeled_4d_text(d,'4D_CAUSE')
     texts['4D_LEAK']=_labeled_4d_text(d,'4D_LEAK')
@@ -84,8 +85,8 @@ def _update_page2_step12(sl,d,g,mode):
     for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
         v319._render(sl,key,zones[key],texts[key],imgs.get(key,[]),fonts[key])
 
-    # Prevent visual text overflow beyond the fixed D geometry for both Korean
-    # and English.  Images are already fit inside the same fixed rectangle.
+    # Prevent visual text overflow beyond each calculated D geometry for both
+    # Korean and English. Images are fit inside the same calculated rectangle.
     for sh in sl.shapes:
         name=str(getattr(sh,'name',''))
         if name.startswith('AUTO_8D_TEXT_') and hasattr(sh,'text_frame'):
