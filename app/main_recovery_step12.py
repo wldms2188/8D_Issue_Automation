@@ -58,10 +58,11 @@ def _sync_page2_signal_only(prs,d,g):
 
 def _labeled_4d_text(d,key):
     if key=='4D_CAUSE':
-        body=N(d.get('cause_4d')) or '검토 중'
-        return '- 발생원인\n'+body
-    body='\n'.join(x for x in (N(d.get('leak_cause')),N(d.get('system_cause'))) if x) or '검토 중'
-    return '- 유출원인\n'+body
+        body=step11._compact_content_text(d.get('cause_4d')) or '검토 중'
+        return step11._compact_content_text('- 발생원인\n'+body)
+    parts=[step11._compact_content_text(x) for x in (d.get('leak_cause'),d.get('system_cause'))]
+    body='\n'.join(x for x in parts if x) or '검토 중'
+    return step11._compact_content_text('- 유출원인\n'+body)
 
 
 def _update_page2_step12(sl,d,g,mode):
