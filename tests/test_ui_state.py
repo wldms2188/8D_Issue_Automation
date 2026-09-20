@@ -258,6 +258,25 @@ class UIStateTests(unittest.TestCase):
         self.assertTrue(mismatch)
         self.assertEqual(extracted,'MBAG_EB-565M')
 
+    def test_detail_content_blank_gaps_are_collapsed(self):
+        raw='첫 번째 내용\n\n   \n두 번째 내용\n\n\n세 번째 내용'
+        self.assertEqual(
+            step11._compact_content_text(raw),
+            '첫 번째 내용\n두 번째 내용\n세 번째 내용'
+        )
+        d={
+            'problem':'현상 A\n\n현상 B',
+            'temporary_action':'조치 A\n\n조치 B',
+            'cause_4d':'원인 A\n\n원인 B',
+            'leak_cause':'유출 A\n\n유출 B',
+            'action_5d':'개선 A',
+            'verification_6d':'검증 A',
+        }
+        _,texts,_=step11._adaptive_cascade_layout(d,{})
+        self.assertNotIn('\n\n',texts['2D'])
+        self.assertNotIn('\n\n',texts['3D'])
+        self.assertNotIn('\n\n',texts['4D_CAUSE'])
+
     def test_detail_title_drops_selected_project_prefix_when_owner_overlap_risk(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
         title=sl.shapes.add_textbox(Inches(.2),Inches(.10),Inches(2.0),Inches(.42))
@@ -273,7 +292,8 @@ class UIStateTests(unittest.TestCase):
         g={'team':'Pack개발품질1팀','owner':'홍길동'}
         step4._force_page2_header(sl,d,g)
         self.assertNotIn('VERY_LONG_SELECTED_PROJECT_NAME',title.text)
-        self.assertIn('MBAG_EB565M_Scratch',title.text)
+        self.assertNotIn('MBAG_EB565M',title.text)
+        self.assertIn('Scratch',title.text)
 
     def test_long_4d_moves_up_when_3d_is_short_and_stays_on_slide(self):
         d={
