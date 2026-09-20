@@ -9,6 +9,7 @@ import main_recovery_step4 as step4
 import main_recovery_step8 as step8
 import main_v320 as v320
 import main_v319 as v319
+import main_v318 as v318
 import main_v315 as v315
 import main_v313 as v313
 import main_v310 as v310
