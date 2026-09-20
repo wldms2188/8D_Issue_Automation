@@ -277,6 +277,39 @@ class UIStateTests(unittest.TestCase):
         self.assertNotIn('\n\n',texts['3D'])
         self.assertNotIn('\n\n',texts['4D_CAUSE'])
 
+    def test_v1_style_detail_title_uses_specific_test_name(self):
+        d={
+            'customer':'MBAG',
+            'task_name':'MBAG_EB565M',
+            'issue_name':'MBAG_EB565M_DV시험_Scratch',
+            'problem':'Scratch',
+        }
+        self.assertEqual(step4.step3._event_name(d),('시험','DV시험'))
+        self.assertEqual(
+            step4._detail_title_suffix(d,{'_issue_origin_selected':'공정'}),
+            'DV시험 이슈 발생'
+        )
+
+    def test_detail_title_uses_current_issue_category_when_no_named_test(self):
+        base_d={
+            'customer':'MBAG',
+            'task_name':'MBAG_EB565M',
+            'issue_name':'MBAG_EB565M_Scratch',
+            'problem':'Scratch',
+        }
+        self.assertEqual(
+            step4._detail_title_suffix(base_d,{'_issue_origin_selected':'공정'}),
+            '공정 이슈 발생'
+        )
+        self.assertEqual(
+            step4._detail_title_suffix(base_d,{'_issue_origin_selected':'부품'}),
+            '부품 이슈 발생'
+        )
+        self.assertEqual(
+            step4._detail_title_suffix(base_d,{'occurrence_site':'제품 시험','_issue_origin_selected':'부품'}),
+            '시험 이슈 발생'
+        )
+
     def test_detail_title_drops_selected_project_prefix_when_owner_overlap_risk(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
         title=sl.shapes.add_textbox(Inches(.2),Inches(.10),Inches(2.0),Inches(.42))
