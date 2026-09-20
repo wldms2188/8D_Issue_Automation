@@ -74,6 +74,32 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertNotIn(picture._element,elems)
   self.assertIn('2D',[str(getattr(sh,'text','') or '') for sh in sl.shapes])
 
+ def test_cloned_detail_shell_preserves_d_circles_and_section_titles(self):
+  prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+  specs=[
+   ('2D','현상',.45,2.38),
+   ('3D','임시 대책 (필요시)',.45,3.75),
+   ('4D','원인 분석',.45,5.22),
+   ('5D','개선 대책',5.65,3.60),
+   ('6D','유효성 점검',5.65,5.76),
+  ]
+  kept=[]
+  for dlabel,title,x,y in specs:
+   marker=sl.shapes.add_shape(MSO_SHAPE.OVAL,Inches(x),Inches(y),Inches(.42),Inches(.42))
+   marker.text=dlabel
+   title_sh=sl.shapes.add_textbox(Inches(x+.50),Inches(y),Inches(1.6),Inches(.42))
+   title_sh.text=title
+   kept.extend([marker._element,title_sh._element])
+
+  old_rect=sl.shapes.add_shape(MSO_SHAPE.RECTANGLE,Inches(2.2),Inches(2.70),Inches(1.2),Inches(.5))
+  old_rect.text='OLD VISUAL'
+  core._clear_cloned_issue_content(sl)
+
+  elems=[sh._element for sh in sl.shapes]
+  for el in kept:
+   self.assertIn(el,elems)
+  self.assertNotIn(old_rect._element,elems)
+
  def test_create_native_section_for_new_project(self):
   prs=Presentation(); prs.slides.add_slide(prs.slide_layouts[6])
   sec=core._create_native_section(prs,'NEW_PROJECT',0)
