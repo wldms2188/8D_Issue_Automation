@@ -244,7 +244,14 @@ def _overlap_ratio(sh,zone):
     zx,zy,zw,zh=zone; ix=max(0,min(x+w,zx+zw)-max(x,zx)); iy=max(0,min(y+h,zy+zh)-max(y,zy)); return ix*iy/max(w*h,1e-6)
 
 def _content_zones():return [(.38,2.35,5.05,1.30),(.38,3.72,5.05,1.50),(.38,5.18,5.05,2.05),(5.58,2.30,5.10,1.25),(5.58,3.56,5.10,2.10),(5.58,5.72,5.10,1.25)]
-def _static_detail_label(text):return s13._k(text) in {'2d','3d','4d','5d','6d','7d','현상','임시대책필요시','원인분석','개선대책','유효성점검','수평전개','signal','이슈기인','발생단계'}
+def _static_detail_label(text):
+    return s13._k(text) in {
+        '2d','3d','4d','5d','6d','7d',
+        '현상','문제현상','임시조치','임시대응','임시대책','임시대책필요시',
+        '원인분석','발생원인','유출원인','시스템원인',
+        '개선대책','효과검증','유효성점검','수평전개',
+        'signal','이슈기인','발생단계'
+    }
 def _shape_texts(sh):
     vals=[]
     t=N(getattr(sh,'text',''))
@@ -287,12 +294,15 @@ def _clear_cloned_issue_content(sl):
     """Turn a copied existing detail page into a clean reusable shell."""
     v310.remove_previous_auto(sl); zones=_content_zones()
     for sh in list(sl.shapes):
-        if not any(_overlap_ratio(sh,z)>=0.35 for z in zones):
+        # Content copied from another issue can sit partly outside the nominal D
+        # rectangle (pictures/callouts often do). A small but real overlap is
+        # enough to treat it as old issue content.
+        if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
             continue
         if _static_cloned_detail_shape(sh):
             continue
-        # Delete old pictures, tables, groups, text boxes and manually added
-        # autoshapes/callouts inside D content areas. New content is rendered later.
+        # Delete old pictures, tables, groups, text boxes, charts and manually
+        # added autoshapes/callouts. Only the fixed D labels/metadata shell survives.
         _remove_shape(sh)
 
 def _clone_detail_shell(prs,d,insert_at,matched_section=None):
