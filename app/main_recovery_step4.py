@@ -126,42 +126,81 @@ def _title_owner_overlap_risk(sl,title_sh,title_text):
     return estimated>available or rendered_right>ox-.08
 
 def _strip_selected_project_prefix(issue,d):
-    """Remove the selected 고객사_과제명 from an issue label used as a short title."""
+    """Remove a visible customer/project prefix from a short detail title."""
     s=v319._clean_issue_label(issue)
+    if not s:
+        return ''
+
     prefix=N(v319._weekly_task(d))
-    if not s or not prefix:
-        return s
-    # Exact visible prefix first. This covers the normal A_B_issue form.
-    m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',s,re.I)
-    if m:
-        rest=s[m.end():].strip(' _-/／|:：')
-        if rest:
-            return rest
-    # If customer was duplicated in an old generated title, collapse it and try again.
-    customer=N(d.get('customer'))
-    if customer:
-        repeated=re.sub(r'^(?:'+re.escape(customer)+r'\s*[_\-/／|:：]\s*){2,}',customer+'_',s,flags=re.I)
-        m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',repeated,re.I)
+    if prefix:
+        m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',s,re.I)
         if m:
-            rest=repeated[m.end():].strip(' _-/／|:：')
+            rest=s[m.end():].strip(' _-/／|:：')
             if rest:
                 return rest
 
-        # The 8D may contain a different extracted project than the manual GUI
-        # selection.  On overlap, remove the visible customer_project prefix from
-        # the issue label itself: CUSTOMER_PROJECT_ISSUE -> ISSUE.
-        m=re.match(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:：]\s*([^_／|:：]+)\s*[_／|:：]\s*(.+)
-def _title_without_selected_project(d,kind,event):
-    """Build a short page-2 title with the selected 고객사_과제명 removed."""
-    issue=_strip_selected_project_prefix(d.get('issue_name'),d)
-    if issue:
-        return issue
+    customer=N(d.get('customer'))
+    if customer:
+        # Old generated labels can contain a project name different from the GUI
+        # selection. Remove the visible CUSTOMER_<project> prefix rather than
+        # leaving it in a collision fallback title.
+        m=re.match(
+            r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:：]\s*'
+            r'([^_／|:：]+)\s*[_／|:：]\s*(.+)$',
+            s,re.I
+        )
+        if m and N(m.group(2)):
+            return N(m.group(2)).strip(' _-/／|:：')
+
+    return s
+
+
+def _detail_title_suffix(d,g):
+    """V1-style title name + '이슈 발생', extended to current origin/site inputs.
+
+    Priority:
+      1) specific test/build name found in the 8D,
+      2) explicit 시험 occurrence site,
+      3) confirmed issue-origin category (부품/설계/공정/기타),
+      4) occurrence-site fallback,
+      5) cleaned issue name.
+    """
+    kind,event=step3._event_name(d)
     if kind=='시험' and event:
         return f'{event} 이슈 발생'
     if kind=='빌드' and event:
-        return f'{event} 빌드 이슈 발생'
-    customer=N(d.get('customer'))
-    return v319._trim_before_customer(d.get('issue_name'),customer) or '이슈 발생'
+        return f'{event} 이슈 발생'
+
+    site=N((g or {}).get('occurrence_site') or d.get('occurrence_site'))
+    if '시험' in site:
+        return '시험 이슈 발생'
+
+    origin=N((g or {}).get('_issue_origin_selected') or d.get('_issue_origin_selected'))
+    if origin in ('부품','설계','공정','기타'):
+        return f'{origin} 이슈 발생'
+
+    if '부품' in site:
+        return '부품 이슈 발생'
+    if '생산' in site or '공정' in site:
+        return '공정 이슈 발생'
+
+    issue=_strip_selected_project_prefix(d.get('issue_name'),d)
+    q=N(issue)
+    for label in ('시험','공정','부품','설계'):
+        if label in q:
+            return f'{label} 이슈 발생'
+    if not q:
+        return '이슈 발생'
+    if '이슈 발생' in q:
+        return q
+    if q.endswith('발생'):
+        return q
+    return q+' 이슈 발생'
+
+
+def _title_without_selected_project(d,g):
+    """Collision fallback: category/event title only, never 고객사_과제명."""
+    return _detail_title_suffix(d,g)
 
 
 def _set_title_exact(sh,text):
@@ -185,28 +224,20 @@ def _set_title_exact(sh,text):
 
 def _force_page2_header(sl,d,g):
     customer=N(d.get('customer'))
-    task=N(d.get('task_name'))
-    kind,event=step3._event_name(d)
-    # task_name can already be "고객사_과제명" (A_B).  Reuse the same
-    # canonical weekly-task formatter so the title never becomes A_A_B.
     prefix=v319._weekly_task(d)
-    if kind=='시험' and event:
-        title=f'{prefix}_{event} 이슈 발생'.strip('_')
-    elif kind=='빌드' and event:
-        title=f'{prefix}_{event} 빌드 이슈 발생'.strip('_')
-    else:
-        issue=v319._trim_before_customer(d.get('issue_name'),customer)
-        title=f'{prefix}_{issue}'.strip('_')
+    suffix=_detail_title_suffix(d,g)
+    title=f'{prefix}_{suffix}'.strip('_') if prefix else suffix
 
     # First try the placeholder-aware finder, then always fall back to geometry.
     title_sh,issue_sh=v319._find_page2_header_shapes(sl)
     if title_sh is None:
         title_sh=_title_shape_by_geometry(sl)
 
-    # Owner text must be finalized first because its real geometry is the collision boundary.
+    # Finalize owner first. If the full title can collide, remove 고객사_과제명
+    # completely and keep only '<시험명/공정/부품/...> 이슈 발생'.
     step1._update_team_owner(sl,g)
     if _title_owner_overlap_risk(sl,title_sh,title):
-        title=_title_without_selected_project(d,kind,event)
+        title=_title_without_selected_project(d,g)
     _set_title_exact(title_sh,title)
 
     if issue_sh is not None:
