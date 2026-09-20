@@ -11,6 +11,20 @@ import main_v310 as app
 OUT = ROOT / 'test_output'
 OUT.mkdir(exist_ok=True)
 
+def slide_text(slide):
+    parts=[]
+    for sh in slide.shapes:
+        t=str(getattr(sh,'text','') or '').strip()
+        if t:
+            parts.append(t)
+        if getattr(sh,'has_table',False):
+            for row in sh.table.rows:
+                for cell in row.cells:
+                    t=str(cell.text or '').strip()
+                    if t:
+                        parts.append(t)
+    return '\n'.join(parts)
+
 def make_png(label):
     im = Image.new('RGB', (500, 260), 'white'); d = ImageDraw.Draw(im)
     d.rectangle((5,5,495,255), outline='black', width=4); d.text((30,110), label, fill='black')
@@ -52,9 +66,9 @@ def run_case(mode):
     g={'team':'Pack개발품질1','owner':'홍길동','stage':'양산'}
     result=app.base.weekly(str(weekly),str(out),d,g,mode); assert Path(result[1]).exists()
     prs=Presentation(result[1]); assert len(prs.slides)==2
-    p1='\n'.join(sh.text for sh in prs.slides[0].shapes if hasattr(sh,'text'))
+    p1=slide_text(prs.slides[0])
     assert 'TestTask' in p1 and 'Ford_TestIssue' in p1 and 'Pack개발품질1팀 주요 논의 사항' in p1
-    p2='\n'.join(sh.text for sh in prs.slides[1].shapes if hasattr(sh,'text'))
+    p2=slide_text(prs.slides[1])
     for x in ['Problem: battery leakage observed','Temporary action: quarantine lot and inspect','Cause: sealing process variation','Action: update process control and fixture','Verification: reliability test passed']:
         assert x in p2, x
     assert any('발생단계' in sh.text for sh in prs.slides[1].shapes if hasattr(sh,'text'))
