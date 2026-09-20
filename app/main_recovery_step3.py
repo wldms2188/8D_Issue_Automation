@@ -22,10 +22,18 @@ def _event_name(d):
     customer=N(d.get('customer')); task=N(d.get('task_name'))
     toks=[x.strip() for x in issue.split('_') if x.strip()]
     start=0
-    if customer and task:
+
+    # Current GUI task_name may already be canonical CUSTOMER_PROJECT. Strip that
+    # full prefix first; the older V1 logic assumed customer and task were separate.
+    canonical=v319._weekly_task(d)
+    ptoks=[x.strip() for x in canonical.split('_') if x.strip()]
+    if ptoks and len(toks)>=len(ptoks) and all(C(toks[i])==C(ptoks[i]) for i in range(len(ptoks))):
+        start=len(ptoks)
+    elif customer and task:
         for i in range(len(toks)-1):
             if C(toks[i])==C(customer) and C(toks[i+1])==C(task):
-                start=i+2; break
+                start=i+2
+                break
     tail=toks[start:]
     parts=[]
     for tok in tail:
