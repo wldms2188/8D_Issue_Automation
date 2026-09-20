@@ -69,11 +69,13 @@ class English8DTests(unittest.TestCase):
 
    add_pic(1.2,1.25,1)  # 2D
    add_pic(1.2,3.25,2)  # 3D
-   # Deliberately straddles the midpoint between 2D and 3D. Near-even overlap
-   # follows the user rule and is assigned to 2D.
+   # This starts under the 2D heading but most of its area falls below the old
+   # midpoint boundary. It must still remain 2D because the next 3D heading has
+   # not started yet.
    add_pic(1.2,1.80,7)
    add_pic(1.2,5.15,3)  # 4D cause
    add_pic(7.2,1.25,4)  # 4D escape
+   add_pic(7.2,1.80,8)  # large/boundary 4D escape, still owned by 4D
    add_pic(7.2,3.25,5)  # 5D
    add_pic(7.2,5.15,6)  # 6D
 
@@ -93,7 +95,8 @@ class English8DTests(unittest.TestCase):
 
    imgs=e._english_section_images(p)
    self.assertEqual(len(imgs['2D']),2,msg={k:len(v) for k,v in imgs.items()})
-   for key in ('3D','4D_CAUSE','4D_LEAK','5D','6D'):
+   self.assertEqual(len(imgs['4D_LEAK']),2,msg={k:len(v) for k,v in imgs.items()})
+   for key in ('3D','4D_CAUSE','5D','6D'):
     self.assertEqual(len(imgs[key]),1,msg=(key,{k:len(v) for k,v in imgs.items()}))
    for key in ('2D','3D','4D_CAUSE','4D_LEAK','5D','6D'):
     self.assertTrue(all(item[2]==0 for item in imgs[key]),msg=(key,imgs[key]))
