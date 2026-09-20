@@ -369,7 +369,8 @@ def update_page1(prs, d, g):
         progress = ''
     values['진행'] = N(progress)
 
-    for sl in prs.slides[:1]:
+    for si in range(min(1,len(prs.slides))):
+        sl=prs.slides[si]
         for sh in walk(sl):
             if getattr(sh, 'has_table', False):
                 tb = sh.table
