@@ -572,7 +572,8 @@ def _d_regions_for_slide(sl,prs):
             mx,my,mw,mh=m['u']['box']
             regions.append({
                 'n':m['n'],'top':top,'bottom':bottom,
-                'left':mx+mw*0.5,'right':next_x,'cx':m['cx'],'cy':m['cy']
+                'left':mx+mw*0.5,'right':next_x,'cx':m['cx'],'cy':m['cy'],
+                'marker_top':my,'marker_bottom':my+mh
             })
     return regions
 
@@ -587,13 +588,70 @@ def _image_region_overlap_fraction(ib,reg):
     return (iw*ih)/max(float(w*h),1.0)
 
 
-def _english_section_images(path):
-    """Map English-source pictures only to the D region that physically owns them.
+def _image_owner_region(ib,regions,prs):
+    """Choose image ownership from the visible D heading above the image.
 
-    The legacy collector used nearest headings, which can attach a 2D image to 3D
-    (or vice versa) when English captions/headings are long.  English mode instead
-    uses the same D-region geometry that gates text extraction.  Pictures outside
-    a valid D region are ignored rather than assigned to the wrong section.
+    For pictures, the visual rule is different from text extraction: content under
+    a D heading belongs to that D until the next D heading starts.  A large 2D
+    phenomenon photo can extend far downward and would be misclassified as 3D by
+    midpoint/area rules even though it visibly starts in the 2D block.
+    """
+    x,y,w,h=ib
+    if w<=0 or h<=0 or not regions:
+        return None
+
+    # Use the upper part of the picture as its anchor. This follows how pictures
+    # are laid out under a D heading and naturally gives a 2D/3D boundary tie to 2D.
+    probe_x=x+w*0.5
+    probe_y=y+min(h*0.12,float(prs.slide_height)*0.015)
+    tol_y=float(prs.slide_height)*0.012
+
+    # Reconstruct visual columns from the shared horizontal bounds of each region.
+    columns={}
+    for r in regions:
+        key=(round(float(r['left']),2),round(float(r['right']),2))
+        columns.setdefault(key,[]).append(r)
+
+    ranked_cols=[]
+    for (left,right),rs in columns.items():
+        hov=max(0.0,min(x+w,right)-max(x,left))
+        if hov<=0:
+            continue
+        inside=1 if left*0.96<=probe_x<right else 0
+        ranked_cols.append((inside,hov/max(w,1.0),-abs(probe_x-sum(rr['cx'] for rr in rs)/len(rs)),rs))
+    if not ranked_cols:
+        return None
+    ranked_cols.sort(key=lambda z:(z[0],z[1],z[2]),reverse=True)
+    rs=sorted(ranked_cols[0][3],key=lambda r:r.get('marker_top',r['cy']))
+
+    # Last D heading whose top is above the picture's upper anchor owns it.
+    preceding=[r for r in rs if r.get('marker_top',r['cy'])<=probe_y+tol_y]
+    if preceding:
+        reg=preceding[-1]
+        # If the picture actually starts just above the next marker but crosses it,
+        # keep the upper D. This is the requested 2D preference at a near-even tie.
+        return reg
+
+    # Picture slightly above the first marker (common with tightly packed templates).
+    first=rs[0]
+    if probe_y<=first.get('marker_bottom',first['cy'])+tol_y:
+        return first
+
+    # Conservative fallback only when the heading-anchor rule cannot decide.
+    scored=[(_image_region_overlap_fraction(ib,r),r) for r in rs]
+    scored=[x for x in scored if x[0]>0]
+    if not scored:
+        return None
+    scored.sort(key=lambda z:z[0],reverse=True)
+    return scored[0][1] if scored[0][0]>=0.35 else None
+
+
+def _english_section_images(path):
+    """Map page-1 pictures to the D heading that physically owns them.
+
+    Image ownership follows the visible D heading above the picture, not the
+    midpoint of the space between D markers. This policy is shared by Korean and
+    English extraction and prevents large phenomenon photos from slipping into 3D.
     """
     keys=('2D','3D','4D_CAUSE','4D_LEAK','5D','6D')
     out={k:[] for k in keys}
@@ -637,34 +695,9 @@ def _english_section_images(path):
                 continue
 
             cx,cy=_center_box(ib)
-
-            # Ownership is based on how much of the picture is physically inside
-            # each D region, not merely where its centre happens to land. A picture
-            # split almost evenly across two D regions is ambiguous and is ignored
-            # rather than being shown under the wrong D on the weekly page.
-            scored=[]
-            for r in regions:
-                frac=_image_region_overlap_fraction(ib,r)
-                if frac>0:
-                    scored.append((frac,r))
-            if not scored:
+            reg=_image_owner_region(ib,regions,prs)
+            if reg is None:
                 continue
-            scored.sort(key=lambda z:z[0],reverse=True)
-            best_frac,reg=scored[0]
-            second_frac=scored[1][0] if len(scored)>1 else 0.0
-            if best_frac<0.35:
-                continue
-            if second_frac>0 and second_frac>=best_frac*0.85:
-                # User rule: if an image is almost evenly split between 2D and 3D,
-                # prefer 2D because phenomenon photos are more common than interim-
-                # containment photos. Other cross-D near-ties remain excluded.
-                tied=scored[:2]
-                tied_ns={item[1]['n'] for item in tied}
-                if tied_ns=={2,3}:
-                    reg=next(item[1] for item in tied if item[1]['n']==2)
-                    best_frac=_image_region_overlap_fraction(ib,reg)
-                else:
-                    continue
             n=reg['n']
             if n in (2,3,5,6):
                 sec=f'{n}D'
