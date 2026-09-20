@@ -400,8 +400,13 @@ def update_page1(prs, d, g):
                     except Exception: pass
                 break
 
-            t = N(getattr(sh, 'text', ''))
-            if team and '팀 주요 논의 사항' in t:
+        # Header text can appear after the first summary table. Do this in a
+        # separate pass so the table-search break above cannot skip the team title.
+        if team:
+            for sh in walk(sl):
+                t = N(getattr(sh, 'text', ''))
+                if '팀 주요 논의 사항' not in t or not hasattr(sh,'text_frame'):
+                    continue
                 for p in sh.text_frame.paragraphs:
                     for r in p.runs:
                         if '팀 주요 논의 사항' in r.text:
