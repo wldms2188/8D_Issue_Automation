@@ -1,5 +1,6 @@
 import copy
 import datetime
+import re
 from pathlib import Path
 
 from pptx import Presentation
@@ -18,9 +19,19 @@ base=step10.base
 N=v310.N
 
 
+def _compact_content_text(value):
+    """Remove empty visual gaps caused by source pictures/tables between text blocks."""
+    lines=[]
+    for raw in N(value).replace('\v','\n').replace('\f','\n').splitlines():
+        line=re.sub(r'[ \t]+',' ',raw).strip()
+        if not line:
+            continue
+        lines.append(line)
+    return '\n'.join(lines)
+
 def _layout_with_4d_placeholders(d, imgs):
     """Keep BOTH 4D slots in the normal two-column chain even when 4D is not written yet."""
-    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    texts={k:_compact_content_text(v313._section_text(d,k)) for k in v310.ZONES}
     # Explicit requested placeholder. Do not let missing 4D collapse the layout.
     if not N(d.get('cause_4d')):
         texts['4D_CAUSE']='검토 중'
@@ -49,7 +60,7 @@ def _adaptive_cascade_layout(d,imgs):
     4D can move upward.  If 4D still needs more room, its box grows downward up to
     the safe slide bottom.  Text is auto-fit only after available geometry is used.
     """
-    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    texts={k:_compact_content_text(v313._section_text(d,k)) for k in v310.ZONES}
     if not N(d.get('cause_4d')):
         texts['4D_CAUSE']='검토 중'
     if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
@@ -125,7 +136,7 @@ def _strict_template_layout(d,imgs):
     made a genuine 2D image look as if it belonged to 3D.  This layout never lets a
     section borrow vertical space from the next D section.
     """
-    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    texts={k:_compact_content_text(v313._section_text(d,k)) for k in v310.ZONES}
     if not N(d.get('cause_4d')):
         texts['4D_CAUSE']='검토 중'
     if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
@@ -151,7 +162,7 @@ def _english_template_anchored_layout(d,imgs):
     before the next D zone, and never cross that next zone.  PowerPoint auto-fit
     handles any remaining excess text inside the assigned region.
     """
-    texts={k:v313._section_text(d,k) for k in v310.ZONES}
+    texts={k:_compact_content_text(v313._section_text(d,k)) for k in v310.ZONES}
     if not N(d.get('cause_4d')):
         texts['4D_CAUSE']='검토 중'
     if not (N(d.get('leak_cause')) or N(d.get('system_cause'))):
