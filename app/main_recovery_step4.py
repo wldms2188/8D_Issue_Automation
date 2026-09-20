@@ -1,8 +1,10 @@
 # Recovery STEP4: restore full page1 problem and force exact page2 title by geometry.
 # Preserve v3.2.0 image/layout/font/Excel behavior.
 import datetime
+import re
 from pathlib import Path
 from pptx import Presentation
+from pptx.enum.text import MSO_AUTO_SIZE
 
 import main_recovery_step3 as step3
 import main_recovery_step1 as step1
@@ -66,13 +68,15 @@ def _owner_shape(sl):
     return candidates[0][2]
 
 def _estimated_text_width_in(sh,text):
-    """Approximate rendered one-line width using the title's existing font size."""
-    pt=11.0
+    """Conservative one-line width estimate for the visible detail title."""
+    pt=18.0
     try:
         runs=[r for p in sh.text_frame.paragraphs for r in p.runs]
         sizes=[r.font.size.pt for r in runs if r.font.size]
         if sizes:
-            pt=max(sizes)
+            # Older generated pages may already have a shrunken font. Do not let
+            # that hide a collision that would occur with the normal template title.
+            pt=max(14.0,max(sizes))
     except Exception:
         pass
     em=pt/72.0
@@ -90,25 +94,63 @@ def _estimated_text_width_in(sh,text):
 
 def _title_owner_overlap_risk(sl,title_sh,title_text):
     owner=_owner_shape(sl)
-    if title_sh is None or owner is None:
+    if title_sh is None:
         return False
     try:
         tx=float(title_sh.left)/EMU; ty=float(title_sh.top)/EMU
         tw=float(title_sh.width)/EMU; th=float(title_sh.height)/EMU
-        ox=float(owner.left)/EMU; oy=float(owner.top)/EMU
-        oh=float(owner.height)/EMU
     except Exception:
         return False
-    vertical=min(ty+th,oy+oh)-max(ty,oy)
-    if vertical<=0:
-        return False
+
+    estimated=_estimated_text_width_in(title_sh,title_text)
+    if owner is None:
+        # Even without a detected owner box, do not let a one-line title visibly
+        # run out of its own template title area.
+        return estimated>max(.25,tw*.98)
+
+    try:
+        ox=float(owner.left)/EMU; oy=float(owner.top)/EMU
+        ow=float(owner.width)/EMU; oh=float(owner.height)/EMU
+    except Exception:
+        return estimated>max(.25,tw*.98)
+
+    # Header boxes are sometimes a few pixels vertically offset even though the
+    # rendered text is on the same visual line. Treat near-aligned boxes as colliding.
+    tc=ty+th/2; oc=oy+oh/2
+    same_header_line=abs(tc-oc)<=max(.35,(th+oh)*.75)
+    if not same_header_line:
+        return estimated>max(.25,tw*.98)
+
     available=max(.25,ox-tx-.12)
-    # Box overlap is definitely unsafe; otherwise estimate one-line text overflow.
-    return tx+tw>ox-.08 or _estimated_text_width_in(title_sh,title_text)>available
+    rendered_right=tx+min(max(estimated,.01),max(tw,estimated))
+    return estimated>available or rendered_right>ox-.08
+
+def _strip_selected_project_prefix(issue,d):
+    """Remove the selected 고객사_과제명 from an issue label used as a short title."""
+    s=v319._clean_issue_label(issue)
+    prefix=N(v319._weekly_task(d))
+    if not s or not prefix:
+        return s
+    # Exact visible prefix first. This covers the normal A_B_issue form.
+    m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',s,re.I)
+    if m:
+        rest=s[m.end():].strip(' _-/／|:：')
+        if rest:
+            return rest
+    # If customer was duplicated in an old generated title, collapse it and try again.
+    customer=N(d.get('customer'))
+    if customer:
+        repeated=re.sub(r'^(?:'+re.escape(customer)+r'\s*[_\-/／|:：]\s*){2,}',customer+'_',s,flags=re.I)
+        m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',repeated,re.I)
+        if m:
+            rest=repeated[m.end():].strip(' _-/／|:：')
+            if rest:
+                return rest
+    return s
 
 def _title_without_selected_project(d,kind,event):
-    """Build a page-2 title only from the 8D itself, never from the GUI project selection."""
-    issue=v319._clean_issue_label(d.get('issue_name'))
+    """Build a short page-2 title with the selected 고객사_과제명 removed."""
+    issue=_strip_selected_project_prefix(d.get('issue_name'),d)
     if issue:
         return issue
     if kind=='시험' and event:
@@ -132,6 +174,7 @@ def _set_title_exact(sh,text):
         tf.text=N(text)
     try:
         tf.word_wrap=False
+        tf.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     except Exception:
         pass
     return True
