@@ -1,6 +1,8 @@
 import sys,unittest
 from pathlib import Path
 from pptx import Presentation
+from pptx.util import Inches
+from pptx.enum.shapes import MSO_SHAPE
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 import project_weekly_match_final as w
 import main_recovery_step14_fix2 as core
@@ -42,6 +44,21 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
 
  def test_issue_display_removes_8d_and_report_words(self):
   self.assertEqual(v319._clean_issue_label('8D_Report_Crack 발생'),'Crack 발생')
+
+ def test_cloned_detail_shell_removes_old_content_shapes_but_keeps_d_labels(self):
+  prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
+  label=sl.shapes.add_textbox(Inches(.42),Inches(2.18),Inches(.7),Inches(.3))
+  label.text='2D'
+  old=sl.shapes.add_shape(MSO_SHAPE.RECTANGLE,Inches(1.0),Inches(2.60),Inches(2.0),Inches(.65))
+  old.text='OLD ISSUE CONTENT'
+  callout=sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,Inches(3.1),Inches(2.62),Inches(1.5),Inches(.55))
+  callout.text=''
+  core._clear_cloned_issue_content(sl)
+  texts=[str(getattr(sh,'text','') or '') for sh in sl.shapes]
+  self.assertIn('2D',texts)
+  self.assertNotIn('OLD ISSUE CONTENT',texts)
+  self.assertNotIn(old._element,[sh._element for sh in sl.shapes])
+  self.assertNotIn(callout._element,[sh._element for sh in sl.shapes])
 
  def test_create_native_section_for_new_project(self):
   prs=Presentation(); prs.slides.add_slide(prs.slide_layouts[6])
