@@ -8,6 +8,7 @@ are patched.
 """
 
 import re
+import copy
 import datetime
 import subprocess
 import tkinter as tk
@@ -1617,52 +1618,117 @@ def _center_summary_task_cell(cell):
         pass
 
 
+def _cell_font_size_pt(cell, fallback=8):
+    try:
+        for p in cell.text_frame.paragraphs:
+            for run in p.runs:
+                if run.font.size is not None:
+                    return float(run.font.size.pt)
+    except Exception:
+        pass
+    return float(fallback)
+
+
+def _clear_cell_merge_flags(cell):
+    """Remove merge flags copied with a cloned table row."""
+    try:
+        tc = cell._tc
+        for key in ("rowSpan", "gridSpan", "hMerge", "vMerge"):
+            if key in tc.attrib:
+                del tc.attrib[key]
+    except Exception:
+        pass
+
+
 def _merge_inserted_summary_task_block(tb, hr, hm, rows, new_row, display):
-    """Merge the project-name cell vertically after inserting a same-project row."""
+    """Rebuild a vertical project-name merge including the newly inserted row.
+
+    Real weekly files often already have a vertically merged task cell. The
+    inserted row is a deep-copy of the last row, so it can inherit a stale
+    vMerge flag. That stale flag must be removed before python-pptx can merge
+    the expanded block.
+    """
     task_col = hm.get("task")
     if task_col is None:
-        return
+        return False
 
     block_rows = sorted(set(int(x) for x in list(rows) + [new_row]))
     if not block_rows:
-        return
+        return False
 
     start = min(block_rows)
     end = max(block_rows)
 
-    # Split any existing vertical merge in this project block, then rebuild it
-    # including the newly inserted row.
+    # Preserve the visible/original task-cell font size BEFORE altering merges.
+    style_cell = None
+    for r in block_rows:
+        try:
+            cell = tb.cell(r, task_col)
+            if N(cell.text):
+                style_cell = cell
+                break
+        except Exception:
+            pass
+    if style_cell is None:
+        try:
+            style_cell = tb.cell(start, task_col)
+        except Exception:
+            style_cell = None
+    font_size = _cell_font_size_pt(style_cell, 8) if style_cell is not None else 8
+
+    # First split the existing origin if present.
     for r in range(start, end + 1):
         try:
             cell = tb.cell(r, task_col)
             if getattr(cell, "is_merge_origin", False):
                 cell.split()
+                break
         except Exception:
             pass
 
-    try:
-        for r in range(start, end + 1):
-            tb.cell(r, task_col).text = ""
-    except Exception:
-        pass
+    # IMPORTANT: a newly cloned row can remain vMerge="1" even after splitting
+    # the old origin. Remove all copied merge flags in this task-column block.
+    for r in range(start, end + 1):
+        try:
+            cell = tb.cell(r, task_col)
+            _clear_cell_merge_flags(cell)
+            cell.text = ""
+        except Exception:
+            pass
 
     try:
         top = tb.cell(start, task_col)
         bottom = tb.cell(end, task_col)
         merged = top.merge(bottom) if end > start else top
+
+        # Use the same small summary font instead of merged.text, which can fall
+        # back to the PowerPoint theme's large default font.
         try:
-            merged.text = N(display)
+            core.base.set_cell_text(merged, N(display), font_size)
         except Exception:
-            top.text = N(display)
-            merged = top
+            try:
+                s14.base.set_cell_text(merged, N(display), font_size)
+            except Exception:
+                merged.text = N(display)
+
         _center_summary_task_cell(merged)
+        return bool(
+            end == start
+            or getattr(tb.cell(start, task_col), "is_merge_origin", False)
+        )
     except Exception:
+        # Do not silently enlarge the text on failure.
         try:
             cell = tb.cell(start, task_col)
-            cell.text = N(display)
+            try:
+                core.base.set_cell_text(cell, N(display), font_size)
+            except Exception:
+                cell.text = N(display)
             _center_summary_task_cell(cell)
         except Exception:
             pass
+        return False
+
 
 
 def _update_summary_exact_then_confirmed(prs, d, g, mode):
