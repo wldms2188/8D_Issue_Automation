@@ -1059,6 +1059,11 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
         if choice is None:
             return False
         if choice=='use':
+            # Record explicit user confirmation. Weekly-summary fuzzy matching is
+            # allowed only as the final fallback when this flag is present.
+            g['_weekly_similar_section_confirmed']='1'
+            if resolved.get('name'):
+                g['_weekly_confirmed_section_name']=resolved.get('name')
             if resolved.get('section') is not None and resolved.get('name'):
                 g['_weekly_section_override_name']=resolved.get('name')
             elif resolved.get('insert_after') is not None:
