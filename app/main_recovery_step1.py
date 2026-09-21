@@ -46,6 +46,7 @@ def _page1_issue(d):
     issue=N(d.get('issue_name'))
     if not issue:
         return ''
+    issue=v319._strip_markers_before_customer(issue,d.get('customer'))
     result=issue
     canonical=N(v319._weekly_task(d))
 
