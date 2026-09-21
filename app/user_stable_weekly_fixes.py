@@ -223,9 +223,18 @@ def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
 
     final_index = result[0]
     if template_id is not None and created_id is not None:
+        created_index = _index_by_slide_id(prs, created_id)
         source_index = _index_by_slide_id(prs, template_id)
-        if source_index is not None:
-            moved = _move_slide_by_id(prs, created_id, source_index + 1)
+        if created_index is not None and source_index is not None:
+            # _move_slide_by_id removes the created slide before reinserting it.
+            # If the clone currently sits before the source, removing it shifts the
+            # source left by one, so "after source" is the old source_index.
+            target_index = (
+                source_index
+                if created_index < source_index
+                else source_index + 1
+            )
+            moved = _move_slide_by_id(prs, created_id, target_index)
             if moved is not None:
                 final_index = moved
 
