@@ -355,10 +355,14 @@ def _section_match_level(name, d):
     if full and q == full:
         return 3
 
-    # Then exact project. A section containing the known customer prefix is
-    # reduced with the SAME rule used by summary-page matching.
+    # Then exact project. This fallback is intentionally independent from
+    # customer matching: even if customer metadata is different, "GM MBAG"
+    # still exactly matches project "MBAG" after separator normalization.
     section_project = _project_key_for_match(name, customer)
-    if project and section_project == project:
+    if project and (
+        section_project == project
+        or (len(project) >= 3 and q.endswith(project))
+    ):
         return 2
 
     # Similarity is suggestion-only and can never override levels 3/2.
@@ -469,11 +473,34 @@ def _summary_match_key(value):
 
 
 def _summary_project_key_from_row(raw, project_key, customer_key=""):
-    """Return exact project identity using the shared separator-insensitive rule."""
+    """Project-only exact fallback, independent from customer matching.
+
+    Step 2 must still work even when step 1 (customer+project) fails.
+    Separators are ignored, and a summary label that includes a customer prefix
+    matches when its normalized suffix is the exact project key.
+    """
     if not project_key:
         return ""
+
+    q = _summary_match_key(raw)
+    if not q:
+        return ""
+
+    # Pure project label.
+    if q == project_key:
+        return project_key
+
+    # Catalog-aware identity (e.g. MBAG_EB565M / MBAGEB565M).
     row_project = _project_key_for_match(raw, customer_key)
-    return project_key if row_project == project_key else ""
+    if row_project == project_key:
+        return project_key
+
+    # Customer-independent fallback: "GM MBAG" -> "mbag".
+    # This is exact suffix matching, not fuzzy containment.
+    if len(project_key) >= 3 and q.endswith(project_key):
+        return project_key
+
+    return ""
 
 
 def _summary_hits(prs, d, g=None):
