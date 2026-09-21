@@ -99,6 +99,25 @@ def _update_page2_step12(sl,d,g,mode):
 
     v319._page2_meta(sl,d,g)
 
+    # 7D is a native template marker/title unit.  It must not constrain 5D/6D
+    # geometry; simply keep the whole existing 7D circle + horizontal-deployment
+    # unit below 6D.  Move the native group (or marker+nearby title) together.
+    try:
+        marker7,parent7=v310.find_marker(sl,'7D')
+        if marker7 is not None:
+            _,y7,_,_=v310.box(parent7 if parent7 is not None else marker7)
+            current_y7=float(y7)/v310.EMU
+            z6=zones['6D']
+            desired_y7=max(current_y7, z6['y']+z6['h']+.22)
+            if desired_y7>current_y7+.01:
+                if parent7 is not None:
+                    x7,_,_,_=v310.box(parent7)
+                else:
+                    x7,_,_,_=v310.box(marker7)
+                v310.move_marker_unit(sl,'7D',float(x7)/v310.EMU,desired_y7)
+    except Exception:
+        pass
+
     # Both 4D blocks are always present in the detail layout.  Keep the native
     # 4D circle + item-name as a group and position each group just above the
     # upper-left corner of its corresponding content region.
