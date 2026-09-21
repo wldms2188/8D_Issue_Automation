@@ -34,6 +34,26 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertEqual(w.s13._customer_task(d),'MBAG_EB-L(EU)')
   self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB-L(EU)')
 
+ def test_if_aa_module_prefixes_are_removed_before_customer_everywhere(self):
+  d={
+   'customer':'MBAG',
+   'task_name':'IF_AA_Module_MBAG_EB565M',
+   'issue_name':'IF_AA_Module_MBAG_EB565M_Scratch',
+  }
+  self.assertEqual(v319._weekly_task(d),'MBAG_EB565M')
+  self.assertEqual(w.s13._customer_task(d),'MBAG_EB565M')
+  self.assertEqual(v319._trim_before_customer(d['issue_name'],d['customer']),'MBAG_EB565M_Scratch')
+  self.assertEqual(w.s13.step4.step1._page1_issue(d),'Scratch')
+  self.assertEqual(w.s13.step4._strip_selected_project_prefix(d['issue_name'],d),'Scratch')
+
+  d2={
+   'customer':'IF_AA_Module_MBAG',
+   'task_name':'IF_AA_Module_MBAG_EB565M',
+   'issue_name':'IF_AA_Module_MBAG_EB565M_Crack',
+  }
+  self.assertEqual(v319._weekly_task(d2),'MBAG_EB565M')
+  self.assertEqual(w.s13._customer_task(d2),'MBAG_EB565M')
+
  def test_detail_title_customer_project_is_not_prefixed_twice(self):
   d={'customer':'MBAG','task_name':'MBAG_EB565M','issue_name':'MBAG_EB565M_Scratch'}
   self.assertEqual(w.s13.v319._weekly_task(d),'MBAG_EB565M')
