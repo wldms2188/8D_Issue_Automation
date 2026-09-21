@@ -408,6 +408,56 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(err, "")
         self.assertEqual(called["direct"], 1)
 
+    def test_mixed_summary_section_forces_new_detail_section(self):
+        prs = Presentation()
+        add_summary_slide(prs, "GM_MBAG", "old")
+        detail = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+            detail.shapes.add_textbox(
+                Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+            ).text = token
+
+        mixed = {"name": "기존 혼합구역", "indices": [0, 1]}
+        old_selected = fix._original_selected_section
+        try:
+            fix._original_selected_section = lambda _prs, _d, _g: mixed
+            g = {}
+            selected = fix._selected_section_without_mixed_summary(
+                prs, {"customer": "GM", "task_name": "GM_MBAG"}, g
+            )
+        finally:
+            fix._original_selected_section = old_selected
+
+        self.assertIsNone(selected)
+        self.assertEqual(g.get("_weekly_create_new_section"), "1")
+        self.assertEqual(
+            g.get("_weekly_mixed_section_recovered"), "기존 혼합구역"
+        )
+
+    def test_detail_template_is_found_even_when_it_shares_summary_section(self):
+        prs = Presentation()
+        add_summary_slide(prs, "GM_MBAG", "old")
+        detail = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, token in enumerate(
+            ("2D", "3D", "4D", "5D", "6D", "7D", "Signal", "이슈기인", "발생단계")
+        ):
+            detail.shapes.add_textbox(
+                Inches(0.5),
+                Inches(0.4 + i * 0.35),
+                Inches(2.5),
+                Inches(0.3),
+            ).text = token
+        detail.shapes.add_textbox(
+            Inches(3.5), Inches(0.5), Inches(3), Inches(0.4)
+        ).text = "GM_MBAG"
+
+        self.assertEqual(
+            fix._template_detail_index_any_section(
+                prs, {"customer": "GM", "task_name": "GM_MBAG"}
+            ),
+            1,
+        )
+
     def test_pending_native_section_does_not_write_fake_xml(self):
         prs = Presentation()
         prs.slides.add_slide(prs.slide_layouts[6])
