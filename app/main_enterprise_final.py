@@ -13,3 +13,4 @@ import output_variant_final  # noqa: F401
 
 if __name__ == '__main__':
     EnterpriseAppV3().mainloop()
+import continuation_fix_final  # noqa: F401
