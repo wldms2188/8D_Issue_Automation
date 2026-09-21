@@ -3,6 +3,7 @@ import datetime
 from pathlib import Path
 
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 import main_recovery_step13 as step13
 import main_recovery_step12 as step12
@@ -143,7 +144,7 @@ def _prepare_new_summary_page(prs,pages,g,template_index=None):
         if sh is table_shape:
             continue
         st=getattr(sh,'shape_type',None)
-        if st in (v310.MSO_SHAPE_TYPE.PICTURE, v310.MSO_SHAPE_TYPE.CHART, v310.MSO_SHAPE_TYPE.MEDIA):
+        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.MEDIA):
             try:
                 el=sh._element
                 if el.getparent() is not None: el.getparent().remove(el)
@@ -152,7 +153,7 @@ def _prepare_new_summary_page(prs,pages,g,template_index=None):
             continue
         if st==v310.MSO_SHAPE_TYPE.GROUP:
             children=[x for x in v310.walk(sh) if x is not sh]
-            if any(getattr(x,'shape_type',None) in (v310.MSO_SHAPE_TYPE.PICTURE,v310.MSO_SHAPE_TYPE.CHART,v310.MSO_SHAPE_TYPE.MEDIA) for x in children):
+            if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
                 try:
                     el=sh._element
                     if el.getparent() is not None: el.getparent().remove(el)
