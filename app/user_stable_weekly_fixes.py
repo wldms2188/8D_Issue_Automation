@@ -24,6 +24,7 @@ import project_autocomplete_final as catalog
 import main_enterprise_v3 as enterprise_v3
 import ui_enterprise as ui
 import final_output_polish as final_polish
+import output_variant_final as output_variant
 
 N = v310.N
 
@@ -1918,6 +1919,26 @@ def _update_summary_old_style(prs, d, g, mode):
         s13._customer_task = original_customer_task
 
 
+def _detail_slide_marker(d):
+    return "AUTO_8D_DETAIL_" + core._attachment_key(d)
+
+
+def _mark_detail_slide(sl, d):
+    marker = _detail_slide_marker(d)
+    try:
+        sl.name = marker
+    except Exception:
+        try:
+            sl._element.cSld.set("name", marker)
+        except Exception:
+            pass
+    return marker
+
+
+def _is_marked_detail(sl):
+    return str(getattr(sl, "name", "") or "").startswith("AUTO_8D_DETAIL_")
+
+
 def _verified_generated_detail(sl):
     names = {
         str(getattr(sh, "name", "") or "")
@@ -1941,6 +1962,7 @@ def _create_detail_direct(prs, d, g, mode, matched_section, force_new):
 
     if target is not None:
         s13._update_detail_slide(prs.slides[target], d, g, mode)
+        _mark_detail_slide(prs.slides[target], d)
         s13._clear_slide_text_cache(prs.slides[target])
         if not _verified_generated_detail(prs.slides[target]):
             raise RuntimeError("기존 상세페이지에 2D~6D 내용을 작성하지 못했습니다.")
@@ -1965,6 +1987,7 @@ def _create_detail_direct(prs, d, g, mode, matched_section, force_new):
         pass
 
     s13._update_detail_slide(sl, d, g, mode)
+    _mark_detail_slide(sl, d)
     s13._clear_slide_text_cache(sl)
 
     if not _verified_generated_detail(sl):
@@ -2056,6 +2079,16 @@ def _weekly_single_path(src, out, d, g, mode):
     if final_detail_index is None:
         raise RuntimeError("유첨 추가 후 상세페이지가 사라졌습니다. 신규 구역 생성을 중단했습니다.")
 
+    final_check = Presentation(saved)
+    if (
+        not _verified_generated_detail(final_check.slides[final_detail_index])
+        or not _is_marked_detail(final_check.slides[final_detail_index])
+    ):
+        raise RuntimeError(
+            "유첨 추가 후 상세페이지 보존 확인에 실패했습니다. "
+            "상세 없이 유첨만 저장하는 결과는 생성하지 않았습니다."
+        )
+
     if force_new:
         _create_native_section_com_saved(
             saved, N(core._new_section_name(d)) or "신규 과제", final_detail_index
@@ -2095,3 +2128,73 @@ def _weekly_single_path(src, out, d, g, mode):
 
 # Absolute last assignment: no earlier wrapper can bypass this writer.
 core.base.weekly = _weekly_single_path
+
+
+# ---------------------------------------------------------------------------
+# Reduced-output protection.
+# The update-only generator previously removed a newly cloned detail page when
+# its XML signature matched a source/template slide. Explicitly marked current
+# detail slides must always survive the reduced PPT.
+# ---------------------------------------------------------------------------
+_original_ppt_update_only_user = output_variant._ppt_update_only
+
+
+def _ppt_update_only_keep_current_detail(source, saved):
+    from collections import Counter
+    from pptx import Presentation
+
+    src = Presentation(source)
+    dst = Presentation(saved)
+    source_counts = Counter(output_variant._slide_signature(sl) for sl in src.slides)
+
+    keep = []
+    for i, slide in enumerate(dst.slides):
+        name = str(getattr(slide, "name", "") or "")
+
+        # Current generated detail and current AUTO attachments are always output
+        # artifacts, even when their content resembles an existing source page.
+        if name.startswith("AUTO_8D_DETAIL_") or name.startswith("AUTO_8D_ATTACH_"):
+            keep.append(i)
+            continue
+
+        sig = output_variant._slide_signature(slide)
+        if source_counts.get(sig, 0) > 0:
+            source_counts[sig] -= 1
+        else:
+            keep.append(i)
+
+    if not keep:
+        return None, 0
+
+    keep_set = set(keep)
+    for i in range(len(dst.slides) - 1, -1, -1):
+        if i not in keep_set:
+            output_variant._remove_slide(dst, i)
+
+    target = Path(saved).with_name(
+        Path(saved).stem + "_업데이트사항만" + Path(saved).suffix
+    )
+    dst.save(target)
+
+    # Never hand the user a reduced PPT that contains attachments for this run
+    # but has no generated detail page.
+    check = Presentation(target)
+    has_detail = any(_is_marked_detail(sl) for sl in check.slides)
+    has_attach = any(
+        str(getattr(sl, "name", "") or "").startswith("AUTO_8D_ATTACH_")
+        for sl in check.slides
+    )
+    if has_attach and not has_detail:
+        try:
+            Path(target).unlink()
+        except Exception:
+            pass
+        raise RuntimeError(
+            "축약본에서 상세페이지가 누락되어 저장을 중단했습니다. "
+            "전체 업데이트 본은 유지합니다."
+        )
+
+    return target, len(keep)
+
+
+output_variant._ppt_update_only = _ppt_update_only_keep_current_detail
