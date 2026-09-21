@@ -606,12 +606,17 @@ def weekly_fix5(src,out,d,g,mode):
     except PermissionError:
         p=Path(out); saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix)); prs.save(saved)
 
+    # Finalize attachments first. This is deliberately before native-section
+    # creation: InsertFromFile already exercises a real PowerPoint COM open/save
+    # cycle and leaves the file in an Office-normalized state. Creating the
+    # section against that finalized file avoids reopening the raw python-pptx
+    # save that failed on the company PC.
+    _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
+    attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
+
     if force_new:
         _weekly_progress(g,'PowerPoint 신규 과제 구역을 생성하는 중...')
         _create_native_section_com(saved,_new_section_name(d,g),target)
-
-    _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
-    attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
     sec_name=N(matched_section.get('name')) if matched_section else ('신규 구역' if force_new else '확인된 상세페이지 주변')
     if attach_error:
         attach_msg=' / 8D 유첨 추가 실패(주간회의 본문은 저장됨): '+attach_error[:220]
