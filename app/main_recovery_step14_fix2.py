@@ -139,35 +139,54 @@ def _new_section_name(d,g=None):
     return N((g or {}).get('task_name')) or N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제'
 
 def _create_native_section(prs,name,slide_index):
-    """Create a real PowerPoint native section containing the specified detail slide."""
-    sid=_slide_id_at(prs,slide_index)
-    if sid is None:return None
-    root=prs._element
+    """Record a pending native section.
+
+    python-pptx does not expose PowerPoint SectionProperties and writing a
+    p:sectionLst directly is not a valid Office section definition.  The real
+    native section is therefore created after save through PowerPoint COM.
+    """
+    return {
+        'name': N(name) or '신규 과제',
+        'element': None,
+        'slide_ids': [],
+        'indices': [slide_index],
+        '_pending_com': True,
+    }
+
+def _create_native_section_com(ppt_path,name,slide_index):
+    """Create a real PowerPoint section before slide_index using Office COM."""
+    if not ppt_path:
+        return False
+    path_q=_ps_quote(Path(ppt_path).resolve())
+    name_q=_ps_quote(N(name) or '신규 과제')
+    slide_no=int(slide_index)+1
+    script=f"""
+$ErrorActionPreference = 'Stop'
+$ppt = $null
+$pres = $null
+try {{
+    $ppt = New-Object -ComObject PowerPoint.Application
+    $pres = $ppt.Presentations.Open('{path_q}', 0, 0, 0)
+    [void]$pres.SectionProperties.AddBeforeSlide({slide_no}, '{name_q}')
+    $pres.Save()
+    Write-Output 'OK'
+}}
+finally {{
+    if ($pres -ne $null) {{ try {{ $pres.Close() }} catch {{}} }}
+    if ($ppt -ne $null) {{ try {{ $ppt.Quit() }} catch {{}} }}
+}}
+"""
     try:
-        lists=root.xpath('./*[local-name()="sectionLst"]')
-    except Exception:
-        lists=[]
-    if lists:
-        section_lst=lists[0]
-    else:
-        section_lst=OxmlElement('p:sectionLst')
-        try:root.insert_element_before(section_lst,'p:sldSz','p:notesSz','p:defaultTextStyle','p:extLst')
-        except Exception:root.append(section_lst)
-
-    base_name=N(name) or '신규 과제'
-    existing={s13._k(x.get('name')) for x in _native_sections(prs)}
-    final_name=base_name
-    n=2
-    while s13._k(final_name) in existing:
-        final_name=f'{base_name} ({n})'; n+=1
-
-    sec=OxmlElement('p:section')
-    sec.set('name',final_name)
-    sec.set('id','{'+str(uuid.uuid4()).upper()+'}')
-    sld_lst=OxmlElement('p:sldIdLst')
-    sld=OxmlElement('p:sldId'); sld.set('id',str(sid))
-    sld_lst.append(sld); sec.append(sld_lst); section_lst.append(sec)
-    return {'name':final_name,'element':sec,'slide_ids':[sid],'indices':[slide_index]}
+        p=subprocess.run(
+            ['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],
+            capture_output=True,text=True,timeout=45
+        )
+    except Exception as e:
+        raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+repr(e))
+    if p.returncode!=0:
+        detail=(p.stderr or p.stdout or '').strip()
+        raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+detail[-700:])
+    return True
 
 def _slide_id_at(prs,index):
     sldId=prs.slides._sldIdLst[index]
@@ -491,6 +510,10 @@ def weekly_fix5(src,out,d,g,mode):
     try:prs.save(out); saved=out
     except PermissionError:
         p=Path(out); saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix)); prs.save(saved)
+
+    if force_new:
+        _weekly_progress(g,'PowerPoint 신규 과제 구역을 생성하는 중...')
+        _create_native_section_com(saved,_new_section_name(d,g),target)
 
     _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
     attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
