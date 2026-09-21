@@ -27,5 +27,6 @@ jobs:
           python -m py_compile app/main_recovery_step12.py
           python -m py_compile app/main_recovery_step14_fix2.py
           python -m py_compile app/continuation_fix_final.py
+          python -m py_compile app/excel_change_style_final.py
       - name: Run regression tests
         run: pytest -q
