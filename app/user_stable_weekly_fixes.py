@@ -1868,6 +1868,14 @@ def _project_parenthetical_parts(value, customer_hint=""):
     )
 
 
+def _required_project_parens(d, g=None):
+    """Backward-compatible name for the project-specific parenthesis rule."""
+    d = d or {}
+    g = g or {}
+    selected = N(g.get("task_name")) or N(d.get("task_name"))
+    return _project_parenthetical_parts(selected, N(d.get("customer")))
+
+
 def _project_parentheses_match(raw, expected_parts):
     """Only project-name parentheses are compared; unrelated note parentheses are ignored.
 
