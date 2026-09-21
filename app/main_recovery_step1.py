@@ -42,7 +42,7 @@ def _event_name(d):
 
 
 def _page1_issue(d):
-    """Display issue from [customer_]project onward; discard only earlier routing labels."""
+    """Weekly-summary issue: remove routing labels AND customer/project prefix."""
     issue=N(d.get('issue_name'))
     if not issue:
         return ''
@@ -55,18 +55,16 @@ def _page1_issue(d):
 
     parts=[x for x in re.split(r'[_/|:：\\-]+',issue) if N(x)]
     pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
-    ck=re.sub(r'[^0-9A-Za-z가-힣]+','',customer).lower()
     for idx,part in enumerate(parts):
         q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
         if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
-            start=idx
-            if idx>0 and ck:
-                prev=re.sub(r'[^0-9A-Za-z가-힣]+','',N(parts[idx-1])).lower()
-                if prev==ck:
-                    start=idx-1
-            return v319._clean_issue_label('_'.join(parts[start:]))
+            # Summary table already has a separate customer/project column,
+            # so its Issue cell starts AFTER the matched project token.
+            rest='_'.join(parts[idx+1:]).strip(' _-/／|:：')
+            if rest:
+                return v319._clean_issue_label(rest)
+            break
 
-    # If no project anchor can be found, retain the previous safe cleanup.
     return v319._clean_issue_label(v319._strip_markers_before_customer(issue,customer))
 
 
