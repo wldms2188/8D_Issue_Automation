@@ -141,7 +141,7 @@ def _strip_selected_project_prefix(issue,d):
     customer=N(d.get('customer'))
     project=task
     if customer and project:
-        project=re.sub(r'^\\s*'+re.escape(customer)+r'\\s*[_\\-/／|:： ]+\\s*','',project,flags=re.I)
+        project=re.sub(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:： ]+\s*','',project,flags=re.I)
     project=N(project).strip(' _-/／|:：')
     if project:
         # Compare normalized separator-delimited tokens and also allow the
