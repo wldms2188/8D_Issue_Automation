@@ -315,6 +315,10 @@ def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
         _purge_summary_red_annotations_below_header(sl, tb, hr)
     except Exception:
         pass
+    try:
+        _remove_summary_top_text_outlines(sl, tb)
+    except Exception:
+        pass
 
     return final_index, tb, hr, row
 
@@ -460,6 +464,46 @@ def _shape_overlaps_rect(sh, rect, min_ratio=0.02):
         return (ix * iy / area) >= min_ratio
     except Exception:
         return False
+
+
+def _remove_summary_top_text_outlines(sl, tb):
+    """Remove accidental borders from text boxes ABOVE the summary table.
+
+    Do not touch tables, table borders, or body shapes.  This only normalizes
+    top title/header text boxes on cloned summary pages back to 'no outline'.
+    """
+    table_shape = _summary_table_shape_local(sl, tb)
+    if table_shape is None:
+        return 0
+
+    try:
+        cutoff = float(table_shape.top)
+    except Exception:
+        return 0
+
+    changed = 0
+    for sh in list(sl.shapes):
+        if getattr(sh, "has_table", False):
+            continue
+        if getattr(sh, "shape_type", None) == MSO_SHAPE_TYPE.GROUP:
+            continue
+        if not hasattr(sh, "text_frame"):
+            continue
+
+        text = N(getattr(sh, "text", ""))
+        if not text:
+            continue
+
+        try:
+            # Only shapes whose top begins above the summary table.
+            if float(sh.top) >= cutoff:
+                continue
+            sh.line.fill.background()
+            changed += 1
+        except Exception:
+            pass
+
+    return changed
 
 
 def _purge_summary_red_annotations_below_header(sl, tb, hr):
@@ -2659,6 +2703,10 @@ def _clone_matched_summary_page(prs, source_index, display, g):
         pass
     try:
         _purge_summary_red_annotations_below_header(sl, tb, hr)
+    except Exception:
+        pass
+    try:
+        _remove_summary_top_text_outlines(sl, tb)
     except Exception:
         pass
     return moved, tb, hr, row
