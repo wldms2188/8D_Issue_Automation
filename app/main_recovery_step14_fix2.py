@@ -367,6 +367,26 @@ def _clear_cloned_issue_content(sl):
             _clear_cloned_table_content(sh)
             continue
 
+        # Pictures/charts/lines/arrows/callouts in a copied detail page are
+        # issue-specific content even when they are grouped with a static D label.
+        # Remove them first. Static protection is only for true text/label shapes.
+        st=getattr(sh,'shape_type',None)
+        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART):
+            _remove_shape(sh)
+            continue
+        if st==MSO_SHAPE_TYPE.GROUP:
+            # A group that contains any picture or non-label drawing is old issue
+            # content; do not let one child text such as "5D" protect the group.
+            children=[x for x in v310.walk(sh) if x is not sh]
+            has_visual=any(
+                getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART)
+                or (not N(getattr(x,'text','')) and not getattr(x,'has_table',False))
+                for x in children
+            )
+            if has_visual:
+                _remove_shape(sh)
+                continue
+
         if _static_cloned_detail_shape(sh):
             continue
 
