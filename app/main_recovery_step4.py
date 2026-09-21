@@ -146,7 +146,7 @@ def _strip_selected_project_prefix(issue,d):
     if project:
         # Compare normalized separator-delimited tokens and also allow the
         # issue token to contain the project name (project variants/suffixes).
-        parts=[x for x in re.split(r'[_/|:：\\-]+',s) if N(x)]
+        parts=[x for x in re.split(r'[_/|:：\-]+',s) if N(x)]
         pk=s13._k(project) if 's13' in globals() else re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
         for idx,part in enumerate(parts):
             q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
