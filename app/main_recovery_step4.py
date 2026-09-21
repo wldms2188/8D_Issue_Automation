@@ -157,17 +157,47 @@ def _strip_selected_project_prefix(issue,d):
     return s
 
 
+def _named_test_or_build_issue(d):
+    """Return an explicit issue event only when the issue text says xx시험 or xx빌드.
+
+    A bare sample such as B2 is NOT a build name. This prevents "B2 이슈 발생".
+    """
+    issue=_strip_selected_project_prefix(d.get('issue_name'),d)
+    if not issue:
+        return ''
+    tokens=[N(x) for x in re.split(r'[_/|:：]+',issue) if N(x)]
+    for tok in tokens:
+        m=re.search(r'([^\s,;()]+시험)(?:\s*(?:중|진행\s*중|완료))?',tok,re.I)
+        if m and N(m.group(1)):
+            return N(m.group(1))
+    for tok in tokens:
+        m=re.search(r'([^\s,;()]+빌드)(?:\s*(?:중|진행\s*중|완료))?',tok,re.I)
+        if m and N(m.group(1)):
+            return N(m.group(1))
+    return ''
+
+
 def _detail_title_suffix(d,g):
-    """Unified weekly detail-title tail: 발생샘플_발생처_이슈 발생."""
+    """Default tail when the issue is not an explicit named test/build issue."""
     sample=N((g or {}).get('sample') or d.get('sample') or d.get('occurrence_sample'))
-    site=N((g or {}).get('occurrence_site') or d.get('occurrence_site'))
-    parts=[x for x in (sample,site) if x]
-    parts.append('이슈 발생')
-    return '_'.join(parts)
+    site=N(
+        (g or {}).get('occurrence_site')
+        or d.get('_origin_occurrence_site')
+        or d.get('occurrence_site')
+    )
+    parts=[x for x in (sample,site) if x and str(x).strip().lower() not in ('etc.','etc')]
+    return (' '.join(parts)+' 이슈 발생').strip()
 
 
 def _detail_title_text(d,g):
-    """고객사_과제명_발생샘플_발생처_이슈 발생."""
+    """Weekly detail title.
+
+    - explicit xx시험 / xx빌드 issue: "xx시험 이슈 발생" / "xx빌드 이슈 발생"
+    - otherwise: keep full 고객사_과제명 + 발생샘플 + 발생처, then shrink if needed.
+    """
+    event=_named_test_or_build_issue(d)
+    if event:
+        return f'{event} 이슈 발생'
     project=N(v319._weekly_task(d))
     tail=_detail_title_suffix(d,g)
     return '_'.join(x for x in (project,tail) if x)
