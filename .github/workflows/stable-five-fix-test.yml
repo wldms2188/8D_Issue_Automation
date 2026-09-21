@@ -26,4 +26,4 @@ jobs:
       - name: Run stable five-fix regression
         env:
           PYTHONPATH: app
-        run: python -m unittest tests.test_user_stable_five_fixes -v
+        run: python tests/test_user_stable_five_fixes.py
