@@ -505,6 +505,45 @@ def _shape_hits_detail_content_zone(sh):
         return False
 
 
+_METADATA_TABLE_LABELS = (
+    "발생상황", "발생 단계", "발생단계",
+    "재발여부", "개발여부",
+    "이슈영향도", "이슈 영향도",
+    "이슈기인", "이슈 기인",
+    "수평전개",
+)
+
+
+def _is_detail_metadata_table(sh):
+    """Top classification/owner table is template data and must stay intact."""
+    if not getattr(sh, "has_table", False):
+        return False
+    try:
+        tb = sh.table
+        text = " ".join(
+            N(tb.cell(r, c).text)
+            for r in range(len(tb.rows))
+            for c in range(len(tb.columns))
+        )
+        q = s13._k(text)
+        hits = sum(1 for label in _METADATA_TABLE_LABELS if s13._k(label) in q)
+        return hits >= 2
+    except Exception:
+        return False
+
+
+_original_clear_cloned_table_content_user = core._clear_cloned_table_content
+
+
+def _clear_cloned_table_content_keep_metadata(sh):
+    if _is_detail_metadata_table(sh):
+        return
+    return _original_clear_cloned_table_content_user(sh)
+
+
+core._clear_cloned_table_content = _clear_cloned_table_content_keep_metadata
+
+
 def _clear_old_detail_text_shape(sh):
     """Clear copied issue text but keep the template shape/frame itself."""
     text = N(getattr(sh, "text", ""))
@@ -538,6 +577,8 @@ def _clean_preserved_detail_group(group):
             continue
 
         if getattr(child, "has_table", False):
+            if _is_detail_metadata_table(child):
+                continue
             try:
                 core._clear_cloned_table_content(child)
             except Exception:
@@ -569,7 +610,9 @@ def _purge_cloned_detail_artifacts(sl):
             continue
 
         if getattr(sh, "has_table", False):
-            # Keep table geometry; the core cleaner removes old value cells.
+            # Top metadata/classification table keeps BOTH geometry and text.
+            if _is_detail_metadata_table(sh):
+                continue
             try:
                 core._clear_cloned_table_content(sh)
             except Exception:
