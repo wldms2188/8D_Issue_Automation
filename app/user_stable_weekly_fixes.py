@@ -8,6 +8,8 @@ are patched.
 """
 
 import re
+import subprocess
+from pathlib import Path
 
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -639,3 +641,147 @@ def _append_8d_attachments_safe_recover(out_path, src8d_path, detail_index, d):
 
 
 core._append_8d_attachments_safe = _append_8d_attachments_safe_recover
+
+
+# ---------------------------------------------------------------------------
+# New-project section creation:
+# python-pptx cannot create a real PowerPoint native section by writing a fake
+# p:sectionLst.  Preserve the freshly cloned detail slide in the pptx first,
+# then create the real section through PowerPoint COM after the file is saved.
+# ---------------------------------------------------------------------------
+_pending_user_native_section = None
+
+
+def _create_native_section_pending(prs, name, slide_index):
+    global _pending_user_native_section
+    _pending_user_native_section = {
+        "name": N(name) or "신규 과제",
+        "slide_index": int(slide_index),
+    }
+    return {
+        "name": N(name) or "신규 과제",
+        "element": None,
+        "slide_ids": [],
+        "indices": [int(slide_index)],
+        "_pending_com": True,
+    }
+
+
+def _ps_quote(value):
+    return str(value).replace("'", "''")
+
+
+def _create_native_section_com_saved(ppt_path, name, slide_index):
+    """Create a real PowerPoint section before the already-saved detail slide."""
+    path_q = _ps_quote(Path(ppt_path).resolve())
+    name_q = _ps_quote(N(name) or "신규 과제")
+    slide_no = int(slide_index) + 1
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$ppt = $null
+$pres = $null
+try {{
+    $ppt = New-Object -ComObject PowerPoint.Application
+    try {{ $ppt.DisplayAlerts = 1 }} catch {{}}
+    $pres = $ppt.Presentations.Open('{path_q}', 0, 0, 0)
+    if ({slide_no} -lt 1 -or {slide_no} -gt $pres.Slides.Count) {{
+        throw '상세페이지 위치가 PowerPoint 범위를 벗어났습니다.'
+    }}
+    [void]$pres.SectionProperties.AddBeforeSlide({slide_no}, '{name_q}')
+    $pres.Save()
+}}
+finally {{
+    if ($pres -ne $null) {{ try {{ $pres.Close() }} catch {{}} }}
+    if ($ppt -ne $null) {{ try {{ $ppt.Quit() }} catch {{}} }}
+}}
+"""
+    try:
+        proc = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Sta",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
+            capture_output=True,
+            timeout=45,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "Windows PowerShell을 찾지 못해 신규 PowerPoint 구역을 만들지 못했습니다."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "PowerPoint 신규 구역 생성이 45초를 초과했습니다."
+        ) from exc
+
+    if proc.returncode != 0:
+        raw = (proc.stderr or proc.stdout or b"")[-1200:]
+        try:
+            detail = raw.decode("cp949", errors="replace")
+        except Exception:
+            detail = raw.decode("utf-8", errors="replace")
+        raise RuntimeError("PowerPoint 신규 구역 생성 실패: " + detail.strip())
+    return True
+
+
+def _verify_pending_detail_slide(saved, request):
+    """Fail loudly if a requested new-section run did not actually create detail."""
+    if not request:
+        return
+    from pptx import Presentation
+
+    prs = Presentation(saved)
+    idx = int(request["slide_index"])
+    if idx < 0 or idx >= len(prs.slides):
+        raise RuntimeError(
+            "신규 구역용 상세페이지가 저장되지 않았습니다. "
+            f"(예상 위치: {idx + 1}페이지, 전체: {len(prs.slides)}페이지)"
+        )
+    if not core._is_detail_like(prs.slides[idx]):
+        raise RuntimeError(
+            "신규 구역 위치에 2D~6D 상세페이지가 생성되지 않았습니다. "
+            "잘못된 빈 페이지/요약페이지 생성은 중단했습니다."
+        )
+
+
+# Replace only the invalid native-section writer.  weekly_fix5 still clones and
+# fills the detail slide exactly as before.
+core._create_native_section = _create_native_section_pending
+
+_active_weekly_before_native_section = core.base.weekly
+
+
+def _weekly_with_real_native_section(src, out, d, g, mode):
+    global _pending_user_native_section
+    _pending_user_native_section = None
+
+    msg, saved = _active_weekly_before_native_section(src, out, d, g, mode)
+    request = _pending_user_native_section
+    force_new = str((g or {}).get("_weekly_create_new_section") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    if force_new:
+        if request is None:
+            raise RuntimeError(
+                "신규 구역 생성이 선택되었지만 상세페이지 생성 요청이 만들어지지 않았습니다."
+            )
+        _verify_pending_detail_slide(saved, request)
+        _create_native_section_com_saved(
+            saved, request["name"], request["slide_index"]
+        )
+        msg += (
+            f" / 신규 구역 [{request['name']}] 생성 완료"
+            f" / 상세 page {request['slide_index'] + 1} 생성 확인"
+        )
+
+    return msg, saved
+
+
+core.base.weekly = _weekly_with_real_native_section
