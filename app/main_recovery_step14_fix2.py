@@ -380,46 +380,38 @@ def _remove_shape(sh):
     return False
 
 def _clear_cloned_issue_content(sl):
-    """Turn a copied existing detail page into a clean reusable shell."""
-    v310.remove_previous_auto(sl); zones=_content_zones()
+    """Turn a copied detail page into a clean shell.
+
+    Large pictures/charts/media copied from another issue are always stale issue
+    content. Remove them regardless of zone overlap; the fixed weekly template
+    does not rely on embedded issue photos.
+    """
+    v310.remove_previous_auto(sl)
+    zones=_content_zones()
+
+    # Pass 1: remove every top-level copied picture/chart/media object first.
+    # The old overlap gate was the reason large photos spanning/outside D zones
+    # survived cloning.
     for sh in list(sl.shapes):
-        # Content copied from another issue can sit partly outside the nominal D
-        # rectangle (pictures/callouts often do). A small but real overlap is
-        # enough to treat it as old issue content.
-        if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
-            continue
-
-        # TABLES ARE TEMPLATE STRUCTURE: never delete them. Keep borders/fills/size
-        # and clear only prior issue values so the copied shell can be reused.
-        if getattr(sh,'has_table',False):
-            _clear_cloned_table_content(sh)
-            continue
-
-        # Pictures/charts/lines/arrows/callouts in a copied detail page are
-        # issue-specific content even when they are grouped with a static D label.
-        # Remove them first. Static protection is only for true text/label shapes.
         st=getattr(sh,'shape_type',None)
-        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART):
+        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.MEDIA):
             _remove_shape(sh)
             continue
         if st==MSO_SHAPE_TYPE.GROUP:
-            # A group that contains any picture or non-label drawing is old issue
-            # content; do not let one child text such as "5D" protect the group.
             children=[x for x in v310.walk(sh) if x is not sh]
-            has_visual=any(
-                getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART)
-                or (not N(getattr(x,'text','')) and not getattr(x,'has_table',False))
-                for x in children
-            )
-            if has_visual:
+            if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
                 _remove_shape(sh)
-                continue
 
+    # Pass 2: inside issue-content zones, keep only true fixed labels/tables and
+    # remove old arrows, lines, callouts, free text and other issue drawings.
+    for sh in list(sl.shapes):
+        if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
+            continue
+        if getattr(sh,'has_table',False):
+            _clear_cloned_table_content(sh)
+            continue
         if _static_cloned_detail_shape(sh):
             continue
-
-        # Remove copied visual issue artifacts: photos, arrows, rectangles, lines,
-        # callouts, charts and non-static groups/text objects in D content areas.
         _remove_shape(sh)
 
 def _clone_detail_shell(prs,d,insert_at,matched_section=None):
