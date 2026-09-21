@@ -40,8 +40,8 @@ def _split_top_level_customer_task(value):
     return '',s
 
 def _customer_task(d):
-    customer=N(d.get('customer'))
-    task=N(d.get('task_name'))
+    customer=v319._customer_core(d.get('customer'))
+    task=v319._strip_markers_before_customer(d.get('task_name'),customer)
 
     # User contract: top-level A_B already means customer_project.
     # Therefore never prepend d.customer again, even if an earlier extractor
