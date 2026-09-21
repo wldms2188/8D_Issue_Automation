@@ -135,6 +135,30 @@ def _prepare_new_summary_page(prs,pages,g,template_index=None):
     tb,hr=found
     row=_clear_summary_data(tb,hr)
 
+    # A newly cloned SUMMARY page must not inherit issue-specific pictures,
+    # charts or drawing objects from the page used as its style template.
+    # Keep the summary table and ordinary header/team text only.
+    table_shape=_summary_table_shape(sl,tb)
+    for sh in list(sl.shapes):
+        if sh is table_shape:
+            continue
+        st=getattr(sh,'shape_type',None)
+        if st in (v310.MSO_SHAPE_TYPE.PICTURE, v310.MSO_SHAPE_TYPE.CHART, v310.MSO_SHAPE_TYPE.MEDIA):
+            try:
+                el=sh._element
+                if el.getparent() is not None: el.getparent().remove(el)
+            except Exception:
+                pass
+            continue
+        if st==v310.MSO_SHAPE_TYPE.GROUP:
+            children=[x for x in v310.walk(sh) if x is not sh]
+            if any(getattr(x,'shape_type',None) in (v310.MSO_SHAPE_TYPE.PICTURE,v310.MSO_SHAPE_TYPE.CHART,v310.MSO_SHAPE_TYPE.MEDIA) for x in children):
+                try:
+                    el=sh._element
+                    if el.getparent() is not None: el.getparent().remove(el)
+                except Exception:
+                    pass
+
     # Keep the shared page style and only replace the team token when present.
     team=N(g.get('team'))
     if team:
