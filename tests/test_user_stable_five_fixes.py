@@ -908,6 +908,71 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(tb.cell(0, 1).text, "고정 값")
         self.assertEqual(tb.cell(0, 2).text, "담당 정보")
 
+    def test_summary_clone_red_annotations_are_removed_only_below_header(self):
+        prs = Presentation()
+        sl, tb = add_summary_slide(prs, "MBAG_EB565M", "old", top=1.2)
+
+        # Red annotation ABOVE the summary table header: preserve it.
+        top_red = sl.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(1.0), Inches(0.45), Inches(0.45), Inches(0.25)
+        )
+        top_red.name = "RED_ABOVE_HEADER"
+        top_red.fill.background()
+        top_red.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+
+        # Red annotation in the BODY under the header: remove it.
+        body_red = sl.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(1.0), Inches(1.75), Inches(0.45), Inches(0.25)
+        )
+        body_red.name = "RED_IN_BODY"
+        body_red.fill.background()
+        body_red.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+
+        removed = fix._purge_summary_red_annotations_below_header(sl, tb, 0)
+        names = {sh.name for sh in sl.shapes}
+
+        self.assertEqual(removed, 1)
+        self.assertIn("RED_ABOVE_HEADER", names)
+        self.assertNotIn("RED_IN_BODY", names)
+
+    def test_inserted_summary_task_cell_merges_vertically_and_centers(self):
+        prs = Presentation()
+        sl, tb = add_summary_slide(prs, "MBAG_EB565M", "old", rows=3)
+        hm = s13._summary_map(tb, 0)
+
+        # Simulate a same-project new row directly after the old row.
+        tb.cell(2, hm["task"]).text = "MBAG_EB565M"
+        tb.cell(2, hm["issue"]).text = "new"
+
+        fix._merge_inserted_summary_task_block(
+            tb, 0, hm, [1], 2, "MBAG_EB565M"
+        )
+
+        cell = tb.cell(1, hm["task"])
+        self.assertTrue(getattr(cell, "is_merge_origin", False))
+        self.assertEqual(cell.text, "MBAG_EB565M")
+        self.assertEqual(cell.text_frame.vertical_anchor, fix.MSO_ANCHOR.MIDDLE)
+        self.assertTrue(
+            all(
+                p.alignment == fix.PP_ALIGN.CENTER
+                for p in cell.text_frame.paragraphs
+            )
+        )
+
+    def test_business_progress_heading_is_preserved_in_detail_cleanup(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+        heading = sl.shapes.add_textbox(
+            Inches(0.6), Inches(2.25), Inches(9.5), Inches(0.35)
+        )
+        heading.text = "업무 진행 현황"
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        self.assertEqual(fix.s13._k(heading.text), fix.s13._k("업무 진행 현황"))
+
     def test_top_metadata_table_text_is_preserved_during_detail_cleanup(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
