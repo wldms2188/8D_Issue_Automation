@@ -297,15 +297,76 @@ def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
 s14._prepare_new_summary_page = _prepare_new_summary_page_stable
 
 
+
+_original_static_cloned_detail_shape = core._static_cloned_detail_shape
+
+
+def _static_cloned_detail_shape_preserve_layout(sh):
+    """Never delete native D-marker/title units from a copied detail template."""
+    try:
+        texts = core._shape_texts(sh)
+    except Exception:
+        texts = [N(getattr(sh, "text", ""))]
+    joined = "".join(s13._k(t) for t in texts if N(t))
+
+    # Real templates often keep e.g. "2D 현상" or "5D 개선대책" in one shape
+    # or group. The older exact-label test could mistakenly delete these.
+    marker_words = (
+        ("2d", ("현상", "문제")),
+        ("3d", ("임시", "조치", "대응")),
+        ("4d", ("원인", "발생", "유출", "시스템")),
+        ("5d", ("개선", "대책")),
+        ("6d", ("효과", "검증", "유효")),
+        ("7d", ("수평", "전개")),
+    )
+    for marker, words in marker_words:
+        if marker in joined and any(word in joined for word in words):
+            return True
+
+    # Short marker-only groups/circles must also survive.
+    if any(marker in joined for marker in ("2d","3d","4d","5d","6d","7d")) and len(joined) <= 28:
+        return True
+
+    return _original_static_cloned_detail_shape(sh)
+
+
+core._static_cloned_detail_shape = _static_cloned_detail_shape_preserve_layout
+
 _original_clone_detail_shell = core._clone_detail_shell
 
 
 def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
     result = _original_clone_detail_shell(prs, d, insert_at, matched_section)
+    sl, template_index, section = result
+
     try:
-        _remove_copied_visuals(result[0])
+        _remove_copied_visuals(sl)
     except Exception:
         pass
+
+    # Do not allow an "attachments only" result. The cloned page itself must
+    # still contain a recognizable 2D~6D detail structure before continuing.
+    if not core._is_detail_like(sl):
+        raise RuntimeError(
+            "복제한 상세 양식의 2D~6D 구조가 유지되지 않았습니다. "
+            f"(양식 원본 slide {template_index + 1})"
+        )
+
+    # If there is no safe native detail section, this newly created detail must
+    # become the first slide of a NEW section. Record the request here rather
+    # than relying only on the earlier section-selection branch.
+    if section is None:
+        global _pending_user_native_section
+        try:
+            slide_id = int(sl.slide_id)
+        except Exception:
+            slide_id = None
+        _pending_user_native_section = {
+            "name": N(core._new_section_name(d)) or "신규 과제",
+            "slide_index": int(insert_at),
+            "slide_id": slide_id,
+        }
+
     return result
 
 
@@ -737,18 +798,43 @@ def _summary_project_key_from_row(raw, project_key, customer_key=""):
     return ""
 
 
+def _summary_direct_keys(d, g=None):
+    """Exact visible-name candidates, before any customer/project splitting."""
+    values = [
+        N((g or {}).get("task_name")),
+        N((d or {}).get("task_name")),
+        N(s13._customer_task(d or {})),
+    ]
+    customer = N((d or {}).get("customer"))
+    task = N((d or {}).get("task_name"))
+    if customer and task:
+        values.extend([
+            customer + "_" + task,
+            customer + " " + task,
+        ])
+
+    # Include catalog aliases only as equivalent spellings, not as a prerequisite.
+    for value in list(values):
+        alias = _catalog_separator_alias(value)
+        if alias:
+            values.append(alias)
+
+    return {s13._k(v) for v in values if s13._k(v)}
+
+
 def _summary_hits(prs, d, g=None):
     pages = s14._summary_pages(prs)
 
+    direct_keys = _summary_direct_keys(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
     if selected:
-        full_key, project_key, customer_key = _identity_parts_from_label(
+        _full_key, project_key, customer_key = _identity_parts_from_label(
             selected, N((d or {}).get("customer"))
         )
     else:
-        full_key, project_key, customer_key = _project_parts(d)
+        _full_key, project_key, customer_key = _project_parts(d)
 
-    full_hits = []
+    direct_hits = []
     project_hits = []
 
     for si, tb, hr in pages:
@@ -756,8 +842,8 @@ def _summary_hits(prs, d, g=None):
         if "task" not in hm:
             continue
 
-        # Build visual project blocks. A blank task cell below a visible task is
-        # a continuation of that project only while the row contains real data.
+        # Build project blocks so vertically merged/blank continuation task cells
+        # stay attached to the last visible project label.
         blocks = []
         current = None
         for r in range(hr + 1, len(tb.rows)):
@@ -766,42 +852,40 @@ def _summary_hits(prs, d, g=None):
                 if current is not None:
                     blocks.append(current)
                 current = {"label": raw, "rows": [r]}
-                continue
-
-            if current is not None and _summary_row_has_payload(tb, r, hm):
+            elif current is not None and _summary_row_has_payload(tb, r, hm):
                 current["rows"].append(r)
-
         if current is not None:
             blocks.append(current)
 
-        fr = []
-        pr = []
+        direct_rows = []
+        project_rows = []
         for block in blocks:
             raw = block["label"]
             rows = block["rows"]
-            raw_key = _summary_match_key(raw)
+            raw_key = s13._k(raw)
 
-            # 1) customer+project exact after separator normalization.
-            if full_key and raw_key == full_key:
-                fr.extend(rows)
+            # FIRST: exact visible identity after removing separators.
+            # MBAG_EB-L(EU) == MBAG EB-L(EU) == MBAGEB-L(EU).
+            if raw_key and raw_key in direct_keys:
+                direct_rows.extend(rows)
                 continue
 
-            # 2) project-only exact, independent of customer.
+            # SECOND: exact project-only fallback.
             if (
                 project_key
                 and _summary_project_key_from_row(
                     raw, project_key, customer_key
                 ) == project_key
             ):
-                pr.extend(rows)
+                project_rows.extend(rows)
 
-        if fr:
-            full_hits.append((si, tb, hr, hm, fr))
-        if pr:
-            project_hits.append((si, tb, hr, hm, pr))
+        if direct_rows:
+            direct_hits.append((si, tb, hr, hm, direct_rows))
+        if project_rows:
+            project_hits.append((si, tb, hr, hm, project_rows))
 
-    # Exact customer+project anywhere in the deck always has priority.
-    return pages, (full_hits if full_hits else project_hits)
+    # A direct exact match anywhere always beats project-only/fuzzy logic.
+    return pages, (direct_hits if direct_hits else project_hits)
 
 def _confirmed_section_summary_hits(pages, d, g):
     name = N((g or {}).get("_weekly_section_override_name"))
@@ -1269,13 +1353,13 @@ def _weekly_with_real_native_section(src, out, d, g, mode):
         "yes",
     )
 
-    if force_new:
+    if force_new or request is not None:
         if request is None:
             raise RuntimeError(
-                "신규 구역 생성이 선택되었지만 상세페이지 생성 요청이 만들어지지 않았습니다."
+                "신규 구역 생성이 필요하지만 상세페이지 생성 요청이 만들어지지 않았습니다."
             )
         # Resolve the CURRENT saved position of the cloned detail. The numeric
-        # pre-save index may no longer be valid after summary/attachment edits.
+        # pre-save index may shift after summary/attachment edits.
         saved_detail_index = _verify_pending_detail_slide(saved, request, d)
         _create_native_section_com_saved(
             saved, request["name"], saved_detail_index
