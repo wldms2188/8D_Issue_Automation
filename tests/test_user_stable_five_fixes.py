@@ -59,6 +59,22 @@ def add_summary_slide(prs, task, issue="old", top=0.7, rows=3):
     return sl, tb
 
 
+def summary_task_text(tb, row, col=0):
+    """Read the visible project label from a vertically merged task cell."""
+    try:
+        cell = tb.cell(row, col)
+        if cell.text.strip():
+            return cell.text
+        if getattr(cell, "is_spanned", False):
+            for r in range(row - 1, -1, -1):
+                upper = tb.cell(r, col)
+                if getattr(upper, "is_merge_origin", False):
+                    return upper.text
+    except Exception:
+        pass
+    return tb.cell(row, col).text
+
+
 class UserStableFiveFixesTest(unittest.TestCase):
     def test_required_owner_and_classification_fields_are_all_mandatory(self):
         complete = {
@@ -132,7 +148,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(si, 2)
         self.assertIn("마지막", action)
         self.assertEqual(
-            prs.slides[2].shapes[0].table.cell(row, 0).text,
+            summary_task_text(prs.slides[2].shapes[0].table, row, 0),
             "GM_MBAG",
         )
 
@@ -162,7 +178,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             s14._write_summary_row = old_writer
 
         self.assertEqual(si, 0)
-        self.assertEqual(tb.cell(row, 0).text, "GM MBAG")
+        self.assertEqual(summary_task_text(tb, row, 0), "GM MBAG")
 
     def test_mbag_underscore_and_no_underscore_are_same_summary_project(self):
         prs = Presentation()
@@ -191,7 +207,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(si, 0)
         self.assertIn("마지막", action)
-        self.assertEqual(tb.cell(row, 0).text, "MBAGEB565M")
+        self.assertEqual(summary_task_text(tb, row, 0), "MBAGEB565M")
 
     def test_mbag_no_underscore_input_resolves_catalog_identity(self):
         prs = Presentation()
@@ -221,7 +237,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             s14._write_summary_row = old_writer
 
         self.assertEqual(si, 0)
-        self.assertEqual(tb.cell(row, 0).text, "MBAG_EB565M")
+        self.assertEqual(summary_task_text(tb, row, 0), "MBAG_EB565M")
 
     def test_mbag_separator_variants_are_exact_section_match(self):
         d1 = {"customer": "MBAG", "task_name": "MBAG_EB565M"}
@@ -258,7 +274,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(si, 0)
         self.assertIn("마지막", action)
-        self.assertEqual(tb.cell(row, 0).text, "GM MBAG")
+        self.assertEqual(summary_task_text(tb, row, 0), "GM MBAG")
 
     def test_project_only_section_fallback_survives_customer_mismatch(self):
         d = {"customer": "OTHER", "task_name": "MBAG"}
@@ -293,7 +309,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             s14._write_summary_row = old_writer
 
         self.assertEqual(si, 0)
-        self.assertEqual(tb.cell(row, 0).text, "GM_MBAG E~")
+        self.assertEqual(summary_task_text(tb, row, 0), "GM_MBAG E~")
 
     def test_similarity_without_confirmed_section_does_not_force_match(self):
         prs = Presentation()
@@ -438,7 +454,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(si, 0)
         self.assertIn("마지막", action)
-        self.assertEqual(tb.cell(row, 0).text, "MBAG EB-L(EU)")
+        self.assertEqual(summary_task_text(tb, row, 0), "MBAG EB-L(EU)")
 
     def test_saved_blank_detail_shell_is_filled_before_section_creation(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1364,7 +1380,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(si, 0)
         self.assertIn("마지막", action)
-        self.assertEqual(tb.cell(row, 0).text, "MBAG EB-L(EU)")
+        self.assertEqual(summary_task_text(tb, row, 0), "MBAG EB-L(EU)")
 
     def test_cloned_summary_does_not_require_exact_signal_header(self):
         prs = Presentation()
