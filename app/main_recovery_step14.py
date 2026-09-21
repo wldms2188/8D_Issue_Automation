@@ -151,7 +151,7 @@ def _prepare_new_summary_page(prs,pages,g,template_index=None):
             except Exception:
                 pass
             continue
-        if st==v310.MSO_SHAPE_TYPE.GROUP:
+        if st==MSO_SHAPE_TYPE.GROUP:
             children=[x for x in v310.walk(sh) if x is not sh]
             if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
                 try:
