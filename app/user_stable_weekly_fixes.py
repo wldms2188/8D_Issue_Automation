@@ -354,12 +354,110 @@ core._static_cloned_detail_shape = _static_cloned_detail_shape_preserve_layout
 _original_clone_detail_shell = core._clone_detail_shell
 
 
+def _shape_rgb(value):
+    try:
+        rgb = value.rgb
+        if rgb is None:
+            return None
+        return tuple(int(x) for x in rgb)
+    except Exception:
+        return None
+
+
+def _is_red_annotation_shape(sh):
+    """Detect copied red circles/underlines/callouts used as old-issue marks."""
+    # Never remove a text-bearing fixed D marker/title just from its color.
+    text = N(getattr(sh, "text", ""))
+    if text and _static_cloned_detail_shape_preserve_layout(sh):
+        return False
+
+    colors = []
+    try:
+        colors.append(_shape_rgb(sh.line.color))
+    except Exception:
+        pass
+    try:
+        colors.append(_shape_rgb(sh.fill.fore_color))
+    except Exception:
+        pass
+
+    for rgb in colors:
+        if not rgb:
+            continue
+        r, g, b = rgb
+        # Strong red only. Yellow/orange 7D markers and green D markers survive.
+        if r >= 170 and g <= 95 and b <= 95 and r >= g + 70 and r >= b + 70:
+            return True
+    return False
+
+
+def _is_static_detail_child(sh):
+    """True only for fixed template marker/title/header objects."""
+    if getattr(sh, "has_table", False):
+        return False
+    st = getattr(sh, "shape_type", None)
+    if st == MSO_SHAPE_TYPE.GROUP:
+        return False
+    return _static_cloned_detail_shape_preserve_layout(sh)
+
+
+def _clean_preserved_detail_group(group):
+    """Clean old issue content from inside a group without deleting its template skeleton."""
+    for child in list(getattr(group, "shapes", ())):
+        if _is_red_annotation_shape(child):
+            _remove_shape(child)
+            continue
+
+        st = getattr(child, "shape_type", None)
+        if st in _VISUAL_TYPES:
+            _remove_shape(child)
+            continue
+
+        if st == MSO_SHAPE_TYPE.GROUP:
+            _clean_preserved_detail_group(child)
+            continue
+
+        if getattr(child, "has_table", False):
+            try:
+                core._clear_cloned_table_content(child)
+            except Exception:
+                pass
+            continue
+
+        text = N(getattr(child, "text", ""))
+        if text and not _is_static_detail_child(child):
+            # A fixed marker/title group can also contain the previous issue's
+            # body text. Remove only that child text object.
+            _remove_shape(child)
+
+
+def _purge_cloned_detail_artifacts(sl):
+    """Second-pass cleanup after cloning a REAL detail template.
+
+    1) remove copied red selection/annotation shapes anywhere on the slide;
+    2) recurse into preserved groups and remove old black body text/pictures;
+    3) keep fixed table geometry, D marker circles, D item titles and frames.
+    """
+    for sh in list(sl.shapes):
+        if _is_red_annotation_shape(sh):
+            _remove_shape(sh)
+            continue
+
+        st = getattr(sh, "shape_type", None)
+        if st == MSO_SHAPE_TYPE.GROUP:
+            _clean_preserved_detail_group(sh)
+
+
 def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
     result = _original_clone_detail_shell(prs, d, insert_at, matched_section)
     sl, template_index, section = result
 
     try:
         _remove_copied_visuals(sl)
+    except Exception:
+        pass
+    try:
+        _purge_cloned_detail_artifacts(sl)
     except Exception:
         pass
 
