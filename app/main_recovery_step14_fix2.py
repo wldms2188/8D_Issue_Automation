@@ -422,29 +422,18 @@ def _remove_shape(sh):
 def _clear_cloned_issue_content(sl):
     """Turn a copied detail page into a clean shell.
 
-    Large pictures/charts/media copied from another issue are always stale issue
-    content. Remove them regardless of zone overlap; the fixed weekly template
-    does not rely on embedded issue photos.
+    Preserve the fixed detail-page frame/labels, but remove the previous issue's
+    content from the D zones.  Pictures/groups are NOT globally deleted outside
+    those zones because the template itself may contain fixed visual elements.
+    Current 8D attachments are appended later from the source presentation.
     """
     v310.remove_previous_auto(sl)
     zones=_content_zones()
 
-    # Pass 1: remove every top-level copied picture/chart/media object first.
-    # The old overlap gate was the reason large photos spanning/outside D zones
-    # survived cloning.
     for sh in list(sl.shapes):
-        st=getattr(sh,'shape_type',None)
-        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.MEDIA):
-            _remove_shape(sh)
-            continue
-        if st==MSO_SHAPE_TYPE.GROUP:
-            children=[x for x in v310.walk(sh) if x is not sh]
-            if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
-                _remove_shape(sh)
-
-    # Pass 2: inside issue-content zones, keep only true fixed labels/tables and
-    # remove old arrows, lines, callouts, free text and other issue drawings.
-    for sh in list(sl.shapes):
+        # Only issue-content zones are cleaned.  This restores the intended
+        # behavior: old issue drawings/photos disappear, fixed template visuals
+        # elsewhere remain intact.
         if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
             continue
         if getattr(sh,'has_table',False):
