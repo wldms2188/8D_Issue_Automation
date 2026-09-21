@@ -2487,10 +2487,22 @@ def _legacy_summary_match_rank(raw, full_q, project_q):
 
     # Customer-independent fallback: an exact project at the END of a
     # customer-prefixed label is still the same project (e.g. GM MBAG).
-    # Do not use arbitrary substring containment; that would incorrectly match
-    # similar names such as "GM_MBAG E~".
     if project_q and len(project_q) >= 4 and q.endswith(project_q):
         return 320
+
+    # Allow ONLY an unrelated trailing parenthetical note after an otherwise
+    # exact project label, e.g. "MBAG EB-L(EU) (2차)". This must not broaden
+    # into arbitrary suffix/fuzzy matching such as "GM_MBAG E~".
+    raw_text = N(raw)
+    has_trailing_note = bool(
+        re.search(r"\s+\([^()]+\)\s*$", raw_text)
+        or re.search(r"[\r\n]+\([^()]+\)\s*$", raw_text)
+    )
+    if has_trailing_note:
+        if full_q and len(full_q) >= 4 and q.startswith(full_q):
+            return 340
+        if project_q and len(project_q) >= 4 and q.startswith(project_q):
+            return 320
 
     return 0
 
