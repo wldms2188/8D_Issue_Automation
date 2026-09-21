@@ -931,6 +931,29 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(tb.cell(0, 1).text, "고정 값")
         self.assertEqual(tb.cell(0, 2).text, "담당 정보")
 
+    def test_detail_textbox_outlines_are_removed_without_touching_frame_lines(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        tbx = sl.shapes.add_textbox(
+            Inches(0.8), Inches(2.4), Inches(3.0), Inches(0.5)
+        )
+        tbx.text = "상세 본문"
+        tbx.line.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+        line = sl.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.6), Inches(2.2), Inches(5.0), Inches(0.03)
+        )
+        line.line.color.rgb = RGBColor(0x00, 0x00, 0x00)
+        line_before = line.line.fill.type
+
+        changed = fix._remove_detail_textbox_outlines(sl)
+
+        self.assertGreaterEqual(changed, 1)
+        self.assertEqual(line.line.fill.type, line_before)
+        self.assertIn("<a:noFill", tbx._element.xml)
+
     def test_summary_top_textbox_outline_is_removed_but_table_border_is_untouched(self):
         prs = Presentation()
         sl, tb = add_summary_slide(prs, "MBAG_EB565M", "old", top=1.6)
@@ -983,6 +1006,49 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertIn("RED_ABOVE_HEADER", names)
         self.assertNotIn("RED_IN_BODY", names)
+
+    def test_insert_after_existing_merged_task_cell_rebuilds_merge_and_keeps_font_small(self):
+        prs = Presentation()
+        sl, tb = add_summary_slide(prs, "MBAG_EB-L(EU,US)", "old", rows=4)
+        hm = s13._summary_map(tb, 0)
+
+        # Real weekly shape: one project name already spans two issue rows.
+        tb.cell(1, hm["task"]).text = "MBAG\nEB-L\n(EU,US)"
+        run = tb.cell(1, hm["task"]).text_frame.paragraphs[0].runs[0]
+        run.font.size = Pt(8)
+        tb.cell(1, hm["task"]).merge(tb.cell(2, hm["task"]))
+        tb.cell(1, hm["issue"]).text = "old-1"
+        tb.cell(2, hm["issue"]).text = "old-2"
+
+        # Insert by cloning the last existing issue row; this copies vMerge.
+        row = s14._insert_row_after(tb, 2)
+        s14._write_summary_row(
+            tb,
+            row,
+            0,
+            {"customer": "MBAG", "task_name": "MBAG_EB-L(EU,US)", "issue_name": "new"},
+            {},
+        )
+
+        ok = fix._merge_inserted_summary_task_block(
+            tb, 0, hm, [1, 2], row, "MBAG\nEB-L\n(EU,US)"
+        )
+
+        self.assertTrue(ok)
+        self.assertTrue(tb.cell(1, hm["task"]).is_merge_origin)
+        self.assertTrue(tb.cell(2, hm["task"]).is_spanned)
+        self.assertTrue(tb.cell(row, hm["task"]).is_spanned)
+
+        origin = tb.cell(1, hm["task"])
+        self.assertEqual(origin.text_frame.vertical_anchor, fix.MSO_ANCHOR.MIDDLE)
+        sizes = [
+            r.font.size.pt
+            for p in origin.text_frame.paragraphs
+            for r in p.runs
+            if r.text and r.font.size is not None
+        ]
+        self.assertTrue(sizes)
+        self.assertTrue(all(x <= 8.1 for x in sizes))
 
     def test_inserted_summary_task_cell_merges_vertically_and_centers(self):
         prs = Presentation()
