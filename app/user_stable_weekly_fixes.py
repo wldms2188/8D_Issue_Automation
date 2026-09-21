@@ -1301,7 +1301,6 @@ _REQUIRED_INPUT_FIELDS = (
     ("task_name", "고객사/과제명"),
     ("owner", "담당자"),
     ("sample", "발생 샘플"),
-    ("plm_no", "PMS/PLM 이슈번호"),
     ("form_factor", "폼팩터"),
     ("product_type", "제품 타입"),
     ("occurrence_site", "발생처"),
@@ -1311,11 +1310,17 @@ _REQUIRED_INPUT_FIELDS = (
 
 def _required_user_input_missing(g):
     g = g or {}
-    return [
+    missing = [
         label
         for key, label in _REQUIRED_INPUT_FIELDS
         if not N(g.get(key))
     ]
+
+    # PMS/PLM issue number is mandatory only when Issue DB Excel is selected.
+    if N(g.get("xlsx")) and not N(g.get("plm_no")):
+        missing.append("PMS/PLM 이슈번호")
+
+    return missing
 
 
 _original_enterprise_run_required_gate = enterprise_v3.EnterpriseAppV3.run
