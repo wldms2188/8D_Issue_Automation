@@ -931,6 +931,23 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(tb.cell(0, 1).text, "고정 값")
         self.assertEqual(tb.cell(0, 2).text, "담당 정보")
 
+    def test_summary_top_textbox_outline_is_removed_but_table_border_is_untouched(self):
+        prs = Presentation()
+        sl, tb = add_summary_slide(prs, "MBAG_EB565M", "old", top=1.6)
+
+        title = sl.shapes.add_textbox(
+            Inches(0.7), Inches(0.45), Inches(6.0), Inches(0.55)
+        )
+        title.text = "파우치Pack개발품질1팀 주요 논의 사항"
+        title.line.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+        before_table_xml = tb._tbl.xml
+        changed = fix._remove_summary_top_text_outlines(sl, tb)
+
+        self.assertEqual(changed, 1)
+        self.assertEqual(tb._tbl.xml, before_table_xml)
+        self.assertEqual(str(title.line.fill.type).lower(), "background (5)")
+
     def test_summary_clone_red_annotations_are_removed_only_below_header(self):
         prs = Presentation()
         sl, tb = add_summary_slide(prs, "MBAG_EB565M", "old", top=1.2)
