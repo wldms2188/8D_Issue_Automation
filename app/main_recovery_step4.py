@@ -126,67 +126,68 @@ def _title_owner_overlap_risk(sl,title_sh,title_text):
     rendered_right=tx+min(max(estimated,.01),max(tw,estimated))
     return estimated>available or rendered_right>ox-.08
 
-def _strip_selected_project_prefix(issue,d):
-    """Remove routing markers and visible customer/project prefix from detail title."""
-    s=v319._trim_before_customer(issue,d.get('customer'))
-    s=v319._clean_issue_label(s)
-    if not s:
+def _selected_project_name(d):
+    """Return project only, even when task_name is canonical CUSTOMER_PROJECT."""
+    task=N((d or {}).get('task_name')).strip()
+    if not task:
         return ''
+    # The UI stores the confirmed selection as CUSTOMER_PROJECT.  Customer can
+    # contain spaces (e.g. "B Link"), so the first top-level underscore is the
+    # reliable boundary; do not depend on d['customer'] being extracted correctly.
+    depth=0
+    for i,ch in enumerate(task):
+        if ch=='(':
+            depth+=1
+        elif ch==')' and depth:
+            depth-=1
+        elif ch=='_' and depth==0:
+            return N(task[i+1:]).strip(' _-/／|:：')
+    return task.strip(' _-/／|:：')
 
-    # The issue title may begin with routing/model labels (e.g. IF_AA_Module,
-    # IF_ES) before the selected project.  The project is the anchor: once a
-    # token sufficiently matching the project is found, discard everything
-    # before it, regardless of whether those prefixes are known markers.
-    task=N(d.get('task_name'))
-    customer=N(d.get('customer'))
-    project=task
-    if customer and project:
-        project=re.sub(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:： ]+\s*','',project,flags=re.I)
-    project=N(project).strip(' _-/／|:：')
-    if project:
-        # Compare normalized separator-delimited tokens and also allow the
-        # issue token to contain the project name (project variants/suffixes).
-        parts=[x for x in re.split(r'[_/|:：\-]+',s) if N(x)]
-        pk=s13._k(project) if 's13' in globals() else re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
+
+def _issue_parts(value):
+    return [N(x) for x in re.split(r'[_/|:：\\-]+',N(value)) if N(x)]
+
+
+def _project_anchor_index(issue,d):
+    """Find the selected project token inside an issue label."""
+    project=_selected_project_name(d)
+    if not project:
+        return None
+    parts=_issue_parts(issue)
+    pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
+    # First try the complete normalized project against each token.
+    for idx,part in enumerate(parts):
+        q=re.sub(r'[^0-9A-Za-z가-힣]+','',part).lower()
+        if pk and q and (pk==q or (min(len(pk),len(q))>=3 and (pk in q or q in pk))):
+            return idx
+    # If the project itself contains separators, its first meaningful component
+    # is still a safer anchor than routing prefixes such as IF_ES.
+    project_parts=_issue_parts(project)
+    if project_parts:
+        first=re.sub(r'[^0-9A-Za-z가-힣]+','',project_parts[0]).lower()
         for idx,part in enumerate(parts):
-            q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
-            if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
-                # Keep the customer token when it is immediately before the
-                # project. Remove only routing/model prefixes before customer.
-                start=idx
-                ck=re.sub(r'[^0-9A-Za-z가-힣]+','',N(customer)).lower()
-                if idx>0 and ck:
-                    prev=re.sub(r'[^0-9A-Za-z가-힣]+','',N(parts[idx-1])).lower()
-                    if prev==ck:
-                        start=idx-1
-                anchored='_'.join(parts[start:]).strip(' _-/／|:：')
-                if anchored:
-                    # Detail-page issue line keeps customer/project and removes only routing/model prefixes.
-                    return anchored
-                break
+            q=re.sub(r'[^0-9A-Za-z가-힣]+','',part).lower()
+            if first and q==first:
+                return idx
+    return None
 
-    prefix=N(v319._weekly_task(d))
-    if prefix:
-        m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',s,re.I)
-        if m:
-            rest=s[m.end():].strip(' _-/／|:：')
-            if rest:
-                return rest
 
-    customer=N(d.get('customer'))
-    if customer:
-        # Old generated labels can contain a project name different from the GUI
-        # selection. Remove the visible CUSTOMER_<project> prefix rather than
-        # leaving it in a collision fallback title.
-        m=re.match(
-            r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:：]\s*'
-            r'([^_／|:：]+)\s*[_／|:：]\s*(.+)$',
-            s,re.I
-        )
-        if m and N(m.group(2)):
-            return N(m.group(2)).strip(' _-/／|:：')
+def _strip_selected_project_prefix(issue,d):
+    """Detail issue starts at the selected project; all routing/customer text before it is removed."""
+    raw=N(issue)
+    if not raw:
+        return ''
+    parts=_issue_parts(raw)
+    idx=_project_anchor_index(raw,d)
+    if idx is not None:
+        anchored='_'.join(parts[idx:]).strip(' _-/／|:：')
+        if anchored:
+            return v319._clean_issue_label(anchored)
 
-    return s
+    # Fallback only when the selected project cannot be found in the issue.
+    # Keep the source text rather than guessing which prefix is meaningful.
+    return v319._clean_issue_label(raw)
 
 
 def _named_test_or_build_issue(d):
