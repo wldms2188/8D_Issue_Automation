@@ -306,6 +306,32 @@ class UserStableFiveFixesTest(unittest.TestCase):
             getattr(sh, "text", "") for sh in prs.slides[5].shapes
         ))
 
+    def test_cloned_summary_does_not_require_exact_signal_header(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = sl.shapes.add_table(
+            3, 5, Inches(0.5), Inches(0.7), Inches(9.5), Inches(1.5)
+        ).table
+        headers = ("과제명", "이슈명", "현상", "진행사항", "Signal 상태")
+        for col, h in enumerate(headers):
+            tb.cell(0, col).text = h
+        tb.cell(1, 0).text = "MBAG EB-L(EU)"
+        tb.cell(1, 1).text = "old"
+
+        pages = fix._summary_pages_flexible(prs)
+        self.assertEqual(len(pages), 1)
+
+        si, new_tb, hr, row = fix._prepare_new_summary_page_stable(
+            prs, pages, {"team": "Pack개발품질1"}, template_index=0
+        )
+
+        self.assertEqual(si, 1)
+        self.assertEqual(hr, 0)
+        self.assertGreaterEqual(row, 1)
+        hm = s13._summary_map(new_tb, hr)
+        self.assertIn("task", hm)
+        self.assertIn("issue", hm)
+
     def test_summary_project_block_with_blank_task_continuation(self):
         prs = Presentation()
 
