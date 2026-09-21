@@ -7,7 +7,7 @@ from PIL import Image
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 import main_recovery_step12 as s12
 import main_recovery_step13 as s13
