@@ -22,6 +22,7 @@ import main_v310 as v310
 import project_autocomplete_final as catalog
 import main_enterprise_v3 as enterprise_v3
 import ui_enterprise as ui
+import final_output_polish as final_polish
 
 N = v310.N
 
@@ -1624,3 +1625,409 @@ def _run_with_required_inputs(self):
 
 
 enterprise_v3.EnterpriseAppV3.run = _run_with_required_inputs
+
+
+# ===========================================================================
+# FINAL single-path weekly writer
+# ===========================================================================
+# Repeated wrappers made real-file behavior diverge from the isolated helpers.
+# From here on, the GUI uses ONE deterministic weekly path:
+#   1) find existing project page directly
+#   2) update/clone that page while preserving its visible project label
+#   3) create and verify the detail page
+#   4) save
+#   5) append attachments after detail
+#   6) create native section before the verified detail page
+# ===========================================================================
+
+def _simple_summary_table_candidates(sl):
+    out = []
+    for sh in v310.walk(sl):
+        if not getattr(sh, "has_table", False):
+            continue
+        tb = sh.table
+        for hr in range(min(8, len(tb.rows))):
+            hm = _summary_header_map(tb, hr)
+            if "task" not in hm:
+                continue
+            # Existing-project lookup is intentionally permissive. The exact
+            # task text on the page is the primary identity, not header version.
+            out.append((tb, hr, hm))
+            break
+    return out
+
+
+def _simple_task_match_rank(raw, keys, project_key=""):
+    q = s13._k(raw)
+    if not q:
+        return 0
+    if q in keys:
+        return 300
+    # Older weekly pages sometimes carry customer/stage decoration around the
+    # exact project name. Keep this fallback narrow enough to avoid fuzzy hits.
+    if project_key and len(project_key) >= 5:
+        if q == project_key:
+            return 280
+        if q.endswith(project_key) or q.startswith(project_key):
+            return 240
+        if project_key in q:
+            return 220
+    for key in keys:
+        if len(key) >= 6 and (q.endswith(key) or q.startswith(key)):
+            return 210
+    return 0
+
+
+def _find_existing_summary_project(prs, d, g):
+    keys = _summary_direct_keys(d, g)
+    selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
+    _full, project_key, customer_key = _identity_parts_from_label(
+        selected, N((d or {}).get("customer"))
+    )
+    if not project_key:
+        project_key = _project_key_for_match(selected, customer_key)
+
+    hits = []
+    for si, sl in enumerate(prs.slides):
+        if core._is_detail_like(sl):
+            continue
+        for tb, hr, hm in _simple_summary_table_candidates(sl):
+            rows = []
+            best_rank = 0
+            display = ""
+            for r in range(hr + 1, len(tb.rows)):
+                raw = N(s13._row_text(tb, r, hm["task"]))
+                rank = _simple_task_match_rank(raw, keys, project_key)
+                if rank:
+                    rows.append(r)
+                    if rank > best_rank:
+                        best_rank = rank
+                        display = raw
+
+            if rows:
+                # Include blank/merged continuation issue rows belonging to this
+                # visible project until the next non-empty project label.
+                last = max(rows)
+                for r in range(last + 1, len(tb.rows)):
+                    raw = N(s13._row_text(tb, r, hm["task"]))
+                    if raw:
+                        break
+                    if _summary_row_has_payload(tb, r, hm):
+                        rows.append(r)
+                hits.append((best_rank, si, tb, hr, hm, rows, display))
+                continue
+
+            # Last fallback mirrors the old "find the project page" behavior:
+            # exact normalized project text somewhere on this slide + a task
+            # column is enough to choose the page. This covers merged/template
+            # layouts where python-pptx cannot expose the visible task cell.
+            slide_q = s13._k(s13._slide_text(sl))
+            slide_rank = max(
+                [_simple_task_match_rank(k, {k}, project_key) if k and k in slide_q else 0 for k in keys]
+                + ([230] if project_key and len(project_key) >= 5 and project_key in slide_q else [0])
+            )
+            if slide_rank:
+                payload_rows = [
+                    r for r in range(hr + 1, len(tb.rows))
+                    if _summary_row_has_payload(tb, r, hm)
+                ]
+                if payload_rows:
+                    # Recover an existing visible label if possible; otherwise
+                    # preserve the user-selected spelling.
+                    visible = ""
+                    for r in range(hr + 1, len(tb.rows)):
+                        raw = N(s13._row_text(tb, r, hm["task"]))
+                        if raw:
+                            visible = raw
+                            break
+                    hits.append(
+                        (slide_rank, si, tb, hr, hm, payload_rows, visible or selected)
+                    )
+
+    if not hits:
+        return None
+
+    # Highest exactness first; among equal matches use the LAST page.
+    hits.sort(key=lambda x: (x[0], x[1]))
+    best_rank = hits[-1][0]
+    same_rank = [x for x in hits if x[0] == best_rank]
+    return max(same_rank, key=lambda x: x[1])
+
+
+def _clone_matched_summary_page(prs, source_index, display, g):
+    before = {_slide_id_value(sl) for sl in prs.slides}
+    s13._clone_slide_with_rels(prs, source_index)
+    created = next(
+        (_slide_id_value(sl) for sl in prs.slides if _slide_id_value(sl) not in before),
+        None,
+    )
+    if created is None:
+        raise RuntimeError("일치 과제의 요약페이지 복제본을 확인하지 못했습니다.")
+
+    moved = _move_slide_by_id(prs, created, source_index + 1)
+    if moved is None:
+        raise RuntimeError("일치 과제의 요약페이지를 바로 다음 위치로 이동하지 못했습니다.")
+
+    sl = prs.slides[moved]
+    found = _simple_summary_table_candidates(sl)
+    if not found:
+        raise RuntimeError("복제한 일치 과제 페이지에서 과제명 표를 찾지 못했습니다.")
+
+    # Prefer the table that still contains the source project's visible label.
+    chosen = None
+    display_key = s13._k(display)
+    for tb, hr, hm in found:
+        for r in range(hr + 1, len(tb.rows)):
+            if display_key and s13._k(s13._row_text(tb, r, hm["task"])) == display_key:
+                chosen = (tb, hr, hm)
+                break
+        if chosen:
+            break
+    if chosen is None:
+        chosen = found[0]
+
+    tb, hr, hm = chosen
+    row = s14._clear_summary_data(tb, hr)
+    # _clear_summary_data intentionally clears values; restore the exact visible
+    # project label from the source page before writing the new issue.
+    if "task" in hm:
+        try:
+            base.set_cell_text(tb.cell(row, hm["task"]), display, 8)
+        except Exception:
+            tb.cell(row, hm["task"]).text = display
+
+    try:
+        _remove_copied_visuals(sl)
+    except Exception:
+        pass
+    return moved, tb, hr, row
+
+
+def _update_summary_old_style(prs, d, g, mode):
+    hit = _find_existing_summary_project(prs, d, g)
+    issue = s13._issue_display(d)
+    original_customer_task = s13._customer_task
+
+    if hit is not None:
+        _rank, si, tb, hr, hm, rows, display = hit
+        display = N(display) or N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
+        try:
+            s13._customer_task = lambda _d: display
+
+            if mode == "existing":
+                best = None
+                for r in rows:
+                    sc = s13._row_match_score(tb, r, hm, display, issue)
+                    if best is None or sc > best[0]:
+                        best = (sc, r)
+                if best and best[0] >= 140:
+                    s14._write_summary_row(tb, best[1], hr, d, g)
+                    return si, best[1], f"기존 과제 [{display}] 행 업데이트"
+
+            after = max(rows)
+            if s14._summary_row_insert_fits(prs, si, tb, after):
+                row = s14._insert_row_after(tb, after)
+                s14._write_summary_row(tb, row, hr, d, g)
+                return si, row, f"기존 과제 [{display}] 마지막 행 아래 삽입"
+
+            nsi, ntb, nhr, nrow = _clone_matched_summary_page(
+                prs, si, display, g
+            )
+            s14._write_summary_row(ntb, nrow, nhr, d, g)
+            return nsi, nrow, f"기존 과제 [{display}] 마지막 페이지 복제 후 업데이트"
+        finally:
+            s13._customer_task = original_customer_task
+
+    # No existing project at all: use only the strict generic summary template.
+    pages = _summary_pages_flexible(prs)
+    if not pages:
+        raise RuntimeError(
+            "기존 과제명을 찾지 못했고, 신규 과제용 주간회의 요약 양식도 찾지 못했습니다."
+        )
+    selected = N((g or {}).get("task_name")) or N(s13._customer_task(d))
+    try:
+        s13._customer_task = lambda _d: selected
+        si, tb, hr, row = _prepare_new_summary_page_stable(prs, pages, g)
+        s14._write_summary_row(tb, row, hr, d, g)
+        return si, row, f"과제 신규 생성 [{selected}]"
+    finally:
+        s13._customer_task = original_customer_task
+
+
+def _verified_generated_detail(sl):
+    names = {
+        str(getattr(sh, "name", "") or "")
+        for sh in v310.walk(sl)
+    }
+    required = (
+        "AUTO_8D_TEXT_2D",
+        "AUTO_8D_TEXT_3D",
+        "AUTO_8D_TEXT_4D_CAUSE",
+        "AUTO_8D_TEXT_5D",
+        "AUTO_8D_TEXT_6D",
+    )
+    generated = sum(1 for key in required if key in names)
+    return core._is_detail_like(sl) and generated >= 4
+
+
+def _create_detail_direct(prs, d, g, mode, matched_section, force_new):
+    target = None
+    if mode == "existing" and not force_new:
+        target = _find_existing_detail_exact_issue(prs, d)
+
+    if target is not None:
+        s13._update_detail_slide(prs.slides[target], d, g, mode)
+        s13._clear_slide_text_cache(prs.slides[target])
+        if not _verified_generated_detail(prs.slides[target]):
+            raise RuntimeError("기존 상세페이지에 2D~6D 내용을 작성하지 못했습니다.")
+        return target, _slide_id_value(prs.slides[target]), "기존 상세 업데이트"
+
+    if matched_section and matched_section.get("indices") and not force_new:
+        insert_at = max(matched_section["indices"]) + 1
+    else:
+        # New native section: keep the detail+attachments together at the end.
+        insert_at = len(prs.slides)
+
+    template_index = core._template_detail_index(prs, d)
+    s13._clone_slide_with_rels(prs, template_index)
+    s13._move_last_slide_to(prs, insert_at)
+    sl = prs.slides[insert_at]
+
+    # Use the stable cleanup, but never remove the D marker/title skeleton.
+    core._clear_cloned_issue_content(sl)
+    try:
+        _remove_copied_visuals(sl)
+    except Exception:
+        pass
+
+    s13._update_detail_slide(sl, d, g, mode)
+    s13._clear_slide_text_cache(sl)
+
+    if not _verified_generated_detail(sl):
+        raise RuntimeError(
+            "상세페이지 복제 후 2D~6D 실제 내용 생성 확인에 실패했습니다. "
+            f"(복제 양식 slide {template_index + 1})"
+        )
+
+    if matched_section and not force_new:
+        try:
+            core._add_slide_to_native_section(prs, matched_section, insert_at)
+        except Exception:
+            pass
+
+    return insert_at, _slide_id_value(sl), f"상세 신규 생성 (양식 slide {template_index + 1})"
+
+
+def _find_saved_slide_index_by_id(saved, slide_id):
+    from pptx import Presentation
+    prs = Presentation(saved)
+    if slide_id is not None:
+        for i, sl in enumerate(prs.slides):
+            try:
+                if int(sl.slide_id) == int(slide_id):
+                    return i
+            except Exception:
+                pass
+    return None
+
+
+def _weekly_single_path(src, out, d, g, mode):
+    from pptx import Presentation
+
+    try:
+        s13._clear_slide_text_cache()
+    except Exception:
+        pass
+
+    prs = Presentation(src)
+    summary_index, _row, summary_action = _update_summary_old_style(
+        prs, d, g, mode
+    )
+
+    # Resolve native-section intent only AFTER the summary has been settled.
+    matched_section = core._selected_section(prs, d, g)
+    force_new = str((g or {}).get("_weekly_create_new_section") or "").lower() in (
+        "1", "true", "yes"
+    )
+    if matched_section is None:
+        force_new = True
+
+    detail_index, detail_id, detail_action = _create_detail_direct(
+        prs, d, g, mode, matched_section, force_new
+    )
+
+    # Version naming remains identical to final_output_polish.
+    versioned = final_polish._version_path(out)
+    Path(versioned).parent.mkdir(parents=True, exist_ok=True)
+    try:
+        prs.save(versioned)
+        saved = str(versioned)
+    except PermissionError:
+        p = Path(versioned)
+        saved = str(
+            p.with_name(
+                p.stem
+                + "_"
+                + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                + p.suffix
+            )
+        )
+        prs.save(saved)
+
+    # The DETAIL must exist before attachments are allowed to run.
+    current_detail_index = _find_saved_slide_index_by_id(saved, detail_id)
+    if current_detail_index is None:
+        raise RuntimeError("저장 후 상세페이지 ID를 찾지 못했습니다. 유첨 추가를 중단했습니다.")
+
+    check = Presentation(saved)
+    if not _verified_generated_detail(check.slides[current_detail_index]):
+        raise RuntimeError("저장된 상세페이지의 2D~6D 내용 확인에 실패했습니다. 유첨 추가를 중단했습니다.")
+
+    attached, attach_error = core._append_8d_attachments_safe(
+        saved, (g or {}).get("ppt8d", ""), current_detail_index, d
+    )
+
+    # Attachment insertion can shift numeric indices; resolve the SAME detail by ID.
+    final_detail_index = _find_saved_slide_index_by_id(saved, detail_id)
+    if final_detail_index is None:
+        raise RuntimeError("유첨 추가 후 상세페이지가 사라졌습니다. 신규 구역 생성을 중단했습니다.")
+
+    if force_new:
+        _create_native_section_com_saved(
+            saved, N(core._new_section_name(d)) or "신규 과제", final_detail_index
+        )
+        section_action = (
+            f"신규 구역 [{N(core._new_section_name(d)) or '신규 과제'}] 생성"
+        )
+    else:
+        section_action = (
+            f"기존 구역 [{N((matched_section or {}).get('name'))}] 사용"
+        )
+
+    try:
+        final_polish._clean_summary_placeholders(saved)
+    except Exception:
+        pass
+
+    attach_text = (
+        f"유첨 {attached}페이지"
+        if attached
+        else ("유첨 없음" if not attach_error else "유첨 실패: " + N(attach_error)[:180])
+    )
+    return (
+        "주간회의 PPT: "
+        + summary_action
+        + " / "
+        + detail_action
+        + " / "
+        + section_action
+        + " / "
+        + attach_text
+        + f" / 상세 page {final_detail_index + 1}"
+        + f" / 버전 저장={Path(saved).name}",
+        saved,
+    )
+
+
+# Absolute last assignment: no earlier wrapper can bypass this writer.
+core.base.weekly = _weekly_single_path
