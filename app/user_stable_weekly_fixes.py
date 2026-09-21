@@ -2485,12 +2485,11 @@ def _legacy_summary_match_rank(raw, full_q, project_q):
     if project_q and q == project_q:
         return 380
 
-    # Existing weekly files sometimes contain the project label plus a note in
-    # the same cell. Keep this narrow; normalized qualifier text still makes
-    # (EU) and (US) different strings.
-    if full_q and len(full_q) >= 4 and full_q in q:
-        return 340
-    if project_q and len(project_q) >= 4 and project_q in q:
+    # Customer-independent fallback: an exact project at the END of a
+    # customer-prefixed label is still the same project (e.g. GM MBAG).
+    # Do not use arbitrary substring containment; that would incorrectly match
+    # similar names such as "GM_MBAG E~".
+    if project_q and len(project_q) >= 4 and q.endswith(project_q):
         return 320
 
     return 0
