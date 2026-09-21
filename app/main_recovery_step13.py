@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from openpyxl import load_workbook
+import warnings
 from pptx import Presentation
 
 import main_recovery_step12 as step12
@@ -120,7 +121,19 @@ def _copy_row_format(ws,source_row,target_row):
 
 
 def update_excel_step13(src,out,d,g,new=False):
-    wb=load_workbook(src)
+    # Fail safely instead of silently dropping unsupported WMF/EMF drawings.
+    # openpyxl warns that these images are dropped; saving after that warning
+    # is exactly what can turn a previously valid Issue DB image into a broken one.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', message='.*image format is not supported so the image is being dropped.*')
+        try:
+            wb=load_workbook(src)
+        except Warning as e:
+            raise RuntimeError(
+                'Issue DB에 openpyxl이 보존할 수 없는 WMF/EMF 그림이 있습니다. '
+                '원본 보호를 위해 Excel 업데이트를 중단했습니다. '
+                '그림을 PNG/JPG로 바꾸거나 Excel-native 업데이트 경로가 필요합니다.'
+            ) from e
     ws=wb['Sheet1'] if 'Sheet1' in wb.sheetnames else wb.active
 
     if new:
