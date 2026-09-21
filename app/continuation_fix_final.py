@@ -15,6 +15,7 @@ import main_recovery_step14 as s14
 import main_recovery_step4 as s4
 import main_recovery_step13 as s13
 import main_v310 as v310
+import project_autocomplete_final as catalog
 
 N=v310.N
 
@@ -74,4 +75,5 @@ def _detail_title_from_user_inputs(d,g):
 
 
 s14._prepare_new_summary_page=_prepare_new_summary_page_after_last_match
+s14._update_summary_by_task=_update_summary_customer_project_then_project
 s4._detail_title_text=_detail_title_from_user_inputs
