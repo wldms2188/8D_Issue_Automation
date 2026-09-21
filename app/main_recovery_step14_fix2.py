@@ -147,8 +147,10 @@ def _selected_section(prs,d,g):
         if sec:return sec
     return _matching_native_section(prs,d)
 
-def _new_section_name(d):
-    return N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제'
+def _new_section_name(d,g=None):
+    # New native sections must use the confirmed GUI customer_project value first.
+    # This avoids creating only the project part when the extracted data is incomplete.
+    return N((g or {}).get('task_name')) or N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제'
 
 def _create_native_section(prs,name,slide_index):
     """Create a real PowerPoint native section containing the specified detail slide."""
@@ -479,7 +481,7 @@ def weekly_fix5(src,out,d,g,mode):
         target=insert_at
 
         if force_new:
-            matched_section=_create_native_section(prs,_new_section_name(d),target)
+            matched_section=_create_native_section(prs,_new_section_name(d,g),target)
             sec_name=N(matched_section.get('name')) if matched_section else '(신규 텍스트 구역)'
             detail_action=f'신규 과제 구역 [{sec_name}] 생성 후 상세 페이지 추가 (양식 원본 slide {template_index+1})'
         else:
