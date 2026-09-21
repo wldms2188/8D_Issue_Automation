@@ -107,10 +107,12 @@ def _first_summary_section_insert_index(prs,pages):
     return last+1
 
 
-def _prepare_new_summary_page(prs,pages,g):
-    # Use the first summary page as the exact user template, then place the clone
-    # at the end of the first summary section.
-    template_index=pages[0][0]
+def _prepare_new_summary_page(prs,pages,g,template_index=None):
+    # Normally use the first summary page as the exact user template. When a
+    # matching project's table is full, clone that project's last summary page
+    # so the continuation page keeps the same local layout/style.
+    if template_index is None:
+        template_index=pages[0][0]
     insert_at=_first_summary_section_insert_index(prs,pages)
     step13._clone_slide_with_rels(prs,template_index)
     step13._move_last_slide_to(prs,insert_at)
@@ -163,6 +165,42 @@ def _write_summary_row(tb,row,hr,d,g):
         base.signal(tb.cell(row,hm['signal']),step12._signal_status_from_g(d,g))
 
 
+def _summary_table_shape(sl,tb):
+    for sh in v310.walk(sl):
+        if not getattr(sh,'has_table',False):
+            continue
+        try:
+            if sh.table._tbl is tb._tbl:
+                return sh
+        except Exception:
+            try:
+                if sh.table._tbl==tb._tbl:
+                    return sh
+            except Exception:
+                pass
+    return None
+
+
+def _summary_row_insert_fits(prs,slide_index,tb,after_row):
+    """True when cloning after_row still fits inside the current slide."""
+    try:
+        sl=prs.slides[slide_index]
+        sh=_summary_table_shape(sl,tb)
+        if sh is None:
+            return True
+        row_h=int(tb.rows[after_row].height or 0)
+        total_h=sum(int(r.height or 0) for r in tb.rows)
+        current_h=max(int(getattr(sh,'height',0) or 0),total_h)
+        projected_bottom=int(sh.top)+current_h+row_h
+        # Leave a small visual safety margin at the bottom.
+        safe_bottom=int(prs.slide_height)-int(.12*v310.EMU)
+        return projected_bottom<=safe_bottom
+    except Exception:
+        # If geometry cannot be read, prefer the existing page rather than
+        # unnecessarily creating a continuation page.
+        return True
+
+
 def _update_summary_by_task(prs,d,g,mode):
     """Find customer_task across ALL summary pages, then insert/update there."""
     pages=_summary_pages(prs)
@@ -195,12 +233,20 @@ def _update_summary_by_task(prs,d,g,mode):
             return si,row,'기존 행 업데이트'
 
     # 3) New issue (or existing issue missing from summary): if customer_task exists,
-    #    add immediately after the LAST row of that customer_task, on its last page.
+    #    add immediately after the LAST row of that customer_task on its last page.
+    #    Only create a continuation page when one more styled row would exceed
+    #    the usable slide height.
     if task_hits:
         si,tb,hr,hm,rows=sorted(task_hits,key=lambda x:x[0])[-1]
-        row=_insert_row_after(tb,max(rows))
-        _write_summary_row(tb,row,hr,d,g)
-        return si,row,'동일 고객사_과제명 마지막 행 뒤 추가'
+        after=max(rows)
+        if _summary_row_insert_fits(prs,si,tb,after):
+            row=_insert_row_after(tb,after)
+            _write_summary_row(tb,row,hr,d,g)
+            return si,row,'동일 고객사_과제명 마지막 행 바로 아래 삽입'
+
+        nsi,ntb,nhr,nrow=_prepare_new_summary_page(prs,pages,g,template_index=si)
+        _write_summary_row(ntb,nrow,nhr,d,g)
+        return nsi,nrow,'동일 고객사_과제명 표 공간 초과로 다음 요약 페이지에 추가'
 
     # 4) customer_task does not exist at all: create a new summary page INSIDE
     #    the first summary section, and write this issue there.
