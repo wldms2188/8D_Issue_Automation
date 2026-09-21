@@ -551,11 +551,21 @@ def _is_detail_metadata_table(sh):
         )
         q = s13._k(text)
 
-        # One known fixed label is enough. Small split tables often contain only
-        # one pair such as "이슈 기인 | 공정".
+        # Outside the top region, use only labels unique to the metadata
+        # table. Do NOT use "수평전개" here because 7D content tables also
+        # contain that title and would otherwise be mistaken for metadata.
+        unique_meta_labels = (
+            "발생상황", "발생 상황",
+            "발생단계", "발생 단계",
+            "재발여부", "재발 여부",
+            "개발여부", "개발 여부",
+            "이슈영향도", "이슈 영향도",
+            "이슈기인", "이슈 기인",
+            "담당자", "담당팀",
+        )
         return any(
             s13._k(label) in q
-            for label in _METADATA_TABLE_LABELS
+            for label in unique_meta_labels
         )
     except Exception:
         return False
