@@ -540,6 +540,52 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertEqual(hit[1], 0)
 
+    def test_reduced_output_never_drops_marked_detail_before_attachments(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            source = td / "source.pptx"
+            saved = td / "saved.pptx"
+
+            src = Presentation()
+            base_slide = src.slides.add_slide(src.slide_layouts[6])
+            base_slide.shapes.add_textbox(
+                Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
+            ).text = "UNCHANGED"
+            src.save(source)
+
+            dst = Presentation(source)
+            detail = dst.slides.add_slide(dst.slide_layouts[6])
+            detail.shapes.add_textbox(
+                Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
+            ).text = "DETAIL"
+            fix._mark_detail_slide(
+                detail, {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)", "issue_name": "X"}
+            )
+
+            attach = dst.slides.add_slide(dst.slide_layouts[6])
+            attach.shapes.add_textbox(
+                Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
+            ).text = "ATTACH"
+            try:
+                attach.name = "AUTO_8D_ATTACH_TEST_1"
+            except Exception:
+                attach._element.cSld.set("name", "AUTO_8D_ATTACH_TEST_1")
+            dst.save(saved)
+
+            reduced, count = fix._ppt_update_only_keep_current_detail(
+                str(source), str(saved)
+            )
+            check = Presentation(reduced)
+
+            self.assertTrue(any(fix._is_marked_detail(sl) for sl in check.slides))
+            self.assertTrue(
+                any(
+                    str(getattr(sl, "name", "") or "").startswith("AUTO_8D_ATTACH_")
+                    for sl in check.slides
+                )
+            )
+            self.assertGreaterEqual(count, 2)
+
     def test_single_path_always_creates_filled_detail_before_attachments(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
