@@ -1,7 +1,7 @@
 import sys, unittest, io
 from pathlib import Path
 from pptx import Presentation
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
@@ -277,39 +277,28 @@ class UIStateTests(unittest.TestCase):
         self.assertNotIn('\n\n',texts['3D'])
         self.assertNotIn('\n\n',texts['4D_CAUSE'])
 
-    def test_weekly_detail_title_uses_unified_project_sample_site_format(self):
+    def test_weekly_detail_title_uses_named_test_when_issue_contains_test(self):
         d={
             'customer':'MBAG',
             'task_name':'IF_AA_Module_MBAG_EB565M',
             'issue_name':'IF_AA_Module_MBAG_EB565M_DV시험_Scratch',
         }
-        g={
-            'sample':'B2',
-            'occurrence_site':'제품 생산',
-            'team':'Pack개발품질1팀',
-            'owner':'홍길동',
-        }
+        g={'sample':'B2','occurrence_site':'제품 생산'}
+        self.assertEqual(step4._detail_title_text(d,g),'DV시험 이슈 발생')
+
+    def test_weekly_detail_title_uses_named_build_only_when_build_word_exists(self):
+        base={'customer':'MBAG','task_name':'MBAG_EB565M'}
+        g={'sample':'B2','occurrence_site':'제품 생산'}
+
+        d=dict(base); d['issue_name']='MBAG_EB565M_A1빌드_Crack'
+        self.assertEqual(step4._detail_title_text(d,g),'A1빌드 이슈 발생')
+
+        # B2 is a 발생샘플, not a build name.
+        d=dict(base); d['issue_name']='MBAG_EB565M_NormalIssue'
         self.assertEqual(
             step4._detail_title_text(d,g),
-            'MBAG_EB565M_B2_제품 생산_이슈 발생'
+            'MBAG_EB565M_B2 제품 생산 이슈 발생'
         )
-
-    def test_weekly_detail_title_does_not_switch_to_test_or_build_title(self):
-        base={
-            'customer':'MBAG',
-            'task_name':'MBAG_EB565M',
-        }
-        g={'sample':'B2','occurrence_site':'제품 생산'}
-        for issue in (
-            'MBAG_EB565M_DV시험_Scratch',
-            'MBAG_EB565M_A1빌드_Crack',
-            'MBAG_EB565M_NormalIssue',
-        ):
-            d=dict(base); d['issue_name']=issue
-            self.assertEqual(
-                step4._detail_title_text(d,g),
-                'MBAG_EB565M_B2_제품 생산_이슈 발생'
-            )
 
     def test_weekly_detail_title_keeps_full_text_and_shrinks_before_owner(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
@@ -331,7 +320,7 @@ class UIStateTests(unittest.TestCase):
         step4._force_page2_header(sl,d,g)
         self.assertEqual(
             title.text,
-            'MBAG_VERY_LONG_SELECTED_PROJECT_NAME_B2_제품 생산_이슈 발생'
+            'MBAG_VERY_LONG_SELECTED_PROJECT_NAME_B2 제품 생산 이슈 발생'
         )
         self.assertLessEqual(float(title.width)/v310.EMU,3.0+.02)
         sizes=[r.font.size.pt for p in title.text_frame.paragraphs for r in p.runs if r.font.size]
