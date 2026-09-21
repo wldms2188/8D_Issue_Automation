@@ -179,6 +179,31 @@ class ContinuationFixTests(unittest.TestCase):
 
         self.assertEqual(si, 0)
 
+    def test_weekly_similar_project_uses_existing_summary_label_verbatim(self):
+        prs = Presentation()
+        add_summary_slide(prs, 'MBAG E~', 'old', top=1.0, rows=3)
+        d = {'customer': '', 'task_name': 'MBAG', 'issue_name': 'new', 'problem': 'P'}
+        g = {'task_name': 'MBAG'}
+
+        captured = {}
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                # The patched customer-task accessor must expose the exact existing label.
+                value = s13._customer_task(_d)
+                captured['task'] = value
+                tb.cell(row, hm['task']).text = value
+                tb.cell(row, hm['issue']).text = 'NEW'
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(prs, d, g, 'new')
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertEqual(captured.get('task'), 'MBAG E~')
+        self.assertEqual(prs.slides[0].shapes[0].table.cell(row, 0).text, 'MBAG E~')
+
 
 if __name__ == '__main__':
     unittest.main()
