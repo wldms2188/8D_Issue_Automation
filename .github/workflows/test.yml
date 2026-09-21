@@ -2,7 +2,11 @@ name: 8D Automation Test
 
 on:
   push:
+    branches:
+      - main
+      - 'test/**'
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -15,4 +19,13 @@ jobs:
       - run: pip install -r requirements.txt pytest
       - run: python -m py_compile app/main.py
       - run: python -m py_compile app/run_v25.py
-      - run: pytest -q
+      - name: Compile active enterprise chain
+        run: |
+          python -m py_compile app/main_enterprise_final.py
+          python -m py_compile app/main_recovery_step1.py
+          python -m py_compile app/main_recovery_step4.py
+          python -m py_compile app/main_recovery_step12.py
+          python -m py_compile app/main_recovery_step14_fix2.py
+          python -m py_compile app/continuation_fix_final.py
+      - name: Run regression tests
+        run: pytest -q
