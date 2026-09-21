@@ -251,6 +251,30 @@ class ContinuationFixTests(unittest.TestCase):
             'GM_MBAG_Cell swelling',
         )
 
+    def test_blink_jf2_routing_prefix_is_removed_from_both_surfaces(self):
+        d = {
+            'customer': 'B Link',
+            'task_name': 'B Link_JF2',
+            'issue_name': 'IF_ES_B Link_JF2_Cell swelling',
+        }
+        self.assertEqual(step1._page1_issue(d), 'Cell swelling')
+        self.assertEqual(
+            step4._strip_selected_project_prefix(d['issue_name'], d),
+            'JF2_Cell swelling',
+        )
+
+    def test_jf2_project_anchor_does_not_depend_on_customer_field(self):
+        d = {
+            'customer': 'wrong extracted customer',
+            'task_name': 'B Link_JF2',
+            'issue_name': 'IF_ES_B Link_JF2_voltage drop',
+        }
+        self.assertEqual(step1._page1_issue(d), 'voltage drop')
+        self.assertEqual(
+            step4._strip_selected_project_prefix(d['issue_name'], d),
+            'JF2_voltage drop',
+        )
+
     def test_section_customer_and_project_match_ignores_separator_style(self):
         d = {'customer': 'GM', 'task_name': 'MBAG'}
         self.assertEqual(step14fix._section_match_level('GM_MBAG', d), 3)
