@@ -42,29 +42,32 @@ def _event_name(d):
 
 
 def _page1_issue(d):
-    """Remove one canonical customer_project prefix from the page-1 issue."""
+    """Display issue from [customer_]project onward; discard only earlier routing labels."""
     issue=N(d.get('issue_name'))
     if not issue:
         return ''
-    issue=v319._strip_markers_before_customer(issue,d.get('customer'))
-    result=issue
-    canonical=N(v319._weekly_task(d))
+    customer=N(d.get('customer'))
+    task=N(d.get('task_name'))
+    project=task
+    if customer and project:
+        project=re.sub(r'^\\s*'+re.escape(customer)+r'\\s*[_\\-/／|:： ]+\\s*','',project,flags=re.I)
+    project=N(project).strip(' _-/／|:：')
 
-    if canonical:
-        issue_toks=[x.strip() for x in re.split(r'[_/|]+',issue) if x.strip()]
-        prefix_toks=[x.strip() for x in re.split(r'[_/|]+',canonical) if x.strip()]
-        n=len(prefix_toks)
-        if n and len(issue_toks)>=n and all(C(issue_toks[i])==C(prefix_toks[i]) for i in range(n)):
-            rest=issue_toks[n:]
-            result='_'.join(rest) if rest else issue
-        else:
-            # Separator-tolerant fallback for titles without clean underscore tokens.
-            pat=r'^\s*'+r'\s*[_/|:-]\s*'.join(re.escape(x) for x in prefix_toks)+r'\s*[_/|:-]*\s*'
-            m=re.match(pat,issue,re.I)
-            if m:
-                result=issue[m.end():].lstrip('_ /|:-')
+    parts=[x for x in re.split(r'[_/|:：\\-]+',issue) if N(x)]
+    pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
+    ck=re.sub(r'[^0-9A-Za-z가-힣]+','',customer).lower()
+    for idx,part in enumerate(parts):
+        q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
+        if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
+            start=idx
+            if idx>0 and ck:
+                prev=re.sub(r'[^0-9A-Za-z가-힣]+','',N(parts[idx-1])).lower()
+                if prev==ck:
+                    start=idx-1
+            return v319._clean_issue_label('_'.join(parts[start:]))
 
-    return v319._clean_issue_label(result)
+    # If no project anchor can be found, retain the previous safe cleanup.
+    return v319._clean_issue_label(v319._strip_markers_before_customer(issue,customer))
 
 
 _SYMPTOM_WORDS=(
