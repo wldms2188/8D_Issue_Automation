@@ -277,56 +277,65 @@ class UIStateTests(unittest.TestCase):
         self.assertNotIn('\n\n',texts['3D'])
         self.assertNotIn('\n\n',texts['4D_CAUSE'])
 
-    def test_v1_style_detail_title_uses_specific_test_name(self):
+    def test_weekly_detail_title_uses_unified_project_sample_site_format(self):
         d={
             'customer':'MBAG',
-            'task_name':'MBAG_EB565M',
-            'issue_name':'MBAG_EB565M_DV시험_Scratch',
-            'problem':'Scratch',
+            'task_name':'IF_AA_Module_MBAG_EB565M',
+            'issue_name':'IF_AA_Module_MBAG_EB565M_DV시험_Scratch',
         }
-        self.assertEqual(step4.step3._event_name(d),('시험','DV시험'))
+        g={
+            'sample':'B2',
+            'occurrence_site':'제품 생산',
+            'team':'Pack개발품질1팀',
+            'owner':'홍길동',
+        }
         self.assertEqual(
-            step4._detail_title_suffix(d,{'_issue_origin_selected':'공정'}),
-            'DV시험 이슈 발생'
+            step4._detail_title_text(d,g),
+            'MBAG_EB565M_B2_제품 생산_이슈 발생'
         )
 
-    def test_detail_title_uses_current_issue_category_when_no_named_test(self):
-        base_d={
+    def test_weekly_detail_title_does_not_switch_to_test_or_build_title(self):
+        base={
             'customer':'MBAG',
             'task_name':'MBAG_EB565M',
-            'issue_name':'MBAG_EB565M_Scratch',
-            'problem':'Scratch',
         }
-        self.assertEqual(
-            step4._detail_title_suffix(base_d,{'_issue_origin_selected':'공정'}),
-            '공정 이슈 발생'
-        )
-        self.assertEqual(
-            step4._detail_title_suffix(base_d,{'_issue_origin_selected':'부품'}),
-            '부품 이슈 발생'
-        )
-        self.assertEqual(
-            step4._detail_title_suffix(base_d,{'occurrence_site':'제품 시험','_issue_origin_selected':'부품'}),
-            '시험 이슈 발생'
-        )
+        g={'sample':'B2','occurrence_site':'제품 생산'}
+        for issue in (
+            'MBAG_EB565M_DV시험_Scratch',
+            'MBAG_EB565M_A1빌드_Crack',
+            'MBAG_EB565M_NormalIssue',
+        ):
+            d=dict(base); d['issue_name']=issue
+            self.assertEqual(
+                step4._detail_title_text(d,g),
+                'MBAG_EB565M_B2_제품 생산_이슈 발생'
+            )
 
-    def test_detail_title_drops_selected_project_prefix_when_owner_overlap_risk(self):
+    def test_weekly_detail_title_keeps_full_text_and_shrinks_before_owner(self):
         prs=Presentation(); sl=prs.slides.add_slide(prs.slide_layouts[6])
-        title=sl.shapes.add_textbox(Inches(.2),Inches(.10),Inches(2.0),Inches(.42))
+        title=sl.shapes.add_textbox(Inches(.2),Inches(.10),Inches(6.0),Inches(.42))
         title.text='과제명_이슈 제목'
-        owner=sl.shapes.add_textbox(Inches(2.45),Inches(.10),Inches(2.6),Inches(.42))
+        for r in title.text_frame.paragraphs[0].runs:
+            r.font.size=Pt(14)
+        owner=sl.shapes.add_textbox(Inches(3.2),Inches(.10),Inches(2.6),Inches(.42))
         owner.text='00팀 담당자 : 이름'
         d={
             'customer':'MBAG',
             'task_name':'MBAG_VERY_LONG_SELECTED_PROJECT_NAME',
-            'issue_name':'MBAG_EB565M_Scratch',
-            'problem':'Scratch',
+            'issue_name':'MBAG_VERY_LONG_SELECTED_PROJECT_NAME_Scratch',
         }
-        g={'team':'Pack개발품질1팀','owner':'홍길동'}
+        g={
+            'team':'Pack개발품질1팀','owner':'홍길동',
+            'sample':'B2','occurrence_site':'제품 생산'
+        }
         step4._force_page2_header(sl,d,g)
-        self.assertNotIn('VERY_LONG_SELECTED_PROJECT_NAME',title.text)
-        self.assertNotIn('MBAG_EB565M',title.text)
-        self.assertIn('Scratch',title.text)
+        self.assertEqual(
+            title.text,
+            'MBAG_VERY_LONG_SELECTED_PROJECT_NAME_B2_제품 생산_이슈 발생'
+        )
+        self.assertLessEqual(float(title.width)/v310.EMU,3.0+.02)
+        sizes=[r.font.size.pt for p in title.text_frame.paragraphs for r in p.runs if r.font.size]
+        self.assertTrue(sizes and min(sizes)<14)
 
     def test_long_4d_moves_up_when_3d_is_short_and_stays_on_slide(self):
         d={
