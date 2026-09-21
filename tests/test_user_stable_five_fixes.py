@@ -784,6 +784,42 @@ class UserStableFiveFixesTest(unittest.TestCase):
             1,
         )
 
+    def test_large_detail_zone_old_text_is_cleared_but_frame_remains(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        box = sl.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.45),
+            Inches(2.45),
+            Inches(4.7),
+            Inches(1.0),
+        )
+        box.text = "기존 이슈 검정 글씨\n복제 후 삭제되어야 함"
+        shape_count = len(sl.shapes)
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        self.assertEqual(len(sl.shapes), shape_count)
+        self.assertEqual(box.text.strip(), "")
+
+    def test_combined_fixed_title_and_old_body_keeps_only_title(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        box = sl.shapes.add_textbox(
+            Inches(0.45),
+            Inches(5.3),
+            Inches(4.7),
+            Inches(0.9),
+        )
+        box.text = "4D 발생원인\n기존 검정 본문 내용"
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        self.assertEqual(fix.s13._k(box.text), fix.s13._k("4D 발생원인"))
+        self.assertNotIn("기존", box.text)
+
     def test_detail_clone_cleanup_removes_red_annotations_and_grouped_old_text(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
