@@ -431,6 +431,13 @@ class UserStableFiveFixesTest(unittest.TestCase):
         # Strict generic summary detection may exclude this page.
         self.assertEqual(fix._summary_pages_flexible(prs), [])
 
+        full_q, project_q = fix._legacy_summary_target_keys(d, g)
+        self.assertGreater(
+            fix._legacy_summary_match_rank("MBAG EB-L(EU)", full_q, project_q),
+            0,
+        )
+        self.assertEqual(len(fix._simple_summary_table_candidates(sl)), 1)
+
         _pages, hits = fix._summary_hits(prs, d, g)
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0][0], 0)
