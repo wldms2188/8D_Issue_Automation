@@ -481,48 +481,39 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
-    def test_catalog_split_matcher_keeps_normal_projects_on_legacy_path(self):
+    def test_restored_legacy_summary_matcher_handles_separator_variants(self):
         d = {"customer": "MBAG", "task_name": "MBAG_EB565M"}
-        g = {"task_name": "MBAG_EB565M", "team": "파우치형Pack개발품질1팀"}
-        full_keys, project_keys = fix._summary_identity_keys(d, g)
-        spec = fix._catalog_project_match_spec(d, g)
+        g = {"task_name": "MBAG_EB565M"}
+        full_q, project_q = fix._legacy_summary_target_keys(d, g)
 
-        self.assertEqual(spec["mode"], "normal")
         self.assertGreater(
-            fix._weekly_task_match_rank(
-                "MBAG\nEB565M", d, g, full_keys, project_keys, spec
-            ),
+            fix._legacy_summary_match_rank("MBAG\nEB565M", full_q, project_q),
             0,
         )
         self.assertGreater(
-            fix._weekly_task_match_rank(
-                "EB565M", d, g, full_keys, project_keys, spec
-            ),
+            fix._legacy_summary_match_rank("EB565M", full_q, project_q),
             0,
         )
 
-    def test_catalog_parenthesis_projects_use_strict_qualified_lane(self):
-        d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
-        g = {"task_name": "MBAG_EB-L(EU)", "team": "원통형Pack개발품질팀"}
-        full_keys, project_keys = fix._summary_identity_keys(d, g)
-        spec = fix._catalog_project_match_spec(d, g)
+    def test_parenthesized_weekly_candidate_scanner_returns_eu_and_us_choices(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG EB-L(US)", "wrong")
+            add_summary_slide(prs, "MBAG\nEB-L(EU)", "right")
+            prs.save(path)
 
-        self.assertEqual(spec["mode"], "qualified")
-        self.assertEqual(spec["project"], "EB-L(EU)")
-        self.assertGreater(
-            fix._weekly_task_match_rank(
-                "MBAG\nEB-L(EU)\n검토(2차)",
-                d, g, full_keys, project_keys, spec
-            ),
-            0,
-        )
-        self.assertEqual(
-            fix._weekly_task_match_rank(
-                "MBAG\nEB-L(US)\n검토(2차)",
-                d, g, full_keys, project_keys, spec
-            ),
-            0,
-        )
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB-L(EU)",
+                "원통형Pack개발품질팀",
+                "MBAG",
+            )
+
+        labels = [x["canonical"] for x in candidates]
+        self.assertIn("MBAG_EB-L(EU)", labels)
+        self.assertIn("MBAG_EB-L(US)", labels)
+        self.assertEqual(labels[0], "MBAG_EB-L(EU)")
 
     def test_summary_finder_uses_normal_and_parenthesis_lanes_separately(self):
         # Normal project: old matching behavior.
