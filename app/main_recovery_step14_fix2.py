@@ -20,7 +20,22 @@ N=v310.N
 
 
 def _project_parts(d):
-    return (s13._k(s13._customer_task(d)),s13._k(d.get('task_name')),s13._k(d.get('customer')))
+    """Return normalized (customer_project, project_only, customer).
+
+    GUI task_name is canonical customer_project (e.g. GM_MBAG), so using it
+    unchanged as the project key prevents project-only sections such as MBAG
+    from matching.
+    """
+    full_raw=N(s13._customer_task(d))
+    customer_raw=N(d.get('customer'))
+    task_raw=N(d.get('task_name'))
+    project_raw=task_raw
+    if customer_raw and task_raw:
+        project_raw=re.sub(
+            r'^\s*'+re.escape(customer_raw)+r'\s*[_\-/／|:： ]+\s*',
+            '',task_raw,flags=re.I
+        )
+    return (s13._k(full_raw),s13._k(project_raw),s13._k(customer_raw))
 
 def _project_score(sl,d):
     q=s13._k(s13._slide_text(sl)); full,task,customer=_project_parts(d)
