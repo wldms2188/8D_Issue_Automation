@@ -103,6 +103,71 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(si, 0)
         self.assertEqual(tb.cell(row, 0).text, "GM MBAG")
 
+    def test_mbag_underscore_and_no_underscore_are_same_summary_project(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "MBAGEB565M", "old")
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB565M"}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertIn("마지막", action)
+        self.assertEqual(tb.cell(row, 0).text, "MBAGEB565M")
+
+    def test_mbag_no_underscore_input_resolves_catalog_identity(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "MBAG_EB565M", "old")
+
+        # Even if extracted customer metadata is stale/different, the explicit
+        # project selection resolves against the catalog separator-insensitively.
+        d = {
+            "customer": "Mercedes",
+            "task_name": "MBAGEB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAGEB565M"}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, _ = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertEqual(tb.cell(row, 0).text, "MBAG_EB565M")
+
+    def test_mbag_separator_variants_are_exact_section_match(self):
+        d1 = {"customer": "MBAG", "task_name": "MBAG_EB565M"}
+        d2 = {"customer": "Mercedes", "task_name": "MBAGEB565M"}
+        self.assertEqual(fix._section_match_level("MBAGEB565M", d1), 3)
+        self.assertEqual(fix._section_match_level("MBAG_EB565M", d2), 3)
+
     def test_confirmed_similar_section_reuses_real_summary_label(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "GM_MBAG E~", "old")
