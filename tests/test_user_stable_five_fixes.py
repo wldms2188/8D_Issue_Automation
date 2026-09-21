@@ -42,24 +42,22 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "occurrence_site": "제품 생산",
             "stage": "DV",
         }
-        # Weekly-only: PLM number is optional.
-        self.assertEqual(fix._required_user_input_missing(complete), [])
+        # Weekly-only: PLM number is optional here and is left to the original
+        # Issue-DB-only V2 warning flow.
+        self.assertIsNone(fix._required_user_input_error(complete))
 
-        # Issue DB selected: PLM number becomes mandatory.
-        with_excel = dict(complete)
-        with_excel["xlsx"] = "issue_db.xlsx"
+        missing_owner = dict(complete)
+        missing_owner["owner"] = ""
         self.assertEqual(
-            fix._required_user_input_missing(with_excel),
-            ["PMS/PLM 이슈번호"],
+            fix._required_user_input_error(missing_owner),
+            ("입력 확인", "담당자를 입력해 주세요."),
         )
 
-        missing = dict(complete)
-        missing["owner"] = ""
-        missing["stage"] = ""
-        self.assertEqual(
-            fix._required_user_input_missing(missing),
-            ["담당자", "개발 단계"],
-        )
+        missing_stage = dict(complete)
+        missing_stage["stage"] = ""
+        title, message = fix._required_user_input_error(missing_stage)
+        self.assertEqual(title, "분류 정보 확인")
+        self.assertIn("개발 단계", message)
 
     def test_detail_title_exact_user_format(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
