@@ -454,6 +454,46 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
+    def test_parenthetical_project_variants_never_match_each_other(self):
+        d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
+        g = {"task_name": "MBAG_EB-L(EU)"}
+        full_keys, project_keys = fix._summary_identity_keys(d, g)
+        required = fix._required_project_parens(d, g)
+
+        self.assertGreater(
+            fix._simple_task_match_rank(
+                "MBAG EB-L(EU)", full_keys, project_keys, required
+            ),
+            0,
+        )
+        self.assertEqual(
+            fix._simple_task_match_rank(
+                "MBAG EB-L(US)", full_keys, project_keys, required
+            ),
+            0,
+        )
+        self.assertEqual(
+            fix._simple_task_match_rank(
+                "MBAG EB-L", full_keys, project_keys, required
+            ),
+            0,
+        )
+
+    def test_summary_search_chooses_exact_parenthetical_variant(self):
+        prs = Presentation()
+        add_summary_slide(prs, "MBAG EB-L(US)", "us-old")
+        add_summary_slide(prs, "MBAG\nEB-L(EU)", "eu-old")
+
+        hit = fix._find_existing_summary_project(
+            prs,
+            {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"},
+            {"task_name": "MBAG_EB-L(EU)"},
+        )
+
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 1)
+        self.assertEqual(hit[6], "MBAG\nEB-L(EU)")
+
     def test_summary_identity_matches_underscore_space_and_newline(self):
         d = {"customer": "A", "task_name": "B"}
         g = {"task_name": "B"}
@@ -540,6 +580,9 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertEqual(hit[1], 0)
 
+    def test_baseline_detail_writer_is_pre_polish_weekly_writer(self):
+        self.assertIs(fix._known_good_detail_writer, fix.final_polish._original_weekly)
+
     def test_final_full_manifest_requires_real_detail(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
@@ -574,12 +617,12 @@ class UserStableFiveFixesTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 fix._assert_final_weekly_detail(str(p2))
 
-    def test_all_runtime_weekly_aliases_point_to_single_path(self):
-        self.assertIs(core.base.weekly, fix._weekly_single_path)
-        self.assertIs(s14.base.weekly, fix._weekly_single_path)
-        self.assertIs(s13.base.weekly, fix._weekly_single_path)
-        self.assertIs(fix.enterprise_main.base.weekly, fix._weekly_single_path)
-        self.assertIs(fix.legacy_final.base.weekly, fix._weekly_single_path)
+    def test_all_runtime_weekly_aliases_point_to_baseline_detail_path(self):
+        self.assertIs(core.base.weekly, fix._weekly_baseline_detail_path)
+        self.assertIs(s14.base.weekly, fix._weekly_baseline_detail_path)
+        self.assertIs(s13.base.weekly, fix._weekly_baseline_detail_path)
+        self.assertIs(fix.enterprise_main.base.weekly, fix._weekly_baseline_detail_path)
+        self.assertIs(fix.legacy_final.base.weekly, fix._weekly_baseline_detail_path)
 
     def test_reduced_output_never_drops_marked_detail_before_attachments(self):
         with tempfile.TemporaryDirectory() as td:
