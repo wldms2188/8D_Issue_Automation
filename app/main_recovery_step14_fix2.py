@@ -170,39 +170,37 @@ def _create_native_section(prs,name,slide_index):
     }
 
 def _create_native_section_com(ppt_path,name,slide_index):
-    """Create a real PowerPoint section before slide_index using Office COM."""
+    """Create a real PowerPoint section before slide_index using Office COM.
+
+    Use Python COM when available.  Do not capture/decode PowerShell output:
+    Korean Office output on cp949 was causing UnicodeDecodeError in readerthread.
+    """
     if not ppt_path:
         return False
-    path_q=_ps_quote(Path(ppt_path).resolve())
-    name_q=_ps_quote(N(name) or '신규 과제')
-    slide_no=int(slide_index)+1
-    script=f"""
-$ErrorActionPreference = 'Stop'
-$ppt = $null
-$pres = $null
-try {{
-    $ppt = New-Object -ComObject PowerPoint.Application
-    $pres = $ppt.Presentations.Open('{path_q}', 0, 0, 0)
-    [void]$pres.SectionProperties.AddBeforeSlide({slide_no}, '{name_q}')
-    $pres.Save()
-    Write-Output 'OK'
-}}
-finally {{
-    if ($pres -ne $null) {{ try {{ $pres.Close() }} catch {{}} }}
-    if ($ppt -ne $null) {{ try {{ $ppt.Quit() }} catch {{}} }}
-}}
-"""
     try:
-        p=subprocess.run(
-            ['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],
-            capture_output=True,text=True,timeout=45
-        )
+        import win32com.client
+    except Exception as e:
+        raise RuntimeError('PowerPoint 신규 구역 생성에 pywin32가 필요합니다: '+repr(e))
+
+    app=None
+    pres=None
+    try:
+        app=win32com.client.DispatchEx('PowerPoint.Application')
+        pres=app.Presentations.Open(str(Path(ppt_path).resolve()), False, False, False)
+        # PowerPoint COM slide numbers are 1-based.
+        slide_no=max(1,min(int(slide_index)+1,pres.Slides.Count))
+        pres.SectionProperties.AddBeforeSlide(slide_no,N(name) or '신규 과제')
+        pres.Save()
+        return True
     except Exception as e:
         raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+repr(e))
-    if p.returncode!=0:
-        detail=(p.stderr or p.stdout or '').strip()
-        raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+detail[-700:])
-    return True
+    finally:
+        if pres is not None:
+            try: pres.Close()
+            except Exception: pass
+        if app is not None:
+            try: app.Quit()
+            except Exception: pass
 
 def _slide_id_at(prs,index):
     sldId=prs.slides._sldIdLst[index]
