@@ -42,30 +42,52 @@ def _event_name(d):
 
 
 def _page1_issue(d):
-    """Weekly-summary issue: remove routing labels AND customer/project prefix."""
+    """Weekly summary issue: remove everything through the confirmed project token."""
     issue=N(d.get('issue_name'))
     if not issue:
         return ''
-    customer=N(d.get('customer'))
-    task=N(d.get('task_name'))
-    project=task
-    if customer and project:
-        project=re.sub(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:： ]+\s*','',project,flags=re.I)
-    project=N(project).strip(' _-/／|:：')
 
-    parts=[x for x in re.split(r'[_/|:：\-]+',issue) if N(x)]
-    pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
-    for idx,part in enumerate(parts):
-        q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
-        if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
-            # Summary table already has a separate customer/project column,
-            # so its Issue cell starts AFTER the matched project token.
-            rest='_'.join(parts[idx+1:]).strip(' _-/／|:：')
-            if rest:
-                return v319._clean_issue_label(rest)
+    # Use the same project-anchor parser as the detail page.  task_name may be
+    # CUSTOMER_PROJECT (e.g. "B Link_JF2"), while d.customer can be imperfect.
+    task=N(d.get('task_name')).strip()
+    project=task
+    depth=0
+    for i,ch in enumerate(task):
+        if ch=='(':
+            depth+=1
+        elif ch==')' and depth:
+            depth-=1
+        elif ch=='_' and depth==0:
+            project=N(task[i+1:]).strip(' _-/／|:：')
             break
 
-    return v319._clean_issue_label(v319._strip_markers_before_customer(issue,customer))
+    parts=[N(x) for x in re.split(r'[_/|:：\\-]+',issue) if N(x)]
+    pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
+    idx=None
+    for i,part in enumerate(parts):
+        q=re.sub(r'[^0-9A-Za-z가-힣]+','',part).lower()
+        if pk and q and (pk==q or (min(len(pk),len(q))>=3 and (pk in q or q in pk))):
+            idx=i
+            break
+
+    if idx is None:
+        pparts=[N(x) for x in re.split(r'[_/|:：\\-]+',project) if N(x)]
+        if pparts:
+            first=re.sub(r'[^0-9A-Za-z가-힣]+','',pparts[0]).lower()
+            for i,part in enumerate(parts):
+                q=re.sub(r'[^0-9A-Za-z가-힣]+','',part).lower()
+                if first and q==first:
+                    idx=i
+                    break
+
+    if idx is not None:
+        rest='_'.join(parts[idx+1:]).strip(' _-/／|:：')
+        if rest:
+            return v319._clean_issue_label(rest)
+
+    # Do not hard-code IF/ES/model labels. If project anchoring fails, preserve
+    # the source rather than deleting an unknown meaningful token.
+    return v319._clean_issue_label(issue)
 
 
 _SYMPTOM_WORDS=(
