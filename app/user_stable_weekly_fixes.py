@@ -1842,35 +1842,48 @@ def _simple_summary_table_candidates(sl):
     return out
 
 
-def _paren_qualifiers(value):
-    """Normalized parenthetical qualifiers; EU and US must remain different."""
+def _project_parenthetical_parts(value, customer_hint=""):
+    """Return only parenthetical parts that belong to the PROJECT identity."""
     raw = N(value)
+    alias = _catalog_separator_alias(raw)
+    source = alias or raw
+
+    customer, project = catalog.split_customer_task(source)
+    if not project:
+        project = source
+
+    # If a customer hint was prepended manually, strip only that leading
+    # customer token before reading project qualifiers.
+    hint = N(customer_hint)
+    if hint:
+        q_source = s13._k(source)
+        q_hint = s13._k(hint)
+        if q_hint and q_source.startswith(q_hint) and not customer:
+            project = source[len(hint):].lstrip(" _-\n\t")
+
     return tuple(
         s13._k(x)
-        for x in re.findall(r"\(([^()]*)\)", raw)
+        for x in re.findall(r"\(([^()]*)\)", N(project))
         if s13._k(x)
     )
 
 
-def _required_project_parens(d, g=None):
-    d = d or {}
-    g = g or {}
-    selected = N(g.get("task_name")) or N(d.get("task_name"))
-    alias = _catalog_separator_alias(selected)
-    source = alias or selected
-    _customer, project = catalog.split_customer_task(source)
-    project = N(project or source)
-    return _paren_qualifiers(project)
+def _project_parentheses_match(raw, expected_parts):
+    """Only project-name parentheses are compared; unrelated note parentheses are ignored.
 
-
-def _paren_compatible(raw, required):
-    if not required:
+    The normal identity match still decides whether the project text exists.
+    This helper is only an additional guard when the INPUT project itself has
+    qualifiers such as (EU), (US), (LHD), etc.
+    """
+    if not expected_parts:
         return True
-    found = _paren_qualifiers(raw)
-    # If the input project has a qualifier such as (EU), the visible project
-    # must carry exactly the same qualifier sequence. (EU) != (US), and a
-    # qualifier-less base name is not silently treated as the same variant.
-    return found == tuple(required)
+
+    q = s13._k(raw)
+    # Each expected qualifier must be present as part of the normalized project
+    # identity. Do not require every parenthesis found in the whole cell/page
+    # to equal the input; e.g. "(2차)" elsewhere is unrelated.
+    return all(part and part in q for part in expected_parts)
+
 
 
 def _summary_identity_keys(d, g=None):
@@ -1974,6 +1987,9 @@ def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
 def _find_existing_summary_project(prs, d, g):
     full_keys, project_keys = _summary_identity_keys(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
+    expected_parens = _project_parenthetical_parts(
+        selected, N((d or {}).get("customer"))
+    )
 
     hits = []
     for si, sl in enumerate(prs.slides):
@@ -1988,6 +2004,8 @@ def _find_existing_summary_project(prs, d, g):
                 rank = _simple_task_match_rank(
                     raw, full_keys, project_keys
                 )
+                if rank and not _project_parentheses_match(raw, expected_parens):
+                    rank = 0
                 if rank:
                     rows.append(r)
                     if rank > best_rank:
@@ -2015,6 +2033,10 @@ def _find_existing_summary_project(prs, d, g):
             slide_rank = _simple_task_match_rank(
                 slide_text, full_keys, project_keys
             )
+            if slide_rank and not _project_parentheses_match(
+                slide_text, expected_parens
+            ):
+                slide_rank = 0
             if slide_rank:
                 payload_rows = [
                     r for r in range(hr + 1, len(tb.rows))
