@@ -1013,15 +1013,25 @@ _pending_user_native_section = None
 
 def _create_native_section_pending(prs, name, slide_index):
     global _pending_user_native_section
+    idx = int(slide_index)
+    slide_id = None
+    try:
+        slide_id = int(prs.slides[idx].slide_id)
+    except Exception:
+        pass
+
     _pending_user_native_section = {
         "name": N(name) or "신규 과제",
-        "slide_index": int(slide_index),
+        "slide_index": idx,
+        # Numeric position can change after save/attachment insertion.  The
+        # PowerPoint slide-id is the stable identity of the cloned detail page.
+        "slide_id": slide_id,
     }
     return {
         "name": N(name) or "신규 과제",
         "element": None,
-        "slide_ids": [],
-        "indices": [int(slide_index)],
+        "slide_ids": [slide_id] if slide_id is not None else [],
+        "indices": [idx],
         "_pending_com": True,
     }
 
@@ -1087,24 +1097,76 @@ finally {{
     return True
 
 
-def _verify_pending_detail_slide(saved, request):
-    """Fail loudly if a requested new-section run did not actually create detail."""
+def _find_saved_pending_detail(saved, request, d=None):
+    """Return the CURRENT index of the cloned detail page after save/COM edits.
+
+    Do not trust the pre-save numeric position. Summary insertion and PowerPoint
+    attachment insertion can shift slide positions. Prefer the persistent
+    PowerPoint slide-id, then use a tightly-scoped detail-content fallback.
+    """
     if not request:
-        return
+        return None
+
     from pptx import Presentation
 
     prs = Presentation(saved)
-    idx = int(request["slide_index"])
-    if idx < 0 or idx >= len(prs.slides):
+    wanted_id = request.get("slide_id")
+
+    if wanted_id is not None:
+        for i, sl in enumerate(prs.slides):
+            try:
+                if int(sl.slide_id) == int(wanted_id):
+                    if core._is_detail_like(sl):
+                        return i
+                    break
+            except Exception:
+                pass
+
+    # Old-index fallback for files where the slide-id was unavailable.
+    old_idx = int(request.get("slide_index", -1))
+    if 0 <= old_idx < len(prs.slides) and core._is_detail_like(prs.slides[old_idx]):
+        return old_idx
+
+    # Final recovery: find a detail-like slide carrying the current project/title.
+    full, project, _customer = _project_parts(d or {})
+    candidates = []
+    for i, sl in enumerate(prs.slides):
+        if not core._is_detail_like(sl):
+            continue
+        q = s13._k(s13._slide_text(sl))
+        score = 0
+        if full and full in q:
+            score += 100
+        if project and project in q:
+            score += 70
+        # Prefer slides closest to the originally requested location.
+        distance = abs(i - old_idx) if old_idx >= 0 else 0
+        candidates.append((score, -distance, i))
+
+    if candidates:
+        candidates.sort(reverse=True)
+        best = candidates[0]
+        # A project/title hit is safest. If there is exactly one detail-like slide
+        # in the whole output, it is also unambiguous enough to recover.
+        if best[0] > 0 or len(candidates) == 1:
+            return best[2]
+
+    return None
+
+
+def _verify_pending_detail_slide(saved, request, d=None):
+    """Return the saved detail index; fail only when no generated detail exists."""
+    idx = _find_saved_pending_detail(saved, request, d)
+    if idx is None:
+        from pptx import Presentation
+        prs = Presentation(saved)
+        old_idx = int(request.get("slide_index", -1))
         raise RuntimeError(
-            "신규 구역용 상세페이지가 저장되지 않았습니다. "
-            f"(예상 위치: {idx + 1}페이지, 전체: {len(prs.slides)}페이지)"
+            "신규 구역용 2D~6D 상세페이지를 저장 결과에서 찾지 못했습니다. "
+            f"(생성 당시 위치: {old_idx + 1 if old_idx >= 0 else '-'}페이지, "
+            f"저장 후 전체: {len(prs.slides)}페이지)"
         )
-    if not core._is_detail_like(prs.slides[idx]):
-        raise RuntimeError(
-            "신규 구역 위치에 2D~6D 상세페이지가 생성되지 않았습니다. "
-            "잘못된 빈 페이지/요약페이지 생성은 중단했습니다."
-        )
+    return idx
 
 
 # Replace only the invalid native-section writer.  weekly_fix5 still clones and
@@ -1131,13 +1193,15 @@ def _weekly_with_real_native_section(src, out, d, g, mode):
             raise RuntimeError(
                 "신규 구역 생성이 선택되었지만 상세페이지 생성 요청이 만들어지지 않았습니다."
             )
-        _verify_pending_detail_slide(saved, request)
+        # Resolve the CURRENT saved position of the cloned detail. The numeric
+        # pre-save index may no longer be valid after summary/attachment edits.
+        saved_detail_index = _verify_pending_detail_slide(saved, request, d)
         _create_native_section_com_saved(
-            saved, request["name"], request["slide_index"]
+            saved, request["name"], saved_detail_index
         )
         msg += (
             f" / 신규 구역 [{request['name']}] 생성 완료"
-            f" / 상세 page {request['slide_index'] + 1} 생성 확인"
+            f" / 상세 page {saved_detail_index + 1} 생성 확인"
         )
 
     return msg, saved
