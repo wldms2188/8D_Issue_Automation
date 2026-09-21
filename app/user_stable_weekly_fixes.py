@@ -1992,12 +1992,120 @@ def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
 
     return 0
 
+def _catalog_project_match_spec(d, g=None):
+    """Build one of TWO independent project-matching modes.
+
+    normal:
+      legacy/simple matching for the majority of catalog projects without ().
+    qualified:
+      catalog/input project contains (); the normalized project INCLUDING the
+      parenthetical content must occur in the visible task text.
+
+    Catalog names are authoritative when an exact catalog identity is available.
+    """
+    d = d or {}
+    g = g or {}
+    selected = N(g.get("task_name")) or N(d.get("task_name"))
+    customer = N(d.get("customer"))
+    team = N(g.get("team"))
+
+    # Search the user's supplied catalog, team first, then all projects.
+    pool = list(catalog.PROJECTS.get(team, ()) or ())
+    seen = set(pool)
+    for item in catalog._all_projects():
+        if item not in seen:
+            pool.append(item)
+            seen.add(item)
+
+    selected_q = s13._k(selected)
+    customer_q = s13._k(customer)
+    combined_q = customer_q + selected_q if customer_q else selected_q
+
+    canonical = ""
+    best_score = -1
+    for item in pool:
+        item_q = s13._k(item)
+        part = catalog.project_part(item)
+        part_q = s13._k(part)
+
+        score = -1
+        if item_q and item_q == selected_q:
+            score = 500
+        elif part_q and part_q == selected_q:
+            score = 480
+        elif item_q and item_q == combined_q:
+            score = 470
+        elif customer_q and part_q and (customer_q + part_q) == selected_q:
+            score = 460
+
+        if score > best_score:
+            best_score = score
+            canonical = item
+
+    source = canonical or selected
+    project = N(catalog.project_part(source) or source)
+    catalog_customer, _ = catalog.split_customer_task(source)
+
+    # If the catalog value is project-only, retain the separately entered customer.
+    effective_customer = N(catalog_customer or customer)
+
+    project_q = s13._k(project)
+    full_q = (
+        s13._k(effective_customer) + project_q
+        if effective_customer and project_q
+        else s13._k(source)
+    )
+
+    # Parentheses-sensitive lane is used only for catalog/input project names
+    # that actually contain parentheses. The majority of the user's list stays
+    # on the old normal path.
+    qualified = bool(re.search(r"\([^()]+\)", project))
+
+    return {
+        "mode": "qualified" if qualified else "normal",
+        "canonical": source,
+        "project": project,
+        "project_key": project_q,
+        "full_key": full_q,
+    }
+
+
+def _catalog_qualified_task_rank(raw, spec):
+    """Strict lane for the small set of project names containing parentheses."""
+    q = s13._k(raw)
+    if not q:
+        return 0
+
+    full = N(spec.get("full_key"))
+    project = N(spec.get("project_key"))
+
+    # _k removes the literal punctuation but preserves parenthetical CONTENT.
+    # Therefore EB-L(EU)->ebleu and EB-L(US)->eblus remain different.
+    if full and q == full:
+        return 500
+    if project and q == project:
+        return 480
+    if full and len(full) >= 4 and full in q:
+        return 440
+    if project and len(project) >= 4 and project in q:
+        return 420
+    return 0
+
+
+def _weekly_task_match_rank(raw, d, g, full_keys, project_keys, spec=None):
+    """Dispatch to two isolated matching logics instead of mixing exceptions."""
+    spec = spec or _catalog_project_match_spec(d, g)
+    if spec.get("mode") == "qualified":
+        return _catalog_qualified_task_rank(raw, spec)
+
+    # NO-PAREN projects use the previously working simple matcher unchanged.
+    return _simple_task_match_rank(raw, full_keys, project_keys)
+
+
 def _find_existing_summary_project(prs, d, g):
     full_keys, project_keys = _summary_identity_keys(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
-    expected_parens = _project_parenthetical_parts(
-        selected, N((d or {}).get("customer"))
-    )
+    match_spec = _catalog_project_match_spec(d, g)
 
     hits = []
     for si, sl in enumerate(prs.slides):
@@ -2009,11 +2117,9 @@ def _find_existing_summary_project(prs, d, g):
             display = ""
             for r in range(hr + 1, len(tb.rows)):
                 raw = N(s13._row_text(tb, r, hm["task"]))
-                rank = _simple_task_match_rank(
-                    raw, full_keys, project_keys
+                rank = _weekly_task_match_rank(
+                    raw, d, g, full_keys, project_keys, match_spec
                 )
-                if rank and not _project_parentheses_match(raw, expected_parens):
-                    rank = 0
                 if rank:
                     rows.append(r)
                     if rank > best_rank:
@@ -2038,13 +2144,9 @@ def _find_existing_summary_project(prs, d, g):
             # column is enough to choose the page. This covers merged/template
             # layouts where python-pptx cannot expose the visible task cell.
             slide_text = s13._slide_text(sl)
-            slide_rank = _simple_task_match_rank(
-                slide_text, full_keys, project_keys
+            slide_rank = _weekly_task_match_rank(
+                slide_text, d, g, full_keys, project_keys, match_spec
             )
-            if slide_rank and not _project_parentheses_match(
-                slide_text, expected_parens
-            ):
-                slide_rank = 0
             if slide_rank:
                 payload_rows = [
                     r for r in range(hr + 1, len(tb.rows))
