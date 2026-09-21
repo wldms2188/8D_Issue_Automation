@@ -3010,6 +3010,47 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
     return found
 
 
+def _weekly_candidate_display_one_line(item):
+    """Compact a weekly-summary task label for dialogs only.
+
+    Example:
+      MBAG\nEB-L\n(EU,US) -> MBAG_EB-L(EU,US)
+    The underlying candidate/canonical value is not changed.
+    """
+    if isinstance(item, dict):
+        canonical = N(item.get("canonical"))
+        raw = N(item.get("display"))
+    else:
+        canonical = ""
+        raw = N(item)
+
+    # Prefer a known catalog spelling because it is already one-line and uses
+    # the user's expected customer_project convention.
+    if canonical and "\n" not in canonical and "\r" not in canonical:
+        return re.sub(r"\s+", " ", canonical).strip()
+
+    parts = [x.strip() for x in re.split(r"[\r\n]+", raw) if x.strip()]
+    if not parts:
+        return ""
+
+    # Attach parenthetical-only continuation lines to the prior token.
+    merged = []
+    for part in parts:
+        if re.fullmatch(r"\([^()]*\)", part) and merged:
+            merged[-1] = merged[-1].rstrip() + part
+        else:
+            merged.append(part)
+
+    if len(merged) >= 2:
+        # Weekly summary convention: first line is customer, remaining text is
+        # the project name. Keep the project text compact on one line.
+        customer = re.sub(r"\s+", "", merged[0])
+        project = "".join(re.sub(r"\s+", "", x) for x in merged[1:])
+        return customer + "_" + project
+
+    return re.sub(r"\s+", "", merged[0])
+
+
 def _choose_parenthesized_weekly_candidate(self, selected, candidates):
     if not candidates:
         return "keep", selected
@@ -3018,8 +3059,8 @@ def _choose_parenthesized_weekly_candidate(self, selected, candidates):
         candidate = candidates[0]
         msg = (
             "주간회의 요약페이지에서 유사한 과제명을 찾았습니다.\n\n"
-            f"입력값          : {selected}\n"
-            f"요약페이지 과제 : {candidate['display']}\n\n"
+            f"입력값          : {_weekly_candidate_display_one_line(selected)}\n"
+            f"요약페이지 과제 : {_weekly_candidate_display_one_line(candidate)}\n\n"
             "이 과제로 업데이트하시겠습니까?"
         )
         choice = ui.dialog(
@@ -3064,7 +3105,7 @@ def _choose_parenthesized_weekly_candidate(self, selected, candidates):
         text=(
             "주간회의 요약페이지에서 유사한 과제명이 여러 개 확인되었습니다.\n"
             "업데이트할 과제를 선택해 주세요.\n\n"
-            f"입력값 : {selected}"
+            f"입력값 : {_weekly_candidate_display_one_line(selected)}"
         ),
         bg="white",
         fg=ui.TEXT,
@@ -3081,7 +3122,7 @@ def _choose_parenthesized_weekly_candidate(self, selected, candidates):
     )
     lb.pack(fill="both", expand=True)
     for item in candidates:
-        lb.insert("end", item["display"].replace("\n", " / "))
+        lb.insert("end", _weekly_candidate_display_one_line(item))
     exact_index = next((i for i, x in enumerate(candidates) if x["exact"]), 0)
     lb.selection_set(exact_index)
     lb.activate(exact_index)
