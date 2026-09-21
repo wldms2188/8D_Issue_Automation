@@ -201,8 +201,13 @@ def _move_slide_by_id(prs, slide_id, index):
     return index
 
 
-def _find_summary_table_on_slide(sl):
-    """Rediscover only the same real weekly-summary structure after cloning."""
+def _find_summary_table_on_slide(sl, allow_partial=False):
+    """Rediscover the summary table on a cloned page.
+
+    Generic new-summary pages stay strict. A page already confirmed by an exact
+    task-name hit may use a slightly older header variant, so task + two known
+    summary columns is enough there.
+    """
     for sh in v310.walk(sl):
         if not getattr(sh, "has_table", False):
             continue
@@ -211,6 +216,12 @@ def _find_summary_table_on_slide(sl):
             hm = _summary_header_map(tb, hr)
             if _is_real_summary_header(hm):
                 return tb, hr
+            if allow_partial and "task" in hm:
+                data_fields = sum(
+                    1 for k in ("issue", "problem", "progress", "signal") if k in hm
+                )
+                if data_fields >= 2:
+                    return tb, hr
     return None, None
 
 
@@ -265,7 +276,9 @@ def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
 
     final_index = moved
     sl = prs.slides[final_index]
-    tb, hr = _find_summary_table_on_slide(sl)
+    tb, hr = _find_summary_table_on_slide(
+        sl, allow_partial=(template_index is not None)
+    )
     if tb is None:
         raise ValueError(
             "복제한 주간회의 요약 페이지에서 과제명 표를 다시 찾지 못했습니다."
@@ -823,6 +836,7 @@ def _summary_direct_keys(d, g=None):
 
 
 def _summary_hits(prs, d, g=None):
+    # Keep the strict detector for generic template creation.
     pages = s14._summary_pages(prs)
 
     direct_keys = _summary_direct_keys(d, g)
@@ -837,54 +851,70 @@ def _summary_hits(prs, d, g=None):
     direct_hits = []
     project_hits = []
 
-    for si, tb, hr in pages:
-        hm = s13._summary_map(tb, hr)
-        if "task" not in hm:
+    # IMPORTANT: finding an EXISTING project is intentionally simpler than
+    # choosing a generic summary template. Scan every non-detail slide for a
+    # table that has 과제명 plus at least two normal summary columns.
+    for si, sl in enumerate(prs.slides):
+        if core._is_detail_like(sl):
             continue
 
-        # Build project blocks so vertically merged/blank continuation task cells
-        # stay attached to the last visible project label.
-        blocks = []
-        current = None
-        for r in range(hr + 1, len(tb.rows)):
-            raw = N(s13._row_text(tb, r, hm["task"]))
-            if raw:
-                if current is not None:
-                    blocks.append(current)
-                current = {"label": raw, "rows": [r]}
-            elif current is not None and _summary_row_has_payload(tb, r, hm):
-                current["rows"].append(r)
-        if current is not None:
-            blocks.append(current)
-
-        direct_rows = []
-        project_rows = []
-        for block in blocks:
-            raw = block["label"]
-            rows = block["rows"]
-            raw_key = s13._k(raw)
-
-            # FIRST: exact visible identity after removing separators.
-            # MBAG_EB-L(EU) == MBAG EB-L(EU) == MBAGEB-L(EU).
-            if raw_key and raw_key in direct_keys:
-                direct_rows.extend(rows)
+        found_tables = []
+        for sh in v310.walk(sl):
+            if not getattr(sh, "has_table", False):
                 continue
+            tb = sh.table
+            for hr in range(min(8, len(tb.rows))):
+                hm = _summary_header_map(tb, hr)
+                if "task" not in hm:
+                    continue
+                data_fields = sum(
+                    1 for k in ("issue", "problem", "progress", "signal") if k in hm
+                )
+                if data_fields >= 2:
+                    found_tables.append((tb, hr, hm))
+                    break
 
-            # SECOND: exact project-only fallback.
-            if (
-                project_key
-                and _summary_project_key_from_row(
-                    raw, project_key, customer_key
-                ) == project_key
-            ):
-                project_rows.extend(rows)
+        for tb, hr, hm in found_tables:
+            blocks = []
+            current = None
+            for r in range(hr + 1, len(tb.rows)):
+                raw = N(s13._row_text(tb, r, hm["task"]))
+                if raw:
+                    if current is not None:
+                        blocks.append(current)
+                    current = {"label": raw, "rows": [r]}
+                elif current is not None and _summary_row_has_payload(tb, r, hm):
+                    current["rows"].append(r)
+            if current is not None:
+                blocks.append(current)
 
-        if direct_rows:
-            direct_hits.append((si, tb, hr, hm, direct_rows))
-        if project_rows:
-            project_hits.append((si, tb, hr, hm, project_rows))
+            direct_rows = []
+            project_rows = []
+            for block in blocks:
+                raw = block["label"]
+                rows = block["rows"]
+                raw_key = s13._k(raw)
 
-    # A direct exact match anywhere always beats project-only/fuzzy logic.
+                # Old/simple behavior first: visible task text equality after
+                # removing separators. No catalog/customer split is required.
+                if raw_key and raw_key in direct_keys:
+                    direct_rows.extend(rows)
+                    continue
+
+                if (
+                    project_key
+                    and _summary_project_key_from_row(
+                        raw, project_key, customer_key
+                    ) == project_key
+                ):
+                    project_rows.extend(rows)
+
+            if direct_rows:
+                direct_hits.append((si, tb, hr, hm, direct_rows))
+            if project_rows:
+                project_hits.append((si, tb, hr, hm, project_rows))
+
+    # Exact direct text anywhere wins globally. Then exact project-only.
     return pages, (direct_hits if direct_hits else project_hits)
 
 def _confirmed_section_summary_hits(pages, d, g):
@@ -1294,6 +1324,126 @@ finally {{
     return True
 
 
+def _generated_detail_shape_count(sl):
+    count = 0
+    for sh in v310.walk(sl):
+        name = str(getattr(sh, "name", "") or "")
+        if name.startswith("AUTO_8D_TEXT_"):
+            count += 1
+    return count
+
+
+def _filled_detail_slide(sl):
+    return core._is_detail_like(sl) and _generated_detail_shape_count(sl) >= 4
+
+
+def _current_attachment_first_index(prs, d):
+    prefix = "AUTO_8D_ATTACH_" + core._attachment_key(d) + "_"
+    for i, sl in enumerate(prs.slides):
+        if str(getattr(sl, "name", "") or "").startswith(prefix):
+            return i
+    return None
+
+
+def _ensure_saved_detail(saved, d, g, mode, request=None):
+    """Guarantee a visible generated detail page before native-section creation.
+
+    Attachments may already have been inserted by the stable flow. If the cloned
+    detail shell is missing or contains only template markers, repair it in place;
+    if no detail slide exists, clone a known 2D~6D template immediately before
+    the current issue attachments and fill it.
+    """
+    from pptx import Presentation
+
+    prs = Presentation(saved)
+    candidate = None
+    wanted_id = (request or {}).get("slide_id")
+
+    if wanted_id is not None:
+        for i, sl in enumerate(prs.slides):
+            try:
+                if int(sl.slide_id) == int(wanted_id):
+                    candidate = i
+                    break
+            except Exception:
+                pass
+
+    if candidate is not None:
+        sl = prs.slides[candidate]
+        if not _filled_detail_slide(sl):
+            s13._update_detail_slide(sl, d, g, mode)
+            try:
+                s13._clear_slide_text_cache(sl)
+            except Exception:
+                pass
+            prs.save(saved)
+            if _filled_detail_slide(sl):
+                return candidate, {
+                    "name": N(core._new_section_name(d)) or "신규 과제",
+                    "slide_index": candidate,
+                    "slide_id": int(sl.slide_id),
+                }
+
+    # Look for an already-generated current detail before creating another one.
+    full, project, _customer = _project_parts(d)
+    issue = s13._k(s13._issue_display(d))
+    generated = []
+    for i, sl in enumerate(prs.slides):
+        if not _filled_detail_slide(sl):
+            continue
+        q = s13._k(s13._slide_text(sl))
+        score = 0
+        if full and full in q:
+            score += 100
+        elif project and project in q:
+            score += 70
+        if issue and issue in q:
+            score += 100
+        generated.append((score, i))
+    if generated:
+        generated.sort(reverse=True)
+        if generated[0][0] >= 70:
+            i = generated[0][1]
+            sl = prs.slides[i]
+            return i, {
+                "name": N(core._new_section_name(d)) or "신규 과제",
+                "slide_index": i,
+                "slide_id": int(sl.slide_id),
+            }
+
+    # No usable detail survived. Recreate it immediately before this issue's
+    # first attachment so the final order is Detail -> attachments.
+    insert_at = _current_attachment_first_index(prs, d)
+    if insert_at is None:
+        insert_at = len(prs.slides)
+
+    sl, template_index, _ = _original_clone_detail_shell(
+        prs, d, insert_at, None
+    )
+    try:
+        _remove_copied_visuals(sl)
+    except Exception:
+        pass
+    s13._update_detail_slide(sl, d, g, mode)
+    try:
+        s13._clear_slide_text_cache(sl)
+    except Exception:
+        pass
+
+    if not _filled_detail_slide(sl):
+        raise RuntimeError(
+            "상세페이지를 재생성했지만 2D~6D 내용이 작성되지 않았습니다. "
+            f"(양식 원본 slide {template_index + 1})"
+        )
+
+    prs.save(saved)
+    return insert_at, {
+        "name": N(core._new_section_name(d)) or "신규 과제",
+        "slide_index": insert_at,
+        "slide_id": int(sl.slide_id),
+    }
+
+
 def _find_saved_pending_detail(saved, request, d=None):
     """Return the CURRENT index of the cloned detail page after save/COM edits.
 
@@ -1386,13 +1536,11 @@ def _weekly_with_real_native_section(src, out, d, g, mode):
     )
 
     if force_new or request is not None:
-        if request is None:
-            raise RuntimeError(
-                "신규 구역 생성이 필요하지만 상세페이지 생성 요청이 만들어지지 않았습니다."
-            )
-        # Resolve the CURRENT saved position of the cloned detail. The numeric
-        # pre-save index may shift after summary/attachment edits.
-        saved_detail_index = _verify_pending_detail_slide(saved, request, d)
+        # First guarantee that a real, FILLED detail page exists. This also
+        # repairs the previous "section + attachments, but no detail" result.
+        saved_detail_index, request = _ensure_saved_detail(
+            saved, d, g, mode, request
+        )
         _create_native_section_com_saved(
             saved, request["name"], saved_detail_index
         )
