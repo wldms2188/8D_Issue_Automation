@@ -10,6 +10,7 @@ are patched.
 import re
 import datetime
 import subprocess
+import tkinter as tk
 from pathlib import Path
 
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -2753,3 +2754,307 @@ def _ppt_update_only_keep_current_detail(source, saved):
 
 
 output_variant._ppt_update_only = _ppt_update_only_keep_current_detail
+
+
+# ---------------------------------------------------------------------------
+# Parenthesized project confirmation from the ACTUAL weekly-summary page.
+#
+# User rule:
+# - normal projects: keep the old/simple automatic matcher untouched.
+# - projects containing (...): before execution, inspect the weekly summary,
+#   show same-base candidates, and let the user choose the actual summary label.
+# ---------------------------------------------------------------------------
+def _parenless_identity(value):
+    return s13._k(re.sub(r"\([^()]*\)", "", N(value)))
+
+
+def _catalog_exact_name_for_summary_label(label, team=""):
+    """Map a visible weekly-summary label back to the user's project catalog."""
+    raw_q = s13._k(label)
+    if not raw_q:
+        return ""
+
+    pool = list(catalog.PROJECTS.get(N(team), ()) or ())
+    seen = set(pool)
+    for item in catalog._all_projects():
+        if item not in seen:
+            pool.append(item)
+            seen.add(item)
+
+    exact = []
+    contained = []
+    for item in pool:
+        iq = s13._k(item)
+        pq = s13._k(catalog.project_part(item))
+        if iq and raw_q == iq:
+            exact.append(item)
+        elif pq and raw_q == pq:
+            exact.append(item)
+        elif iq and len(iq) >= 5 and iq in raw_q:
+            contained.append(item)
+        elif pq and len(pq) >= 5 and pq in raw_q:
+            contained.append(item)
+
+    if exact:
+        return exact[0]
+    if contained:
+        # Prefer the longest identity; it is least likely to be a partial model.
+        contained.sort(key=lambda x: len(s13._k(x)), reverse=True)
+        return contained[0]
+    return ""
+
+
+def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""):
+    """Return visible task labels whose BASE project matches when () is ignored."""
+    if not selected or not re.search(r"\([^()]+\)", N(selected)):
+        return []
+
+    from pptx import Presentation
+
+    selected_catalog = _catalog_separator_alias(selected) or N(selected)
+    selected_customer, selected_project = catalog.split_customer_task(selected_catalog)
+    if not selected_project:
+        selected_project = selected_catalog
+
+    project_base = _parenless_identity(selected_project)
+    full_base = _parenless_identity(
+        (selected_customer or N(customer)) + "_" + selected_project
+    )
+    if not project_base:
+        return []
+
+    prs = Presentation(weekly_path)
+    found = []
+    seen = set()
+
+    for sl in prs.slides:
+        for tb, hr, hm in _simple_summary_table_candidates(sl):
+            task_col = hm.get("task")
+            if task_col is None:
+                continue
+            for r in range(hr + 1, len(tb.rows)):
+                raw = N(s13._row_text(tb, r, task_col))
+                if not raw:
+                    continue
+
+                raw_base = _parenless_identity(raw)
+                if not raw_base:
+                    continue
+
+                same_base = (
+                    raw_base == project_base
+                    or raw_base == full_base
+                    or (
+                        len(project_base) >= 4
+                        and (
+                            raw_base.endswith(project_base)
+                            or project_base in raw_base
+                        )
+                    )
+                )
+                if not same_base:
+                    continue
+
+                key = s13._k(raw)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                canonical = _catalog_exact_name_for_summary_label(raw, team)
+                found.append(
+                    {
+                        "display": raw,
+                        "canonical": canonical or raw.replace("\n", " ").strip(),
+                        "exact": s13._k(raw) == s13._k(selected_catalog),
+                    }
+                )
+
+    # Exact same qualifier/spelling first; otherwise preserve weekly page order.
+    found.sort(key=lambda x: (0 if x["exact"] else 1))
+    return found
+
+
+def _choose_parenthesized_weekly_candidate(self, selected, candidates):
+    if not candidates:
+        return "keep", selected
+
+    if len(candidates) == 1:
+        candidate = candidates[0]
+        msg = (
+            "주간회의 요약페이지에서 유사한 과제명을 찾았습니다.\n\n"
+            f"입력값          : {selected}\n"
+            f"요약페이지 과제 : {candidate['display']}\n\n"
+            "이 과제로 업데이트하시겠습니까?"
+        )
+        choice = ui.dialog(
+            self,
+            "주간회의 과제명 확인",
+            msg,
+            "question",
+            (("입력값 유지", "keep"), ("이 과제로 업데이트", "use")),
+            width=650,
+            height=350,
+            button_width=16,
+        )
+        if choice is None:
+            return "cancel", selected
+        if choice == "use":
+            return "use", candidate["canonical"]
+        return "keep", selected
+
+    # More than one same-base candidate, e.g. EB-L(EU) / EB-L(US).
+    win = tk.Toplevel(self)
+    win.withdraw()
+    win.title("주간회의 과제명 확인")
+    win.configure(bg="white")
+    win.transient(self)
+    result = {"value": None}
+
+    head = tk.Frame(win, bg=ui.NAVY, height=56)
+    head.pack(fill="x")
+    head.pack_propagate(False)
+    tk.Label(
+        head,
+        text="주간회의 과제명 확인",
+        bg=ui.NAVY,
+        fg="white",
+        font=("Malgun Gothic", 12, "bold"),
+    ).pack(side="left", padx=22)
+
+    body = tk.Frame(win, bg="white")
+    body.pack(fill="both", expand=True, padx=22, pady=16)
+    tk.Label(
+        body,
+        text=(
+            "주간회의 요약페이지에서 유사한 과제명이 여러 개 확인되었습니다.\n"
+            "업데이트할 과제를 선택해 주세요.\n\n"
+            f"입력값 : {selected}"
+        ),
+        bg="white",
+        fg=ui.TEXT,
+        justify="left",
+        anchor="w",
+        font=("Malgun Gothic", 10),
+    ).pack(fill="x", pady=(0, 10))
+
+    lb = tk.Listbox(
+        body,
+        font=("Malgun Gothic", 10),
+        height=min(8, len(candidates)),
+        exportselection=False,
+    )
+    lb.pack(fill="both", expand=True)
+    for item in candidates:
+        lb.insert("end", item["display"].replace("\n", " / "))
+    exact_index = next((i for i, x in enumerate(candidates) if x["exact"]), 0)
+    lb.selection_set(exact_index)
+    lb.activate(exact_index)
+
+    foot = tk.Frame(win, bg="#F6F8FA", height=76)
+    foot.pack(fill="x")
+    foot.pack_propagate(False)
+    box = tk.Frame(foot, bg="#F6F8FA")
+    box.pack(side="right", padx=20, pady=14)
+
+    def finish(value):
+        result["value"] = value
+        win.destroy()
+
+    tk.Button(
+        box,
+        text="취소",
+        command=lambda: finish(("cancel", selected)),
+        bg="#E5EBF0",
+        fg=ui.TEXT,
+        bd=0,
+        font=("Malgun Gothic", 9, "bold"),
+        width=10,
+        pady=9,
+    ).pack(side="left", padx=4)
+    tk.Button(
+        box,
+        text="입력값 유지",
+        command=lambda: finish(("keep", selected)),
+        bg="#E5EBF0",
+        fg=ui.TEXT,
+        bd=0,
+        font=("Malgun Gothic", 9, "bold"),
+        width=12,
+        pady=9,
+    ).pack(side="left", padx=4)
+
+    def use_selected():
+        sel = lb.curselection()
+        if not sel:
+            return
+        item = candidates[int(sel[0])]
+        finish(("use", item["canonical"]))
+
+    tk.Button(
+        box,
+        text="선택한 과제 사용",
+        command=use_selected,
+        bg=ui.BLUE,
+        fg="white",
+        bd=0,
+        font=("Malgun Gothic", 9, "bold"),
+        width=14,
+        pady=9,
+    ).pack(side="left", padx=4)
+
+    win.protocol("WM_DELETE_WINDOW", lambda: finish(("cancel", selected)))
+    ui.center_window(win, self, 680, 430)
+    win.deiconify()
+    win.grab_set()
+    win.focus_force()
+    self.wait_window(win)
+    return result["value"] or ("cancel", selected)
+
+
+_original_enterprise_run_parenthetical_weekly = enterprise_main.EnterpriseApp.run
+
+
+def _run_with_parenthesized_weekly_choice(self):
+    g = self.gui()
+    weekly = N(g.get("pptweekly"))
+    selected = N(g.get("task_name"))
+
+    # Only the small catalog/input subset containing parentheses gets this popup.
+    if (
+        weekly
+        and Path(weekly).exists()
+        and selected
+        and re.search(r"\([^()]+\)", selected)
+    ):
+        try:
+            candidates = _parenthesized_weekly_candidates(
+                weekly,
+                selected,
+                N(g.get("team")),
+                "",
+            )
+            action, chosen = _choose_parenthesized_weekly_candidate(
+                self, selected, candidates
+            )
+            if action == "cancel":
+                try:
+                    self.status_var.set(
+                        "READY · 주간회의 과제명 확인이 취소되었습니다."
+                    )
+                except Exception:
+                    pass
+                return
+            if action == "use" and chosen and chosen != selected:
+                try:
+                    self.vars["task_name"].set(chosen)
+                except Exception:
+                    pass
+        except Exception:
+            # Candidate suggestion is optional. Never block the old/simple
+            # normal execution merely because the preflight scanner failed.
+            pass
+
+    return _original_enterprise_run_parenthetical_weekly(self)
+
+
+enterprise_main.EnterpriseApp.run = _run_with_parenthesized_weekly_choice
