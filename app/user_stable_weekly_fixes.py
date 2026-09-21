@@ -1661,6 +1661,37 @@ def _simple_summary_table_candidates(sl):
     return out
 
 
+def _paren_qualifiers(value):
+    """Normalized parenthetical qualifiers; EU and US must remain different."""
+    raw = N(value)
+    return tuple(
+        s13._k(x)
+        for x in re.findall(r"\(([^()]*)\)", raw)
+        if s13._k(x)
+    )
+
+
+def _required_project_parens(d, g=None):
+    d = d or {}
+    g = g or {}
+    selected = N(g.get("task_name")) or N(d.get("task_name"))
+    alias = _catalog_separator_alias(selected)
+    source = alias or selected
+    _customer, project = catalog.split_customer_task(source)
+    project = N(project or source)
+    return _paren_qualifiers(project)
+
+
+def _paren_compatible(raw, required):
+    if not required:
+        return True
+    found = _paren_qualifiers(raw)
+    # If the input project has a qualifier such as (EU), the visible project
+    # must carry exactly the same qualifier sequence. (EU) != (US), and a
+    # qualifier-less base name is not silently treated as the same variant.
+    return found == tuple(required)
+
+
 def _summary_identity_keys(d, g=None):
     """Return separator/newline-insensitive full/project identities.
 
@@ -1724,10 +1755,12 @@ def _summary_identity_keys(d, g=None):
     return full_keys, project_keys
 
 
-def _simple_task_match_rank(raw, full_keys, project_keys):
-    """Rank visible task/cell/sentence text using the user's old simple contract."""
+def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
+    """Rank visible text while preserving parenthetical project variants."""
     q = s13._k(raw)
     if not q:
+        return 0
+    if not _paren_compatible(raw, required_parens):
         return 0
 
     # 1) Exact customer+project, regardless of _, space or newline.
@@ -1753,6 +1786,7 @@ def _simple_task_match_rank(raw, full_keys, project_keys):
 
 def _find_existing_summary_project(prs, d, g):
     full_keys, project_keys = _summary_identity_keys(d, g)
+    required_parens = _required_project_parens(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
 
     hits = []
@@ -1765,7 +1799,9 @@ def _find_existing_summary_project(prs, d, g):
             display = ""
             for r in range(hr + 1, len(tb.rows)):
                 raw = N(s13._row_text(tb, r, hm["task"]))
-                rank = _simple_task_match_rank(raw, full_keys, project_keys)
+                rank = _simple_task_match_rank(
+                    raw, full_keys, project_keys, required_parens
+                )
                 if rank:
                     rows.append(r)
                     if rank > best_rank:
@@ -1791,7 +1827,7 @@ def _find_existing_summary_project(prs, d, g):
             # layouts where python-pptx cannot expose the visible task cell.
             slide_text = s13._slide_text(sl)
             slide_rank = _simple_task_match_rank(
-                slide_text, full_keys, project_keys
+                slide_text, full_keys, project_keys, required_parens
             )
             if slide_rank:
                 payload_rows = [
@@ -2059,6 +2095,135 @@ def _assert_final_weekly_detail(saved):
     return manifest
 
 
+# Use the pre-polish weekly_fix5 writer for detail generation. It is the
+# previously working detail creation path captured before final_output_polish
+# wrapped base.weekly.
+_known_good_detail_writer = final_polish._original_weekly
+
+
+def _find_current_detail_after_baseline(src, saved, d, request=None):
+    from pptx import Presentation
+
+    dst = Presentation(saved)
+
+    # New-section request contains the exact cloned detail slide id.
+    if request and request.get("slide_id") is not None:
+        wanted = int(request["slide_id"])
+        for i, sl in enumerate(dst.slides):
+            try:
+                if int(sl.slide_id) == wanted and _filled_detail_slide(sl):
+                    return i
+            except Exception:
+                pass
+
+    # For a NEW issue, identify the new non-attachment filled detail slide by
+    # comparing slide ids against the original weekly deck.
+    try:
+        src_prs = Presentation(src)
+        source_ids = {int(sl.slide_id) for sl in src_prs.slides}
+    except Exception:
+        source_ids = set()
+
+    new_details = []
+    for i, sl in enumerate(dst.slides):
+        name = str(getattr(sl, "name", "") or "")
+        if name.startswith("AUTO_8D_ATTACH_"):
+            continue
+        try:
+            is_new_id = int(sl.slide_id) not in source_ids
+        except Exception:
+            is_new_id = False
+        if is_new_id and _filled_detail_slide(sl):
+            new_details.append(i)
+    if new_details:
+        return new_details[-1]
+
+    # Existing-issue update: the detail slide keeps its source slide id.
+    try:
+        idx = _find_existing_detail_exact_issue(dst, d)
+        if idx is not None and _filled_detail_slide(dst.slides[idx]):
+            return idx
+    except Exception:
+        pass
+
+    return None
+
+
+def _weekly_baseline_detail_path(src, out, d, g, mode):
+    """Restore the known-good detail creator; keep only our summary/section fixes."""
+    global _pending_user_native_section
+    from pptx import Presentation
+
+    _pending_user_native_section = None
+
+    # Version exactly once, then call the original weekly_fix5 detail writer.
+    versioned = final_polish._version_path(out)
+    msg, saved = _known_good_detail_writer(src, versioned, d, g, mode)
+
+    request = _pending_user_native_section
+    force_new = str((g or {}).get("_weekly_create_new_section") or "").lower() in (
+        "1", "true", "yes"
+    )
+
+    detail_index = _find_current_detail_after_baseline(src, saved, d, request)
+    if detail_index is None:
+        raise RuntimeError(
+            "최종 전체본 검증 실패: 기존 상세 생성 경로를 실행했지만 "
+            "현재 이슈의 2D~6D 상세페이지를 찾지 못했습니다. "
+            "유첨만 있는 파일은 완료 처리하지 않았습니다."
+        )
+
+    # Mark exactly this run's detail so the reduced output cannot remove it.
+    prs = Presentation(saved)
+    detail_slide = prs.slides[detail_index]
+    _mark_detail_slide(detail_slide, d)
+    detail_id = int(detail_slide.slide_id)
+    prs.save(saved)
+
+    # If a new native section was requested, create it only after the known-good
+    # detail and attachments are already saved.
+    if force_new or request is not None:
+        current_index = _find_saved_slide_index_by_id(saved, detail_id)
+        if current_index is None:
+            raise RuntimeError("신규 구역 생성 전 상세페이지 위치를 다시 찾지 못했습니다.")
+        section_name = (
+            N((request or {}).get("name"))
+            or N(core._new_section_name(d))
+            or "신규 과제"
+        )
+        _create_native_section_com_saved(saved, section_name, current_index)
+        msg += f" / 신규 구역 [{section_name}] 생성"
+
+    # Final whole-file check: the EXACT marked detail must still be present.
+    final_prs = Presentation(saved)
+    final_detail = None
+    for i, sl in enumerate(final_prs.slides):
+        if str(getattr(sl, "name", "") or "") == _detail_slide_marker(d):
+            final_detail = i
+            break
+
+    if final_detail is None or not _filled_detail_slide(final_prs.slides[final_detail]):
+        raise RuntimeError(
+            "최종 전체본 검증 실패: 저장/유첨/구역 생성 후 상세페이지가 없습니다. "
+            "유첨만 있는 결과는 저장 완료로 처리하지 않았습니다."
+        )
+
+    attach_pages = [
+        i + 1
+        for i, sl in enumerate(final_prs.slides)
+        if str(getattr(sl, "name", "") or "").startswith("AUTO_8D_ATTACH_")
+    ]
+
+    return (
+        msg
+        + f" / FINAL 상세 page={final_detail + 1}"
+        + f" / FINAL 유첨 page={attach_pages}"
+        + " / WRITER=BASELINE_DETAIL"
+        + f" / 버전 저장={Path(saved).name}",
+        saved,
+    )
+
+
 def _weekly_single_path(src, out, d, g, mode):
     from pptx import Presentation
 
@@ -2179,8 +2344,8 @@ def _weekly_single_path(src, out, d, g, mode):
     )
 
 
-# Absolute last assignment: force every runtime alias used by the GUI/core to
-# the SAME weekly writer. This removes ambiguity from earlier imported wrappers.
+# Absolute last assignment: every GUI/core alias uses the previously working
+# weekly_fix5 detail creator plus our narrow summary/native-section fixes.
 for _runtime_base in (
     core.base,
     s14.base,
@@ -2189,7 +2354,7 @@ for _runtime_base in (
     legacy_final.base,
     final_polish.base,
 ):
-    _runtime_base.weekly = _weekly_single_path
+    _runtime_base.weekly = _weekly_baseline_detail_path
 
 
 # ---------------------------------------------------------------------------
