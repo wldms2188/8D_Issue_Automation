@@ -2,9 +2,6 @@
 import datetime
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
-import os
-import subprocess
-from pathlib import Path
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.styles import Font
@@ -71,9 +68,6 @@ def _find_target_row(src,d,g):
 _original_update_excel=base.update_excel
 
 def update_excel_change_aware(src,out,d,g,new=False):
-    # Preserve the long-stable change-highlighting path.  Do not introduce a new
-    # Excel COM save here; today's WMF symptom is upstream in openpyxl's drawing
-    # reader, not evidence that the mature blue-text pass caused it.
     target_row=None; before={}
     if not new:
         target_row=_find_target_row(src,d,g)
