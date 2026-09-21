@@ -672,12 +672,12 @@ def _strict_detail_template_fingerprint(sl):
         if token in whole
     )
 
-    # Strong positive evidence: all five D markers and at least two metadata
-    # fields. Four markers are accepted only when the detail titles are very
-    # complete, covering templates whose 4D marker is shared by two blocks.
+    # Strong positive evidence: all five dedicated D markers plus either
+    # the expected detail item titles or the top metadata structure.  This lets
+    # older detail templates omit some metadata without accepting timelines.
     strong = (
-        (len(marker_hits) >= 5 and metadata_hits >= 2)
-        or (len(marker_hits) >= 4 and metadata_hits >= 2 and title_hits >= 5)
+        len(marker_hits) >= 5
+        and (title_hits >= 4 or metadata_hits >= 2)
     )
 
     # Explicit schedule/roadmap penalty. These words alone do not reject a real
