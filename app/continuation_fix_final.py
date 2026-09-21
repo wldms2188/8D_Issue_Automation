@@ -13,6 +13,7 @@ Applied last in main_enterprise_final so these user-confirmed rules win:
 
 import main_recovery_step14 as s14
 import main_recovery_step4 as s4
+import main_recovery_step13 as s13
 import main_v310 as v310
 
 N=v310.N
@@ -39,16 +40,36 @@ def _prepare_new_summary_page_after_last_match(prs,pages,g,template_index=None):
 
 def _detail_title_from_user_inputs(d,g):
     g=g or {}
-    customer_project=N(g.get('task_name'))
-    sample=N(g.get('sample'))
-    stage=N(g.get('stage'))
-    occurrence_site=N(g.get('occurrence_site'))
+    d=d or {}
 
-    # User-entered/selected values are authoritative when complete.
+    # Per-field priority confirmed by the user:
+    # GUI input > existing extraction/legacy value.
+    customer_project=(
+        N(g.get('task_name'))
+        or N(s13._customer_task(d))
+    )
+    sample=(
+        N(g.get('sample'))
+        or N(d.get('sample'))
+        or N(d.get('occurrence_sample'))
+    )
+    stage=(
+        N(g.get('stage'))
+        or N(d.get('development_stage'))
+        or N(d.get('occurrence_stage'))
+        or N(d.get('stage'))
+    )
+    occurrence_site=(
+        N(g.get('occurrence_site'))
+        or N(d.get('_origin_occurrence_site'))
+        or N(d.get('occurrence_site'))
+    )
+
+    # Build the requested full title whenever every component can be resolved.
     if all((customer_project,sample,stage,occurrence_site)):
         return f'{customer_project}_{sample}_{stage}_{occurrence_site} 이슈 발생'
 
-    # Missing input -> keep all previously established test/build/fallback rules.
+    # If a component cannot be resolved at all, preserve the previous safe title logic.
     return _original_detail_title_text(d,g)
 
 
