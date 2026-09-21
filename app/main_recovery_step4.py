@@ -133,6 +133,29 @@ def _strip_selected_project_prefix(issue,d):
     if not s:
         return ''
 
+    # The issue title may begin with routing/model labels (e.g. IF_AA_Module,
+    # IF_ES) before the selected project.  The project is the anchor: once a
+    # token sufficiently matching the project is found, discard everything
+    # before it, regardless of whether those prefixes are known markers.
+    task=N(d.get('task_name'))
+    customer=N(d.get('customer'))
+    project=task
+    if customer and project:
+        project=re.sub(r'^\\s*'+re.escape(customer)+r'\\s*[_\\-/／|:： ]+\\s*','',project,flags=re.I)
+    project=N(project).strip(' _-/／|:：')
+    if project:
+        # Compare normalized separator-delimited tokens and also allow the
+        # issue token to contain the project name (project variants/suffixes).
+        parts=[x for x in re.split(r'[_/|:：\\-]+',s) if N(x)]
+        pk=s13._k(project) if 's13' in globals() else re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
+        for idx,part in enumerate(parts):
+            q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
+            if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
+                anchored='_'.join(parts[idx:]).strip(' _-/／|:：')
+                if anchored:
+                    s=anchored
+                break
+
     prefix=N(v319._weekly_task(d))
     if prefix:
         m=re.match(r'^\s*'+re.escape(prefix)+r'\s*[_\-/／|:：]*\s*',s,re.I)
