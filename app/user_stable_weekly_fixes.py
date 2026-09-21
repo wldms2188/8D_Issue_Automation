@@ -512,19 +512,37 @@ def _shape_hits_detail_content_zone(sh):
 
 
 _METADATA_TABLE_LABELS = (
-    "발생상황", "발생 단계", "발생단계",
-    "재발여부", "개발여부",
+    "발생상황", "발생 상황",
+    "발생 단계", "발생단계",
+    "재발여부", "재발 여부",
+    "개발여부", "개발 여부",
     "이슈영향도", "이슈 영향도",
     "이슈기인", "이슈 기인",
-    "수평전개",
+    "수평전개", "수평 전개",
+    "담당자", "담당팀",
+    "업무진행현황", "업무 진행 현황",
 )
 
 
 def _is_detail_metadata_table(sh):
-    """Top classification/owner table is template data and must stay intact."""
+    """Top classification/owner table is template data and must stay intact.
+
+    Real weekly templates may split the top information area into several small
+    tables.  Therefore do NOT require multiple metadata labels in one table.
+    Any table in the top header area, or any table containing even one known
+    metadata label, is preserved with all of its text.
+    """
     if not getattr(sh, "has_table", False):
         return False
     try:
+        # Positional guard: the 2D~7D content zones start around 2.3in.
+        # Anything clearly above that is header/meta/template information.
+        top_in = float(getattr(sh, "top", 0) or 0) / 914400.0
+        height_in = float(getattr(sh, "height", 0) or 0) / 914400.0
+        bottom_in = top_in + height_in
+        if top_in < 2.20 and bottom_in <= 2.55:
+            return True
+
         tb = sh.table
         text = " ".join(
             N(tb.cell(r, c).text)
@@ -532,8 +550,13 @@ def _is_detail_metadata_table(sh):
             for c in range(len(tb.columns))
         )
         q = s13._k(text)
-        hits = sum(1 for label in _METADATA_TABLE_LABELS if s13._k(label) in q)
-        return hits >= 2
+
+        # One known fixed label is enough. Small split tables often contain only
+        # one pair such as "이슈 기인 | 공정".
+        return any(
+            s13._k(label) in q
+            for label in _METADATA_TABLE_LABELS
+        )
     except Exception:
         return False
 
