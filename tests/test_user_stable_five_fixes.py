@@ -168,6 +168,42 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(fix._section_match_level("MBAGEB565M", d1), 3)
         self.assertEqual(fix._section_match_level("MBAG_EB565M", d2), 3)
 
+    def test_project_only_fallback_survives_customer_mismatch(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "GM MBAG", "old")
+
+        # Step 1 must fail because customer metadata is intentionally different.
+        # Step 2 must still match the exact project MBAG.
+        d = {
+            "customer": "OTHER",
+            "task_name": "MBAG",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG"}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertIn("마지막", action)
+        self.assertEqual(tb.cell(row, 0).text, "GM MBAG")
+
+    def test_project_only_section_fallback_survives_customer_mismatch(self):
+        d = {"customer": "OTHER", "task_name": "MBAG"}
+        self.assertEqual(fix._section_match_level("GM MBAG", d), 2)
+        self.assertEqual(fix._section_match_level("GM_MBAG", d), 2)
+
     def test_confirmed_similar_section_reuses_real_summary_label(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "GM_MBAG E~", "old")
