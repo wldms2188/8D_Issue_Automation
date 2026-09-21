@@ -136,6 +136,49 @@ class ContinuationFixTests(unittest.TestCase):
                             found_new = True
         self.assertTrue(found_new)
 
+    def test_weekly_prefers_exact_customer_project_then_project_only(self):
+        prs = Presentation()
+        add_summary_slide(prs, 'OTHER_A1', 'wrong-customer', top=1.0, rows=3)
+        add_summary_slide(prs, 'GM_A1', 'exact-customer-project', top=1.0, rows=3)
+        add_summary_slide(prs, 'OTHER_A1', 'later-project-only', top=1.0, rows=3)
+
+        d = {'customer': 'OLD', 'task_name': 'OLD', 'issue_name': 'new', 'problem': 'P'}
+        g = {'task_name': 'GM_A1'}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                tb.cell(row, hm['task']).text = 'GM_A1'
+                tb.cell(row, hm['issue']).text = 'NEW'
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(prs, d, g, 'new')
+        finally:
+            s14._write_summary_row = old_writer
+
+        # Exact GM_A1 must win globally even though OTHER_A1 appears on a later page.
+        self.assertEqual(si, 1)
+        self.assertEqual(prs.slides[1].shapes[0].table.cell(row, 1).text, 'NEW')
+
+    def test_weekly_falls_back_to_project_only_when_customer_project_absent(self):
+        prs = Presentation()
+        add_summary_slide(prs, 'OLD_CUSTOMER_A1', 'project-match', top=1.0, rows=3)
+        d = {'customer': 'OLD', 'task_name': 'OLD', 'issue_name': 'new', 'problem': 'P'}
+        g = {'task_name': 'GM_A1'}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                tb.cell(row, hm['task']).text = 'GM_A1'
+                tb.cell(row, hm['issue']).text = 'NEW'
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(prs, d, g, 'new')
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+
 
 if __name__ == '__main__':
     unittest.main()
