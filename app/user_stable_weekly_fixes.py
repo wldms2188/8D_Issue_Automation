@@ -444,7 +444,13 @@ def _fixed_detail_text_only(text):
     for marker, titles in _FIXED_DETAIL_PREFIXES:
         if marker not in q:
             continue
-        for title in titles:
+        # Prefer the longest title first so e.g. "임시대책(필요시)" is not
+        # shortened to just "임시대책".
+        for title in sorted(
+            titles,
+            key=lambda x: len(s13._k(x)),
+            reverse=True,
+        ):
             tq = s13._k(title)
             pos_m = q.find(marker)
             pos_t = q.find(tq)
