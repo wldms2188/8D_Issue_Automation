@@ -306,6 +306,74 @@ class UserStableFiveFixesTest(unittest.TestCase):
             getattr(sh, "text", "") for sh in prs.slides[5].shapes
         ))
 
+    def test_summary_project_block_with_blank_task_continuation(self):
+        prs = Presentation()
+
+        sl1 = prs.slides.add_slide(prs.slide_layouts[6])
+        tb1 = sl1.shapes.add_table(
+            4, 5, Inches(0.5), Inches(0.7), Inches(9.5), Inches(1.8)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항", "Signal")):
+            tb1.cell(0, col).text = h
+        tb1.cell(1, 0).text = "MBAG_EB565M"
+        tb1.cell(1, 1).text = "old-1"
+        tb1.cell(2, 0).text = ""
+        tb1.cell(2, 1).text = "old-2"
+
+        sl2 = prs.slides.add_slide(prs.slide_layouts[6])
+        tb2 = sl2.shapes.add_table(
+            4, 5, Inches(0.5), Inches(0.7), Inches(9.5), Inches(1.8)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항", "Signal")):
+            tb2.cell(0, col).text = h
+        tb2.cell(1, 0).text = "MBAG EB565M"
+        tb2.cell(1, 1).text = "old-last-1"
+        tb2.cell(2, 0).text = ""
+        tb2.cell(2, 1).text = "old-last-2"
+
+        tail = prs.slides.add_slide(prs.slide_layouts[6])
+        tail.shapes.add_textbox(
+            Inches(1), Inches(1), Inches(2), Inches(1)
+        ).text = "TAIL"
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAGEB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAGEB565M"}
+
+        old_fit = s14._summary_row_insert_fits
+        old_writer = s14._write_summary_row
+        try:
+            s14._summary_row_insert_fits = lambda *args, **kwargs: False
+
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                tb.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._summary_row_insert_fits = old_fit
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 2)
+        self.assertIn("바로 다음 페이지", action)
+        new_tb = next(
+            sh.table for sh in prs.slides[2].shapes
+            if getattr(sh, "has_table", False)
+        )
+        hm = s13._summary_map(new_tb, 0)
+        self.assertEqual(new_tb.cell(row, hm["task"]).text, "MBAG EB565M")
+        self.assertIn(
+            "TAIL",
+            "\n".join(getattr(sh, "text", "") for sh in prs.slides[3].shapes),
+        )
+
     def test_mixed_separator_last_page_overflow_preserves_existing_label(self):
         prs = Presentation()
         add_summary_slide(prs, "MBAG_EB565M", "old-1")
