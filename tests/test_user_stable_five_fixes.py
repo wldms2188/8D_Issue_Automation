@@ -5,6 +5,7 @@ import unittest
 
 from PIL import Image
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.util import Inches
 
@@ -13,6 +14,36 @@ import main_recovery_step13 as s13
 import main_recovery_step14 as s14
 import user_stable_weekly_fixes as fix
 import main_recovery_step14_fix2 as core
+
+
+def add_real_detail_slide(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    labels = (
+        ("2D", "현상"),
+        ("3D", "임시조치"),
+        ("4D", "발생원인"),
+        ("5D", "개선대책"),
+        ("6D", "효과검증"),
+    )
+    for i, (marker, title) in enumerate(labels):
+        y = 1.7 + i * 0.65
+        sl.shapes.add_textbox(
+            Inches(0.4), Inches(y), Inches(0.55), Inches(0.3)
+        ).text = marker
+        sl.shapes.add_textbox(
+            Inches(1.0), Inches(y), Inches(1.5), Inches(0.3)
+        ).text = title
+    for i, text in enumerate(("Signal", "이슈기인", "발생단계")):
+        sl.shapes.add_textbox(
+            Inches(8.0), Inches(0.5 + i * 0.4), Inches(2.0), Inches(0.3)
+        ).text = text
+    sl.shapes.add_textbox(
+        Inches(5.5), Inches(2.8), Inches(1.5), Inches(0.3)
+    ).text = "유출원인"
+    sl.shapes.add_textbox(
+        Inches(5.5), Inches(5.0), Inches(1.5), Inches(0.3)
+    ).text = "수평전개"
+    return sl
 
 
 def add_summary_slide(prs, task, issue="old", top=0.7, rows=3):
@@ -580,6 +611,71 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertEqual(hit[1], 0)
 
+    def test_schedule_gate_page_is_never_detail_template(self):
+        prs = Presentation()
+        schedule = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, text in enumerate(
+            (
+                "CV 25/06/25",
+                "DV 25/10/25",
+                "PD/PV gate 일정 조정",
+                "SOP Target Now",
+                "4D 원인 분석",
+                "5D 개선 일정",
+            )
+        ):
+            schedule.shapes.add_textbox(
+                Inches(0.5), Inches(0.5 + i * 0.45), Inches(4.5), Inches(0.3)
+            ).text = text
+
+        detail = add_real_detail_slide(prs)
+
+        self.assertFalse(
+            fix._strict_detail_template_fingerprint(schedule)["ok"]
+        )
+        self.assertTrue(
+            fix._strict_detail_template_fingerprint(detail)["ok"]
+        )
+        self.assertEqual(
+            fix._template_detail_index_any_section(
+                prs, {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
+            ),
+            1,
+        )
+
+    def test_new_detail_text_is_blue_even_in_existing_mode(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        old_inner = fix._detail_update_before_blue_fix
+        try:
+            def fake_inner(slide, d, g, mode):
+                sh = slide.shapes.add_textbox(
+                    Inches(3), Inches(1.0), Inches(3), Inches(0.5)
+                )
+                sh.name = "AUTO_8D_TEXT_2D"
+                sh.text = "새 상세 내용"
+
+            fix._detail_update_before_blue_fix = fake_inner
+            fix._update_detail_slide_force_new_text_blue(
+                sl, {}, {}, "existing"
+            )
+        finally:
+            fix._detail_update_before_blue_fix = old_inner
+
+        auto = next(
+            sh for sh in sl.shapes
+            if str(getattr(sh, "name", "")) == "AUTO_8D_TEXT_2D"
+        )
+        colors = [
+            run.font.color.rgb
+            for p in auto.text_frame.paragraphs
+            for run in p.runs
+            if run.text
+        ]
+        self.assertTrue(colors)
+        self.assertTrue(all(x == RGBColor(0x00, 0x33, 0xFF) for x in colors))
+
     def test_baseline_detail_writer_is_pre_polish_weekly_writer(self):
         self.assertIs(fix._known_good_detail_writer, fix.final_polish._original_weekly)
 
@@ -589,11 +685,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             p = td / "final.pptx"
 
             prs = Presentation()
-            detail = prs.slides.add_slide(prs.slide_layouts[6])
-            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
-                detail.shapes.add_textbox(
-                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
-                ).text = token
+            detail = add_real_detail_slide(prs)
             for i, key in enumerate(("2D", "3D", "4D_CAUSE", "5D")):
                 sh = detail.shapes.add_textbox(
                     Inches(3), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
