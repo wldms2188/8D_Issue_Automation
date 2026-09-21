@@ -481,6 +481,53 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
+    def test_project_parentheses_rule_is_exact_for_input_project(self):
+        expected = fix._project_parenthetical_parts(
+            "MBAG_EB-L(EU)", "MBAG"
+        )
+        self.assertEqual(expected, ("eu",))
+
+        self.assertTrue(
+            fix._project_parentheses_match(
+                "MBAG\nEB-L(EU)\n검토사항(2차)",
+                expected,
+            )
+        )
+        self.assertFalse(
+            fix._project_parentheses_match(
+                "MBAG\nEB-L(US)\n검토사항(2차)",
+                expected,
+            )
+        )
+
+    def test_summary_project_parentheses_rule_uses_project_not_other_notes(self):
+        prs = Presentation()
+        sl1 = prs.slides.add_slide(prs.slide_layouts[6])
+        tb1 = sl1.shapes.add_table(
+            3, 4, Inches(0.5), Inches(0.7), Inches(9), Inches(1.5)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항")):
+            tb1.cell(0, col).text = h
+        tb1.cell(1, 0).text = "MBAG\nEB-L(US)\n검토(2차)"
+        tb1.cell(1, 1).text = "wrong"
+
+        sl2 = prs.slides.add_slide(prs.slide_layouts[6])
+        tb2 = sl2.shapes.add_table(
+            3, 4, Inches(0.5), Inches(0.7), Inches(9), Inches(1.5)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항")):
+            tb2.cell(0, col).text = h
+        tb2.cell(1, 0).text = "MBAG EB-L(EU) (3차)"
+        tb2.cell(1, 1).text = "right"
+
+        hit = fix._find_existing_summary_project(
+            prs,
+            {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"},
+            {"task_name": "MBAG_EB-L(EU)"},
+        )
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 1)
+
     def test_parenthetical_match_ignores_unrelated_parentheses_in_same_sentence(self):
         d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
         g = {"task_name": "MBAG_EB-L(EU)"}
