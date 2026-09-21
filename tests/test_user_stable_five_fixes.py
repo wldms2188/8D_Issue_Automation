@@ -538,6 +538,46 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertIsNone(sec["element"])
         self.assertEqual(sec["indices"], [0])
 
+    def test_pending_detail_is_relocated_by_slide_id_after_position_shift(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "shifted.pptx"
+            prs = Presentation()
+
+            summary = prs.slides.add_slide(prs.slide_layouts[6])
+            summary.shapes.add_textbox(
+                Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
+            ).text = "SUMMARY"
+
+            detail = prs.slides.add_slide(prs.slide_layouts[6])
+            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                detail.shapes.add_textbox(
+                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+                ).text = token
+            detail.shapes.add_textbox(
+                Inches(3), Inches(0.5), Inches(3), Inches(0.4)
+            ).text = "GM_MBAG"
+
+            request = {
+                "name": "GM_MBAG",
+                "slide_index": 1,
+                "slide_id": int(detail.slide_id),
+            }
+
+            # Simulate a post-create slide movement: old numeric index now points
+            # to another slide, but PowerPoint slide-id remains the same.
+            tail = prs.slides.add_slide(prs.slide_layouts[6])
+            tail.shapes.add_textbox(
+                Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
+            ).text = "TAIL"
+            fix._move_slide_by_id(prs, int(detail.slide_id), 2)
+            prs.save(out)
+
+            found = fix._verify_pending_detail_slide(
+                str(out), request, {"customer": "GM", "task_name": "GM_MBAG"}
+            )
+
+        self.assertEqual(found, 2)
+
     def test_new_section_wrapper_requires_and_verifies_detail_slide(self):
         old_active = fix._active_weekly_before_native_section
         old_com = fix._create_native_section_com_saved
