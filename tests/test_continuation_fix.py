@@ -12,6 +12,9 @@ from pptx.util import Inches
 import main_recovery_step14 as s14
 import main_recovery_step13 as s13
 import continuation_fix_final as fix
+import main_recovery_step1 as step1
+import main_recovery_step4 as step4
+import main_recovery_step14_fix2 as step14fix
 
 
 HEADERS = ['과제명', '이슈', '현상', '진행현황', 'Signal']
@@ -225,6 +228,42 @@ class ContinuationFixTests(unittest.TestCase):
             s14._write_summary_row = old_writer
 
         self.assertIn('신규 요약 페이지', action)
+
+
+    def test_summary_issue_removes_routing_customer_and_project(self):
+        d = {
+            'customer': 'GM',
+            'task_name': 'MBAG',
+            'issue_name': 'IF_AA_Module_GM_MBAG_Cell swelling',
+        }
+        self.assertEqual(step1._page1_issue(d), 'Cell swelling')
+
+    def test_detail_issue_keeps_customer_project_but_removes_routing(self):
+        d = {
+            'customer': 'GM',
+            'task_name': 'MBAG',
+            'issue_name': 'IF_ES_GM_MBAG_Cell swelling',
+        }
+        self.assertEqual(
+            step4._strip_selected_project_prefix(d['issue_name'], d),
+            'GM_MBAG_Cell swelling',
+        )
+
+    def test_section_customer_and_project_match_ignores_separator_style(self):
+        d = {'customer': 'GM', 'task_name': 'MBAG'}
+        self.assertEqual(step14fix._section_match_level('GM_MBAG', d), 3)
+        self.assertEqual(step14fix._section_match_level('GM MBAG', d), 3)
+        self.assertEqual(step14fix._section_match_level('GM-MBAG', d), 3)
+
+    def test_section_priority_project_exact_before_similarity(self):
+        d = {'customer': 'GM', 'task_name': 'MBAG'}
+        self.assertEqual(step14fix._section_match_level('MBAG', d), 2)
+        self.assertEqual(step14fix._section_match_level('MBAG E~', d), 1)
+
+    def test_new_section_name_prefers_confirmed_customer_project(self):
+        d = {'customer': 'GM', 'task_name': 'MBAG'}
+        g = {'task_name': 'GM_MBAG'}
+        self.assertEqual(step14fix._new_section_name(d, g), 'GM_MBAG')
 
 
 if __name__ == '__main__':
