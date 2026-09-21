@@ -3316,9 +3316,18 @@ def _run_with_parenthesized_weekly_choice(self):
                 N(g.get("team")),
                 "",
             )
-            action, chosen = _choose_parenthesized_weekly_candidate(
-                self, selected, candidates
-            )
+
+            # Exact same normalized project already exists in the weekly
+            # summary: use it silently. The confirmation popup is only for
+            # same-base but different parenthetical variants.
+            exact_candidates = [x for x in candidates if x.get("exact")]
+            if exact_candidates:
+                action, chosen = "use", exact_candidates[0]["canonical"]
+            else:
+                action, chosen = _choose_parenthesized_weekly_candidate(
+                    self, selected, candidates
+                )
+
             if action == "cancel":
                 try:
                     self.status_var.set(
