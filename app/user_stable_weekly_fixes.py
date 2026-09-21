@@ -1658,35 +1658,100 @@ def _simple_summary_table_candidates(sl):
     return out
 
 
-def _simple_task_match_rank(raw, keys, project_key=""):
+def _summary_identity_keys(d, g=None):
+    """Return separator/newline-insensitive full/project identities.
+
+    Matching contract:
+      A_B == A B == A\\nB
+      full customer+project exact wins
+      exact project alone is also the same project
+    """
+    d = d or {}
+    g = g or {}
+
+    customer_raw = N(d.get("customer"))
+    selected_raw = N(g.get("task_name")) or N(d.get("task_name"))
+    canonical_raw = N(s13._customer_task(d))
+
+    full_keys = set()
+    project_keys = set()
+
+    def add_full(value):
+        q = s13._k(value)
+        if q:
+            full_keys.add(q)
+
+    def add_project(value):
+        q = s13._k(value)
+        if q:
+            project_keys.add(q)
+
+    # Direct spellings entered/selected by the user.
+    add_full(selected_raw)
+    add_full(canonical_raw)
+
+    # Catalog-aware split first.
+    alias = _catalog_separator_alias(selected_raw)
+    split_source = alias or selected_raw
+    split_customer, split_project = catalog.split_customer_task(split_source)
+
+    # If the selected value already contains customer_project, use that project.
+    if split_customer and split_project:
+        add_full(split_source)
+        add_project(split_project)
+        if not customer_raw:
+            customer_raw = split_customer
+    else:
+        # Otherwise the GUI task value itself is the project name.
+        add_project(selected_raw)
+
+    # Canonical customer_task may contain the full identity even when selected
+    # task is project-only.
+    can_customer, can_project = catalog.split_customer_task(canonical_raw)
+    if can_customer and can_project:
+        add_full(canonical_raw)
+        add_project(can_project)
+
+    # Explicit customer + project combinations. Spaces/newlines/underscores all
+    # collapse to the same _k() value.
+    for project_q in list(project_keys):
+        customer_q = s13._k(customer_raw)
+        if customer_q:
+            full_keys.add(customer_q + project_q)
+
+    return full_keys, project_keys
+
+
+def _simple_task_match_rank(raw, full_keys, project_keys):
+    """Rank visible task/cell/sentence text using the user's old simple contract."""
     q = s13._k(raw)
     if not q:
         return 0
-    if q in keys:
-        return 300
-    # Older weekly pages sometimes carry customer/stage decoration around the
-    # exact project name. Keep this fallback narrow enough to avoid fuzzy hits.
-    if project_key and len(project_key) >= 5:
-        if q == project_key:
+
+    # 1) Exact customer+project, regardless of _, space or newline.
+    if q in full_keys:
+        return 400
+
+    # 2) Exact project name alone is the same project.
+    if q in project_keys:
+        return 360
+
+    # 3) A sentence containing the exact customer+project identity.
+    for key in full_keys:
+        if len(key) >= 4 and key in q:
+            return 320
+
+    # 4) A sentence containing the exact project identity.
+    # Keep a minimum length so very short generic fragments do not collide.
+    for key in project_keys:
+        if len(key) >= 4 and key in q:
             return 280
-        if q.endswith(project_key) or q.startswith(project_key):
-            return 240
-        if project_key in q:
-            return 220
-    for key in keys:
-        if len(key) >= 6 and (q.endswith(key) or q.startswith(key)):
-            return 210
+
     return 0
 
-
 def _find_existing_summary_project(prs, d, g):
-    keys = _summary_direct_keys(d, g)
+    full_keys, project_keys = _summary_identity_keys(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
-    _full, project_key, customer_key = _identity_parts_from_label(
-        selected, N((d or {}).get("customer"))
-    )
-    if not project_key:
-        project_key = _project_key_for_match(selected, customer_key)
 
     hits = []
     for si, sl in enumerate(prs.slides):
@@ -1698,7 +1763,7 @@ def _find_existing_summary_project(prs, d, g):
             display = ""
             for r in range(hr + 1, len(tb.rows)):
                 raw = N(s13._row_text(tb, r, hm["task"]))
-                rank = _simple_task_match_rank(raw, keys, project_key)
+                rank = _simple_task_match_rank(raw, full_keys, project_keys)
                 if rank:
                     rows.append(r)
                     if rank > best_rank:
@@ -1722,10 +1787,9 @@ def _find_existing_summary_project(prs, d, g):
             # exact normalized project text somewhere on this slide + a task
             # column is enough to choose the page. This covers merged/template
             # layouts where python-pptx cannot expose the visible task cell.
-            slide_q = s13._k(s13._slide_text(sl))
-            slide_rank = max(
-                [_simple_task_match_rank(k, {k}, project_key) if k and k in slide_q else 0 for k in keys]
-                + ([230] if project_key and len(project_key) >= 5 and project_key in slide_q else [0])
+            slide_text = s13._slide_text(sl)
+            slide_rank = _simple_task_match_rank(
+                slide_text, full_keys, project_keys
             )
             if slide_rank:
                 payload_rows = [
