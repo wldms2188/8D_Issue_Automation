@@ -360,6 +360,67 @@ class UserStableFiveFixesTest(unittest.TestCase):
         pages = fix._summary_pages_flexible(prs)
         self.assertEqual([x[0] for x in pages], [1])
 
+    def test_summary_direct_match_beats_all_fallback_logic(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "MBAG EB-L(EU)", "old")
+        d = {
+            "customer": "WRONG_CUSTOMER",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB-L(EU)"}
+
+        pages, hits = fix._summary_hits(prs, d, g)
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 0)
+        self.assertEqual(hits[0][4], [1])
+
+    def test_combined_detail_marker_title_is_preserved(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        sh = sl.shapes.add_textbox(
+            Inches(0.4), Inches(2.2), Inches(2.5), Inches(0.4)
+        )
+        sh.text = "2D 현상"
+        self.assertTrue(fix._static_cloned_detail_shape_preserve_layout(sh))
+
+    def test_clone_without_safe_section_records_new_section_request(self):
+        prs = Presentation()
+        src = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, token in enumerate(("2D 현상", "3D 임시조치", "4D 발생원인", "5D 개선대책", "6D 효과검증")):
+            src.shapes.add_textbox(
+                Inches(0.5),
+                Inches(0.5 + i * 0.45),
+                Inches(2.5),
+                Inches(0.35),
+            ).text = token
+
+        old_clone = fix._original_clone_detail_shell
+        old_pending = fix._pending_user_native_section
+        try:
+            def fake_clone(_prs, _d, insert_at, matched_section=None):
+                s13._clone_slide_with_rels(_prs, 0)
+                s13._move_last_slide_to(_prs, insert_at)
+                return _prs.slides[insert_at], 0, matched_section
+
+            fix._original_clone_detail_shell = fake_clone
+            fix._pending_user_native_section = None
+            fix._clone_detail_shell_clean(
+                prs,
+                {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"},
+                1,
+                None,
+            )
+            req = fix._pending_user_native_section
+        finally:
+            fix._original_clone_detail_shell = old_clone
+            fix._pending_user_native_section = old_pending
+
+        self.assertIsNotNone(req)
+        self.assertEqual(req["slide_index"], 1)
+        self.assertEqual(req["name"], "MBAG_EB-L(EU)")
+
     def test_mbag_ebl_space_and_underscore_match_exact_summary(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "MBAG EB-L(EU)", "old")
