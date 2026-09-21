@@ -402,8 +402,129 @@ def _is_static_detail_child(sh):
     return _static_cloned_detail_shape_preserve_layout(sh)
 
 
+_FIXED_DETAIL_TEXT_KEYS = {
+    "2d", "3d", "4d", "5d", "6d", "7d",
+    "현상", "문제현상",
+    "임시조치", "임시대응", "임시대책", "임시대책필요시",
+    "원인분석", "발생원인", "유출원인", "시스템원인",
+    "개선대책", "효과검증", "유효성점검", "수평전개",
+    "signal", "이슈기인", "발생단계",
+}
+
+_FIXED_DETAIL_PREFIXES = (
+    ("2d", ("현상", "문제현상")),
+    ("3d", ("임시조치", "임시대응", "임시대책", "임시대책필요시")),
+    ("4d", ("원인분석", "발생원인", "유출원인", "시스템원인")),
+    ("5d", ("개선대책",)),
+    ("6d", ("효과검증", "유효성점검")),
+    ("7d", ("수평전개",)),
+)
+
+
+def _fixed_detail_text_only(text):
+    """Return only fixed template title text; drop copied issue body text."""
+    raw = N(text)
+    if not raw:
+        return ""
+
+    # Keep exact static lines first.
+    kept = []
+    for line in str(raw).splitlines():
+        line_n = N(line)
+        q = s13._k(line_n)
+        if q in _FIXED_DETAIL_TEXT_KEYS:
+            kept.append(line_n)
+
+    if kept:
+        return "\n".join(kept)
+
+    # Combined title/body in a single line/paragraph, e.g.
+    # "4D 발생원인 체결 토크 부족..." -> preserve only "4D 발생원인".
+    q = s13._k(raw)
+    for marker, titles in _FIXED_DETAIL_PREFIXES:
+        if marker not in q:
+            continue
+        for title in titles:
+            tq = s13._k(title)
+            pos_m = q.find(marker)
+            pos_t = q.find(tq)
+            if pos_m >= 0 and pos_t >= pos_m:
+                return marker.upper() + " " + title
+
+    # Title without D marker.
+    for title in (
+        "현상", "문제현상", "임시조치", "임시대응", "임시대책",
+        "원인분석", "발생원인", "유출원인", "시스템원인",
+        "개선대책", "효과검증", "유효성점검", "수평전개",
+    ):
+        if s13._k(raw) == s13._k(title):
+            return title
+
+    return ""
+
+
+def _set_shape_text_preserve_first_run(sh, value):
+    """Change text while preserving the first run's formatting when possible."""
+    if not hasattr(sh, "text_frame"):
+        return False
+    try:
+        tf = sh.text_frame
+        paragraphs = list(tf.paragraphs)
+        first_run = None
+        for p in paragraphs:
+            if p.runs:
+                first_run = p.runs[0]
+                break
+
+        if first_run is not None:
+            first_run.text = N(value)
+            found_first = False
+            for p in paragraphs:
+                for run in p.runs:
+                    if run is first_run and not found_first:
+                        found_first = True
+                        continue
+                    run.text = ""
+            return True
+
+        sh.text = N(value)
+        return True
+    except Exception:
+        try:
+            sh.text = N(value)
+            return True
+        except Exception:
+            return False
+
+
+def _shape_hits_detail_content_zone(sh):
+    try:
+        return any(
+            core._overlap_ratio(sh, zone) > 0.005
+            for zone in core._content_zones()
+        )
+    except Exception:
+        return False
+
+
+def _clear_old_detail_text_shape(sh):
+    """Clear copied issue text but keep the template shape/frame itself."""
+    text = N(getattr(sh, "text", ""))
+    if not text:
+        return
+
+    fixed = _fixed_detail_text_only(text)
+    if fixed:
+        # Mixed fixed-title + old issue body -> retain title only.
+        if s13._k(text) != s13._k(fixed):
+            _set_shape_text_preserve_first_run(sh, fixed)
+        return
+
+    _set_shape_text_preserve_first_run(sh, "")
+
+
 def _clean_preserved_detail_group(group):
-    """Clean old issue content from inside a group without deleting its template skeleton."""
+    """Recursively strip old issue text/pictures from a preserved template group."""
     for child in list(getattr(group, "shapes", ())):
         if _is_red_annotation_shape(child):
             _remove_shape(child)
@@ -426,18 +547,18 @@ def _clean_preserved_detail_group(group):
             continue
 
         text = N(getattr(child, "text", ""))
-        if text and not _is_static_detail_child(child):
-            # A fixed marker/title group can also contain the previous issue's
-            # body text. Remove only that child text object.
-            _remove_shape(child)
+        if text:
+            _clear_old_detail_text_shape(child)
 
 
 def _purge_cloned_detail_artifacts(sl):
-    """Second-pass cleanup after cloning a REAL detail template.
+    """Aggressively clean copied issue content while retaining the detail shell.
 
-    1) remove copied red selection/annotation shapes anywhere on the slide;
-    2) recurse into preserved groups and remove old black body text/pictures;
-    3) keep fixed table geometry, D marker circles, D item titles and frames.
+    - red annotations: remove
+    - copied pictures/media: already removed by visual cleanup
+    - groups: recurse and keep only fixed marker/title text
+    - ungrouped text in 2D~6D content zones: clear copied text
+    - combined title+body text box: keep the fixed title only
     """
     for sh in list(sl.shapes):
         if _is_red_annotation_shape(sh):
@@ -447,6 +568,23 @@ def _purge_cloned_detail_artifacts(sl):
         st = getattr(sh, "shape_type", None)
         if st == MSO_SHAPE_TYPE.GROUP:
             _clean_preserved_detail_group(sh)
+            continue
+
+        if getattr(sh, "has_table", False):
+            # Keep table geometry; the core cleaner removes old value cells.
+            try:
+                core._clear_cloned_table_content(sh)
+            except Exception:
+                pass
+            continue
+
+        name = str(getattr(sh, "name", "") or "")
+        if name.startswith("AUTO_8D_"):
+            continue
+
+        text = N(getattr(sh, "text", ""))
+        if text and _shape_hits_detail_content_zone(sh):
+            _clear_old_detail_text_shape(sh)
 
 
 def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
