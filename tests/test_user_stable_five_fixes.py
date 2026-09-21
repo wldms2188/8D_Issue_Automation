@@ -1,4 +1,6 @@
 import io
+import tempfile
+from pathlib import Path
 import unittest
 
 from PIL import Image
@@ -219,6 +221,63 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(added, 2)
         self.assertEqual(err, "")
         self.assertEqual(called["direct"], 1)
+
+    def test_pending_native_section_does_not_write_fake_xml(self):
+        prs = Presentation()
+        prs.slides.add_slide(prs.slide_layouts[6])
+        before = list(core._native_sections(prs))
+        sec = fix._create_native_section_pending(prs, "GM_MBAG", 0)
+        after = list(core._native_sections(prs))
+
+        self.assertEqual(before, after)
+        self.assertTrue(sec["_pending_com"])
+        self.assertIsNone(sec["element"])
+        self.assertEqual(sec["indices"], [0])
+
+    def test_new_section_wrapper_requires_and_verifies_detail_slide(self):
+        old_active = fix._active_weekly_before_native_section
+        old_com = fix._create_native_section_com_saved
+        calls = {"com": 0}
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "weekly.pptx"
+
+            def fake_active(src, out_path, d, g, mode):
+                prs = Presentation()
+                sl = prs.slides.add_slide(prs.slide_layouts[6])
+                for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                    sh = sl.shapes.add_textbox(
+                        Inches(0.5),
+                        Inches(0.5 + i * 0.4),
+                        Inches(2),
+                        Inches(0.3),
+                    )
+                    sh.text = token
+                prs.save(out_path)
+                fix._create_native_section_pending(prs, "GM_MBAG", 0)
+                return "ok", str(out_path)
+
+            def fake_com(saved, name, slide_index):
+                calls["com"] += 1
+                self.assertEqual(name, "GM_MBAG")
+                self.assertEqual(slide_index, 0)
+                return True
+
+            try:
+                fix._active_weekly_before_native_section = fake_active
+                fix._create_native_section_com_saved = fake_com
+                msg, saved = fix._weekly_with_real_native_section(
+                    "src.pptx",
+                    str(out),
+                    {"task_name": "GM_MBAG"},
+                    {"_weekly_create_new_section": "1"},
+                    "new",
+                )
+            finally:
+                fix._active_weekly_before_native_section = old_active
+                fix._create_native_section_com_saved = old_com
+
+        self.assertEqual(calls["com"], 1)
+        self.assertIn("상세 page 1 생성 확인", msg)
 
     def test_section_match_levels_are_strict(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
