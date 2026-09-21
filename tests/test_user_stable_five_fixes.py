@@ -495,6 +495,20 @@ class UserStableFiveFixesTest(unittest.TestCase):
             0,
         )
 
+    def test_weekly_candidate_popup_preserves_actual_parenthesis_content(self):
+        item = {
+            "display": "MBAG\nEB-L\n(EU,US)",
+            "canonical": "MBAG_EB-L(EU)",
+        }
+        self.assertEqual(
+            fix._weekly_candidate_display_one_line(item),
+            "MBAG_EB-L(EU,US)",
+        )
+        self.assertEqual(
+            fix._weekly_candidate_actual_value(item),
+            "MBAG_EB-L(EU,US)",
+        )
+
     def test_weekly_candidate_popup_label_is_one_compact_line(self):
         self.assertEqual(
             fix._weekly_candidate_display_one_line("MBAG\nEB-L\n(EU,US)"),
