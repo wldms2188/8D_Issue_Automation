@@ -59,23 +59,32 @@ def _native_sections(prs):
         sections.append({'name':name,'element':sec,'slide_ids':ids,'indices':indices})
     return sections
 
-def _section_match_score(name,d):
-    q=s13._k(name); full,task,customer=_project_parts(d)
+def _section_match_level(name,d):
+    """Return strict section match level without assuming '_' as a delimiter.
+
+    3 = customer AND project both occur in the section name
+    2 = project alone is an exact normalized section name
+    1 = similar/project-containing candidate (must be user-confirmed)
+    0 = no match
+    """
+    q=s13._k(name); _,task,customer=_project_parts(d)
     if not q:return 0
-    if full and q==full:return 300
-    if task and q==task:return 280
-    if full and full in q:return 260
-    if task and customer and task in q and customer in q:return 250
-    if task and task in q:return 220
+    # Highest priority: customer and project are independently present.
+    if customer and task and customer in q and task in q:return 3
+    # Next: project-only exact section name.
+    if task and q==task:return 2
+    # Similarity is intentionally separated from exact matching.
+    if task and (task in q or q in task):return 1
     return 0
 
 def _matching_native_section(prs,d):
-    scored=[]
-    for sec in _native_sections(prs):
-        sc=_section_match_score(sec['name'],d)
-        if sc:scored.append((sc,sec))
-    if not scored:return None
-    scored.sort(key=lambda x:(x[0],len(x[1]['indices'])),reverse=True); return scored[0][1]
+    # Automatic selection is STRICT only: customer+project, then exact project.
+    for level in (3,2):
+        matches=[sec for sec in _native_sections(prs) if _section_match_level(sec.get('name'),d)==level]
+        if matches:
+            matches.sort(key=lambda x:len(x.get('indices',[])),reverse=True)
+            return matches[0]
+    return None
 
 def _section_by_name(prs,name):
     target=s13._k(name)
@@ -86,57 +95,34 @@ def _section_by_name(prs,name):
     return None
 
 def section_resolution(prs,d):
-    """Resolve exact project section first; otherwise return a safe user-confirmable fallback."""
+    """Resolve customer+project, then exact project; fuzzy candidates require confirmation."""
     try:s13._clear_slide_text_cache()
     except Exception:pass
-    exact=_matching_native_section(prs,d)
-    if exact:
-        return {'mode':'exact','name':N(exact.get('name')),'reason':'고객사_과제명 또는 과제명 기준으로 일치하는 구역을 찾았습니다.','section':exact}
-
-    full,task,customer=_project_parts(d)
-    candidates=[]
     sections=_native_sections(prs)
 
-    # First fallback: same customer is explicitly present in the native section name.
-    for sec in sections:
-        q=s13._k(sec.get('name'))
-        if customer and customer in q:
-            candidates.append((240,sec,'동일 고객사명이 포함된 구역이 확인되었습니다.'))
+    # 1) Customer + project match, regardless of separator/style in section name.
+    both=[sec for sec in sections if _section_match_level(sec.get('name'),d)==3]
+    if both:
+        both.sort(key=lambda x:len(x.get('indices',[])),reverse=True)
+        sec=both[0]
+        return {'mode':'exact','name':N(sec.get('name')),'reason':'고객사와 과제명이 모두 일치하는 구역을 찾았습니다.','section':sec}
 
-    # Second fallback: task/customer text is actually present inside detail pages of a section.
-    for sec in sections:
-        texts=[]
-        for i in sec.get('indices',[]):
-            if 0<=i<len(prs.slides) and _is_detail_like(prs.slides[i]):
-                texts.append(s13._k(s13._slide_text(prs.slides[i])))
-        joined=' '.join(texts)
-        if not joined:continue
-        if task and task in joined:
-            candidates.append((220,sec,'동일 과제명 내용이 포함된 상세 구역이 확인되었습니다.'))
-        elif customer and customer in joined:
-            candidates.append((200,sec,'동일 고객사 내용이 포함된 상세 구역이 확인되었습니다.'))
+    # 2) Exact project-only section name.
+    project=[sec for sec in sections if _section_match_level(sec.get('name'),d)==2]
+    if project:
+        project.sort(key=lambda x:len(x.get('indices',[])),reverse=True)
+        sec=project[0]
+        return {'mode':'exact','name':N(sec.get('name')),'reason':'과제명이 일치하는 구역을 찾았습니다.','section':sec}
 
-    if candidates:
-        candidates.sort(key=lambda x:(x[0],len(x[1].get('indices',[]))),reverse=True)
-        score,sec,reason=candidates[0]
-        return {'mode':'suggest','name':N(sec.get('name')),'reason':reason,'section':sec}
+    # 3) Similar native section candidate: NEVER automatic; UI asks user.
+    similar=[sec for sec in sections if _section_match_level(sec.get('name'),d)==1]
+    if similar:
+        similar.sort(key=lambda x:len(x.get('indices',[])),reverse=True)
+        sec=similar[0]
+        return {'mode':'suggest','name':N(sec.get('name')),'reason':'과제명과 유사하거나 중복되는 기존 구역이 확인되었습니다.','section':sec}
 
-    # No native section candidate: detect a nearby detail page by task/customer text only.
-    summaries=_summary_indices(prs)
-    nearby=[]
-    for i,sl in enumerate(prs.slides):
-        if i in summaries or not _is_detail_like(sl):continue
-        q=s13._k(s13._slide_text(sl))
-        if task and task in q:
-            nearby.append((220,i,'동일 과제명 내용이 포함된 상세페이지가 확인되었습니다.'))
-        elif customer and customer in q:
-            nearby.append((190,i,'동일 고객사 내용이 포함된 상세페이지가 확인되었습니다.'))
-    if nearby:
-        nearby.sort(reverse=True)
-        score,i,reason=nearby[0]
-        return {'mode':'suggest_nearby','name':f'상세 page {i+1} 주변','reason':reason,'section':None,'insert_after':i+1}
-
-    return {'mode':'new','name':N(s13._customer_task(d)) or N(d.get('task_name')) or N(d.get('customer')) or '신규 과제','reason':'일치하거나 확인 가능한 기존 구역을 찾지 못했습니다. 신규 구역을 생성합니다.','section':None}
+    # 4) No usable native section => create customer_project section.
+    return {'mode':'new','name':_new_section_name(d),'reason':'일치하거나 유사한 기존 구역을 찾지 못했습니다. 신규 구역을 생성합니다.','section':None}
 
 def _selected_section(prs,d,g):
     if str(g.get('_weekly_create_new_section') or '').lower() in ('1','true','yes'):
