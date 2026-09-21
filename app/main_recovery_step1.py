@@ -50,7 +50,7 @@ def _page1_issue(d):
     task=N(d.get('task_name'))
     project=task
     if customer and project:
-        project=re.sub(r'^\\s*'+re.escape(customer)+r'\\s*[_\\-/／|:： ]+\\s*','',project,flags=re.I)
+        project=re.sub(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:： ]+\s*','',project,flags=re.I)
     project=N(project).strip(' _-/／|:：')
 
     parts=[x for x in re.split(r'[_/|:：\\-]+',issue) if N(x)]
