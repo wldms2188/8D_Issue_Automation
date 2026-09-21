@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.util import Pt
 
 import main_recovery_step3 as step3
 import main_recovery_step1 as step1
@@ -157,51 +158,31 @@ def _strip_selected_project_prefix(issue,d):
 
 
 def _detail_title_suffix(d,g):
-    """V1-style title name + '이슈 발생', extended to current origin/site inputs.
-
-    Priority:
-      1) specific test/build name found in the 8D,
-      2) explicit 시험 occurrence site,
-      3) confirmed issue-origin category (부품/설계/공정/기타),
-      4) occurrence-site fallback,
-      5) cleaned issue name.
-    """
-    kind,event=step3._event_name(d)
-    if kind=='시험' and event:
-        return f'{event} 이슈 발생'
-    if kind=='빌드' and event:
-        return f'{event} 이슈 발생'
-
+    """Unified weekly detail-title tail: 발생샘플_발생처_이슈 발생."""
+    sample=N((g or {}).get('sample') or d.get('sample') or d.get('occurrence_sample'))
     site=N((g or {}).get('occurrence_site') or d.get('occurrence_site'))
-    if '시험' in site:
-        return '시험 이슈 발생'
-
-    origin=N((g or {}).get('_issue_origin_selected') or d.get('_issue_origin_selected'))
-    if origin in ('부품','설계','공정','기타'):
-        return f'{origin} 이슈 발생'
-
-    if '부품' in site:
-        return '부품 이슈 발생'
-    if '생산' in site or '공정' in site:
-        return '공정 이슈 발생'
-
-    issue=_strip_selected_project_prefix(d.get('issue_name'),d)
-    q=N(issue)
-    for label in ('시험','공정','부품','설계'):
-        if label in q:
-            return f'{label} 이슈 발생'
-    if not q:
-        return '이슈 발생'
-    if '이슈 발생' in q:
-        return q
-    if q.endswith('발생'):
-        return q
-    return q+' 이슈 발생'
+    parts=[x for x in (sample,site) if x]
+    parts.append('이슈 발생')
+    return '_'.join(parts)
 
 
-def _title_without_selected_project(d,g):
-    """Collision fallback: category/event title only, never 고객사_과제명."""
-    return _detail_title_suffix(d,g)
+def _detail_title_text(d,g):
+    """고객사_과제명_발생샘플_발생처_이슈 발생."""
+    project=N(v319._weekly_task(d))
+    tail=_detail_title_suffix(d,g)
+    return '_'.join(x for x in (project,tail) if x)
+
+
+def _title_base_font_pt(sh):
+    vals=[]
+    try:
+        for p in sh.text_frame.paragraphs:
+            for r in p.runs:
+                if r.font.size:
+                    vals.append(float(r.font.size.pt))
+    except Exception:
+        pass
+    return max(vals) if vals else 14.0
 
 
 def _set_title_exact(sh,text):
@@ -217,29 +198,69 @@ def _set_title_exact(sh,text):
         tf.text=N(text)
     try:
         tf.word_wrap=False
-        tf.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    except Exception:
+        pass
+    return True
+
+
+def _fit_full_title_before_owner(sl,sh,text):
+    """Keep the full unified title and shrink it instead of deleting fields."""
+    if sh is None or not hasattr(sh,'text_frame'):
+        return False
+
+    base_pt=_title_base_font_pt(sh)
+    _set_title_exact(sh,text)
+
+    available=None
+    owner=_owner_shape(sl)
+    if owner is not None:
+        try:
+            tx=float(sh.left)/EMU
+            ox=float(owner.left)/EMU
+            available=max(.55,ox-tx-.12)
+            sh.width=int(available*EMU)
+        except Exception:
+            available=None
+
+    if available is None:
+        try:
+            available=max(.55,float(sh.width)/EMU)
+        except Exception:
+            available=3.0
+
+    # Manual first-pass sizing makes the result deterministic even when PowerPoint
+    # ignores TEXT_TO_FIT_SHAPE until the file is opened.
+    natural=max(.01,_estimated_text_width_in(sh,text))
+    target=base_pt
+    if natural>available:
+        target=max(6.0,min(base_pt,base_pt*available/natural))
+    try:
+        for p in sh.text_frame.paragraphs:
+            for r in p.runs:
+                r.font.size=Pt(target)
+    except Exception:
+        pass
+
+    try:
+        sh.text_frame.word_wrap=False
+        sh.text_frame.auto_size=MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     except Exception:
         pass
     return True
 
 
 def _force_page2_header(sl,d,g):
-    customer=N(d.get('customer'))
-    prefix=v319._weekly_task(d)
-    suffix=_detail_title_suffix(d,g)
-    title=f'{prefix}_{suffix}'.strip('_') if prefix else suffix
+    customer=v319._customer_core(d.get('customer'))
+    title=_detail_title_text(d,g)
 
-    # First try the placeholder-aware finder, then always fall back to geometry.
     title_sh,issue_sh=v319._find_page2_header_shapes(sl)
     if title_sh is None:
         title_sh=_title_shape_by_geometry(sl)
 
-    # Finalize owner first. If the full title can collide, remove 고객사_과제명
-    # completely and keep only '<시험명/공정/부품/...> 이슈 발생'.
+    # Keep every title field. If it approaches the 담당자 area, shrink the font
+    # and usable title width rather than dropping 고객사/과제명/샘플/발생처.
     step1._update_team_owner(sl,g)
-    if _title_owner_overlap_risk(sl,title_sh,title):
-        title=_title_without_selected_project(d,g)
-    _set_title_exact(title_sh,title)
+    _fit_full_title_before_owner(sl,title_sh,title)
 
     if issue_sh is not None:
         issue=v319._trim_before_customer(d.get('issue_name'),customer)
