@@ -1456,19 +1456,27 @@ def _ensure_saved_detail(saved, d, g, mode, request=None):
 
     if candidate is not None:
         sl = prs.slides[candidate]
-        if not _filled_detail_slide(sl):
-            s13._update_detail_slide(sl, d, g, mode)
-            try:
-                s13._clear_slide_text_cache(sl)
-            except Exception:
-                pass
-            prs.save(saved)
-            if _filled_detail_slide(sl):
-                return candidate, {
-                    "name": N(core._new_section_name(d)) or "신규 과제",
-                    "slide_index": candidate,
-                    "slide_id": int(sl.slide_id),
-                }
+
+        # Already valid: do NOT keep searching and clone a duplicate detail page.
+        if _filled_detail_slide(sl):
+            return candidate, {
+                "name": N(core._new_section_name(d)) or "신규 과제",
+                "slide_index": candidate,
+                "slide_id": int(sl.slide_id),
+            }
+
+        s13._update_detail_slide(sl, d, g, mode)
+        try:
+            s13._clear_slide_text_cache(sl)
+        except Exception:
+            pass
+        prs.save(saved)
+        if _filled_detail_slide(sl):
+            return candidate, {
+                "name": N(core._new_section_name(d)) or "신규 과제",
+                "slide_index": candidate,
+                "slide_id": int(sl.slide_id),
+            }
 
     # Look for an already-generated current detail before creating another one.
     full, project, _customer = _project_parts(d)
