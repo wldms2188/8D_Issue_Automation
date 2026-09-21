@@ -75,6 +75,34 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "GM_MBAG",
         )
 
+    def test_summary_customer_project_ignores_separator_style(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "GM MBAG", "old")
+
+        d = {
+            "customer": "GM",
+            "task_name": "MBAG",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG"}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, _ = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertEqual(tb.cell(row, 0).text, "GM MBAG")
+
     def test_confirmed_similar_section_reuses_real_summary_label(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "GM_MBAG E~", "old")
