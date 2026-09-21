@@ -1,0 +1,29 @@
+name: Stable five-fix regression
+
+on:
+  push:
+    branches:
+      - repair/user-stable-667623-five-fixes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stable-five-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install python-pptx pillow openpyxl tkinterdnd2
+      - name: Compile patched runtime
+        env:
+          PYTHONPATH: app
+        run: python -m py_compile app/user_stable_weekly_fixes.py app/main_enterprise_final.py
+      - name: Run stable five-fix regression
+        env:
+          PYTHONPATH: app
+        run: python -m unittest tests.test_user_stable_five_fixes -v
