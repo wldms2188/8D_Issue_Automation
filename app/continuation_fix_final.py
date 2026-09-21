@@ -118,8 +118,27 @@ def _update_summary_customer_project_then_project(prs,d,g,mode):
         if sr: similar_hits.append((si,tb,hr,hm,sr))
 
     # Global priority across ALL summary pages:
-    # customer+project exact > project exact > project similar.
-    task_hits=full_hits if full_hits else (project_hits if project_hits else similar_hits)
+    # customer+project exact > project exact > explicitly-confirmed section-name similarity.
+    # Fuzzy matching is NEVER automatic. It is allowed only after the user chose
+    # "해당 구역 업데이트" in the section confirmation dialog.
+    task_hits=full_hits if full_hits else project_hits
+    if not task_hits and str((g or {}).get('_weekly_similar_section_confirmed') or '').lower() in ('1','true','yes'):
+        confirmed_name=N((g or {}).get('_weekly_confirmed_section_name'))
+        confirmed_project=catalog.project_key(confirmed_name,False)
+        confirmed_hits=[]
+        if confirmed_project:
+            for si,tb,hr in pages:
+                hm=s13._summary_map(tb,hr)
+                if 'task' not in hm: continue
+                rows=[]
+                for r in range(hr+1,len(tb.rows)):
+                    raw=s13._row_text(tb,r,hm['task'])
+                    raw_project=catalog.project_key(raw,False)
+                    if raw_project and min(len(confirmed_project),len(raw_project))>=4:
+                        if confirmed_project in raw_project or raw_project in confirmed_project:
+                            rows.append(r)
+                if rows: confirmed_hits.append((si,tb,hr,hm,rows))
+        task_hits=confirmed_hits
     display=_weekly_task_display(selected,task_hits)
 
     original_customer_task=s13._customer_task
