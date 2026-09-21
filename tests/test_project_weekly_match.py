@@ -120,6 +120,54 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
    self.assertIn(el,elems)
   self.assertNotIn(old_rect._element,elems)
 
+ def _make_summary(self,top=1.0,height=1.5,rows=3):
+  prs=Presentation(); prs.slide_width=Inches(11); prs.slide_height=Inches(7.5)
+  sl=prs.slides.add_slide(prs.slide_layouts[6])
+  sh=sl.shapes.add_table(rows,5,Inches(.5),Inches(top),Inches(10),Inches(height))
+  tb=sh.table
+  for c,h in enumerate(['과제명','이슈','문제/현상','진행 현황','Signal']):
+   tb.cell(0,c).text=h
+  return prs,tb
+
+ def test_same_project_summary_inserts_immediately_after_last_project_row(self):
+  prs,tb=self._make_summary(rows=3)
+  tb.cell(1,0).text='MBAG_EB565M'; tb.cell(1,1).text='Old issue'
+  tb.cell(2,0).text='OTHER_PROJECT'; tb.cell(2,1).text='Other issue'
+  d={
+   'customer':'MBAG','task_name':'MBAG_EB565M',
+   'issue_name':'MBAG_EB565M_NewIssue',
+   'problem':'New phenomenon','action_5d':'Action'
+  }
+  si,row,action=core.s14._update_summary_by_task(
+   prs,d,{'occurrence_site':'제품 생산','sample':'B2'},'new'
+  )
+  self.assertEqual(si,0)
+  self.assertEqual(row,2)
+  self.assertIn('바로 아래 삽입',action)
+  self.assertEqual(tb.cell(2,0).text,'MBAG_EB565M')
+  self.assertIn('NewIssue',tb.cell(2,1).text)
+  self.assertEqual(tb.cell(3,0).text,'OTHER_PROJECT')
+
+ def test_same_project_summary_creates_continuation_only_when_row_would_overflow(self):
+  prs,tb=self._make_summary(top=6.35,height=.9,rows=2)
+  tb.rows[0].height=Inches(.45); tb.rows[1].height=Inches(.45)
+  tb.cell(1,0).text='MBAG_EB565M'; tb.cell(1,1).text='Old issue'
+  d={
+   'customer':'MBAG','task_name':'MBAG_EB565M',
+   'issue_name':'MBAG_EB565M_NewIssue',
+   'problem':'New phenomenon','action_5d':'Action'
+  }
+  si,row,action=core.s14._update_summary_by_task(
+   prs,d,{'occurrence_site':'제품 생산','sample':'B2'},'new'
+  )
+  self.assertEqual(len(prs.slides),2)
+  self.assertEqual(si,1)
+  self.assertIn('공간 초과',action)
+  pages=core.s14._summary_pages(prs)
+  new_page=[x for x in pages if x[0]==1][0]
+  _,ntb,nhr=new_page
+  self.assertEqual(ntb.cell(nhr+1,0).text,'MBAG_EB565M')
+
  def test_create_native_section_for_new_project(self):
   prs=Presentation(); prs.slides.add_slide(prs.slide_layouts[6])
   sec=core._create_native_section(prs,'NEW_PROJECT',0)
