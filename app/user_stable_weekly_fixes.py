@@ -1293,14 +1293,18 @@ core.base.weekly = _weekly_with_real_native_section
 
 # ---------------------------------------------------------------------------
 # Final required-input gate.
-# This module loads last, so this guard cannot be bypassed by the team/project
-# autocomplete run wrappers loaded earlier.
+# Keep the original warning wording/flow for classification confirmation and
+# PMS/PLM.  This last-loaded guard only restores missing text-field blocking,
+# then delegates to the original UI chain unchanged.
 # ---------------------------------------------------------------------------
-_REQUIRED_INPUT_FIELDS = (
-    ("team", "담당팀"),
-    ("task_name", "고객사/과제명"),
-    ("owner", "담당자"),
-    ("sample", "발생 샘플"),
+_REQUIRED_TEXT_FIELDS = (
+    ("team", "담당팀", "담당팀을 입력해 주세요."),
+    ("task_name", "고객사/과제명", "고객사/과제명을 입력해 주세요."),
+    ("owner", "담당자", "담당자를 입력해 주세요."),
+    ("sample", "발생 샘플", "발생 샘플을 입력해 주세요."),
+)
+
+_REQUIRED_CLASSIFICATION_VALUES = (
     ("form_factor", "폼팩터"),
     ("product_type", "제품 타입"),
     ("occurrence_site", "발생처"),
@@ -1308,19 +1312,32 @@ _REQUIRED_INPUT_FIELDS = (
 )
 
 
-def _required_user_input_missing(g):
+def _required_user_input_error(g):
     g = g or {}
-    missing = [
+
+    # Restore the old one-field-at-a-time "입력 확인" behavior for 담당 정보.
+    for key, _label, message in _REQUIRED_TEXT_FIELDS:
+        if not N(g.get(key)):
+            return "입력 확인", message
+
+    # If a classification value itself is empty, use the same wording already
+    # used by EnterpriseAppV2 for classification confirmation.
+    missing_classification = [
         label
-        for key, label in _REQUIRED_INPUT_FIELDS
+        for key, label in _REQUIRED_CLASSIFICATION_VALUES
         if not N(g.get(key))
     ]
+    if missing_classification:
+        return (
+            "분류 정보 확인",
+            "아래 분류값을 확인해 주세요.\n\n"
+            + " / ".join(missing_classification)
+            + "\n\n값을 직접 선택하거나, 현재 기본값이 맞으면 오른쪽 ○를 클릭해 ✓로 확인해 주세요.",
+        )
 
-    # PMS/PLM issue number is mandatory only when Issue DB Excel is selected.
-    if N(g.get("xlsx")) and not N(g.get("plm_no")):
-        missing.append("PMS/PLM 이슈번호")
-
-    return missing
+    # PMS/PLM is intentionally NOT checked here. The original EnterpriseAppV2
+    # warning remains authoritative and runs only when Issue DB Excel is selected.
+    return None
 
 
 _original_enterprise_run_required_gate = enterprise_v3.EnterpriseAppV3.run
@@ -1328,38 +1345,17 @@ _original_enterprise_run_required_gate = enterprise_v3.EnterpriseAppV3.run
 
 def _run_with_required_inputs(self):
     g = self.gui()
-    missing = _required_user_input_missing(g)
-    if missing:
+    error = _required_user_input_error(g)
+    if error:
+        title, message = error
         try:
-            self.status_var.set("READY · 담당 및 분류 정보 입력이 필요합니다.")
+            self.status_var.set("READY · 입력 정보 확인이 필요합니다.")
         except Exception:
             pass
-        return ui.warning(
-            self,
-            "담당 및 분류 정보 확인",
-            "아래 항목을 모두 입력해 주세요.\n\n"
-            + " / ".join(missing)
-            + "\n\n모든 담당 및 분류 정보 입력 후 다시 실행해 주세요.",
-        )
+        return ui.warning(self, title, message)
 
-    # Keep the existing classification ○→✓ confirmation contract as well.
-    try:
-        unconfirmed = self._unconfirmed_classifications()
-    except Exception:
-        unconfirmed = []
-    if unconfirmed:
-        try:
-            self.status_var.set("READY · 분류 정보 확인이 필요합니다.")
-        except Exception:
-            pass
-        return ui.warning(
-            self,
-            "분류 정보 확인",
-            "아래 분류값을 확인해 주세요.\n\n"
-            + " / ".join(unconfirmed)
-            + "\n\n값을 직접 선택하거나, 현재 값이 맞으면 오른쪽 ○를 클릭해 ✓로 확인해 주세요.",
-        )
-
+    # Delegate classification ○→✓ and Issue-DB-only PMS/PLM checks to the
+    # original V2 flow so their existing popup wording remains unchanged.
     return _original_enterprise_run_required_gate(self)
 
 
