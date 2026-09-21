@@ -14,6 +14,7 @@ import tkinter as tk
 from pathlib import Path
 
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
 import main_recovery_step4 as s4
 import main_recovery_step12 as s12
@@ -310,6 +311,10 @@ def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
         _remove_copied_visuals(sl)
     except Exception:
         pass
+    try:
+        _purge_summary_red_annotations_below_header(sl, tb, hr)
+    except Exception:
+        pass
 
     return final_index, tb, hr, row
 
@@ -352,6 +357,40 @@ def _static_cloned_detail_shape_preserve_layout(sh):
 
 core._static_cloned_detail_shape = _static_cloned_detail_shape_preserve_layout
 
+_original_clear_cloned_issue_content_user = core._clear_cloned_issue_content
+
+
+def _is_detail_frame_line(sh):
+    """Keep long horizontal/vertical template border lines, not diagonal arrows."""
+    st = getattr(sh, "shape_type", None)
+    if st != getattr(MSO_SHAPE_TYPE, "LINE", None):
+        return False
+    try:
+        w = float(sh.width) / v310.EMU
+        h = float(sh.height) / v310.EMU
+    except Exception:
+        return False
+    long_side = max(abs(w), abs(h))
+    short_side = min(abs(w), abs(h))
+    return long_side >= 0.8 and short_side <= 0.08
+
+
+def _clear_cloned_issue_content_keep_frames(sl):
+    # Temporarily make structural frame lines look static to the original cleaner.
+    original_static = core._static_cloned_detail_shape
+
+    def static_plus_frames(sh):
+        return _is_detail_frame_line(sh) or original_static(sh)
+
+    core._static_cloned_detail_shape = static_plus_frames
+    try:
+        return _original_clear_cloned_issue_content_user(sl)
+    finally:
+        core._static_cloned_detail_shape = original_static
+
+
+core._clear_cloned_issue_content = _clear_cloned_issue_content_keep_frames
+
 _original_clone_detail_shell = core._clone_detail_shell
 
 
@@ -392,6 +431,97 @@ def _is_red_annotation_shape(sh):
     return False
 
 
+def _summary_table_shape_local(sl, tb):
+    for sh in v310.walk(sl):
+        if not getattr(sh, "has_table", False):
+            continue
+        try:
+            if sh.table._tbl is tb._tbl:
+                return sh
+        except Exception:
+            pass
+    return None
+
+
+def _shape_overlaps_rect(sh, rect, min_ratio=0.02):
+    try:
+        x = float(sh.left)
+        y = float(sh.top)
+        w = float(sh.width)
+        h = float(sh.height)
+        rx, ry, rw, rh = rect
+        ix = max(0.0, min(x + w, rx + rw) - max(x, rx))
+        iy = max(0.0, min(y + h, ry + rh) - max(y, ry))
+        area = max(w * h, 1.0)
+        return (ix * iy / area) >= min_ratio
+    except Exception:
+        return False
+
+
+def _purge_summary_red_annotations_below_header(sl, tb, hr):
+    """Delete only copied red annotations in the summary TABLE BODY.
+
+    The selection region starts immediately below the summary header row and
+    ends at the bottom of the table.  Titles/header labels above it are never
+    touched.
+    """
+    table_shape = _summary_table_shape_local(sl, tb)
+    if table_shape is None:
+        return 0
+
+    try:
+        header_height = sum(
+            float(tb.rows[r].height or 0)
+            for r in range(min(hr + 1, len(tb.rows)))
+        )
+        left = float(table_shape.left)
+        top = float(table_shape.top) + header_height
+        width = float(table_shape.width)
+        bottom = float(table_shape.top) + float(table_shape.height)
+        body = (left, top, width, max(0.0, bottom - top))
+    except Exception:
+        return 0
+
+    removed = 0
+
+    def clean_group(group):
+        nonlocal removed
+        for child in list(getattr(group, "shapes", ())):
+            st = getattr(child, "shape_type", None)
+            if st == MSO_SHAPE_TYPE.GROUP:
+                clean_group(child)
+                continue
+            if (
+                _is_red_annotation_shape(child)
+                and _shape_overlaps_rect(child, body, 0.01)
+            ):
+                if _remove_shape(child):
+                    removed += 1
+
+    for sh in list(sl.shapes):
+        # Never touch the summary table itself.
+        if getattr(sh, "has_table", False):
+            try:
+                if sh.table._tbl is tb._tbl:
+                    continue
+            except Exception:
+                pass
+
+        st = getattr(sh, "shape_type", None)
+        if st == MSO_SHAPE_TYPE.GROUP:
+            clean_group(sh)
+            continue
+
+        if (
+            _is_red_annotation_shape(sh)
+            and _shape_overlaps_rect(sh, body, 0.01)
+        ):
+            if _remove_shape(sh):
+                removed += 1
+
+    return removed
+
+
 def _is_static_detail_child(sh):
     """True only for fixed template marker/title/header objects."""
     if getattr(sh, "has_table", False):
@@ -409,6 +539,7 @@ _FIXED_DETAIL_TEXT_KEYS = {
     "원인분석", "발생원인", "유출원인", "시스템원인",
     "개선대책", "효과검증", "유효성점검", "수평전개",
     "signal", "이슈기인", "발생단계",
+    "업무진행현황", "업무 진행 현황",
 }
 
 _FIXED_DETAIL_PREFIXES = (
@@ -1437,6 +1568,64 @@ def _existing_summary_display(selected, task_hits):
     return raw or N(selected)
 
 
+def _center_summary_task_cell(cell):
+    try:
+        tf = cell.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for p in tf.paragraphs:
+            p.alignment = PP_ALIGN.CENTER
+    except Exception:
+        pass
+
+
+def _merge_inserted_summary_task_block(tb, hr, hm, rows, new_row, display):
+    """Merge the project-name cell vertically after inserting a same-project row."""
+    task_col = hm.get("task")
+    if task_col is None:
+        return
+
+    block_rows = sorted(set(int(x) for x in list(rows) + [new_row]))
+    if not block_rows:
+        return
+
+    start = min(block_rows)
+    end = max(block_rows)
+
+    # Split any existing vertical merge in this project block, then rebuild it
+    # including the newly inserted row.
+    for r in range(start, end + 1):
+        try:
+            cell = tb.cell(r, task_col)
+            if getattr(cell, "is_merge_origin", False):
+                cell.split()
+        except Exception:
+            pass
+
+    try:
+        for r in range(start, end + 1):
+            tb.cell(r, task_col).text = ""
+    except Exception:
+        pass
+
+    try:
+        top = tb.cell(start, task_col)
+        bottom = tb.cell(end, task_col)
+        merged = top.merge(bottom) if end > start else top
+        try:
+            merged.text = N(display)
+        except Exception:
+            top.text = N(display)
+            merged = top
+        _center_summary_task_cell(merged)
+    except Exception:
+        try:
+            cell = tb.cell(start, task_col)
+            cell.text = N(display)
+            _center_summary_task_cell(cell)
+        except Exception:
+            pass
+
+
 def _update_summary_exact_then_confirmed(prs, d, g, mode):
     pages = s14._summary_pages(prs)
     if not pages:
@@ -1481,6 +1670,9 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
             if s14._summary_row_insert_fits(prs, si, tb, after):
                 row = s14._insert_row_after(tb, after)
                 s14._write_summary_row(tb, row, hr, d, g)
+                _merge_inserted_summary_task_block(
+                    tb, hr, hm, rows, row, display
+                )
                 return (
                     si,
                     row,
@@ -2459,6 +2651,10 @@ def _clone_matched_summary_page(prs, source_index, display, g):
         _remove_copied_visuals(sl)
     except Exception:
         pass
+    try:
+        _purge_summary_red_annotations_below_header(sl, tb, hr)
+    except Exception:
+        pass
     return moved, tb, hr, row
 
 
@@ -2487,6 +2683,9 @@ def _update_summary_old_style(prs, d, g, mode):
             if s14._summary_row_insert_fits(prs, si, tb, after):
                 row = s14._insert_row_after(tb, after)
                 s14._write_summary_row(tb, row, hr, d, g)
+                _merge_inserted_summary_task_block(
+                    tb, hr, hm, rows, row, display
+                )
                 return si, row, f"기존 과제 [{display}] 마지막 행 아래 삽입"
 
             nsi, ntb, nhr, nrow = _clone_matched_summary_page(
