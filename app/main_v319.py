@@ -26,6 +26,40 @@ LEFT = ('2D','3D','4D_CAUSE')
 RIGHT = ('4D_LEAK','5D','6D')
 
 
+_CUSTOMER_LEADING_MARKERS=('IF','AA','MODULE')
+
+def _customer_core(customer):
+    """Remove known routing/type markers only when they prefix the customer value."""
+    s=N(customer)
+    if not s:
+        return ''
+    pat=re.compile(r'^\s*(?:'+ '|'.join(re.escape(x) for x in _CUSTOMER_LEADING_MARKERS) +r')\s*[_\-/／|:： ]+\s*',re.I)
+    while True:
+        m=pat.match(s)
+        if not m:
+            break
+        s=N(s[m.end():]).strip(' _-/／|:：')
+    return s
+
+def _strip_markers_before_customer(text,customer):
+    """Drop IF/AA/Module only when they are routing prefixes before a customer."""
+    s=N(text)
+    cust=_customer_core(customer)
+    if not s or not cust:
+        return s
+    # Find the real customer token, allowing the usual separators used in filenames/titles.
+    m=re.search(r'(?i)(?<![0-9A-Za-z가-힣])'+re.escape(cust)+r'(?![0-9A-Za-z가-힣])',s)
+    if not m:
+        return s
+    before=s[:m.start()].strip(' _-/／|:：')
+    if not before:
+        return s
+    toks=[x for x in re.split(r'[\s_\-/／|:：]+',before) if x]
+    if toks and all(x.upper() in _CUSTOMER_LEADING_MARKERS for x in toks):
+        return s[m.start():].lstrip(' _-/／|:：')
+    return s
+
+
 def _clean_issue_label(text):
     """Remove document-type words from user-facing issue names."""
     s=N(text)
@@ -37,8 +71,9 @@ def _clean_issue_label(text):
     return s.strip(' _-/|:')
 
 def _trim_before_customer(issue, customer):
-    """Keep issue text from the customer token onward; remove document-type words."""
-    issue=N(issue); customer=N(customer)
+    """Keep issue text from the real customer token onward; remove routing prefixes."""
+    customer=_customer_core(customer)
+    issue=_strip_markers_before_customer(issue,customer)
     if not issue or not customer:
         return _clean_issue_label(issue)
     toks=[x.strip() for x in issue.split('_') if x.strip()]
@@ -51,7 +86,8 @@ def _trim_before_customer(issue, customer):
 
 
 def _weekly_task(d):
-    customer=N(d.get('customer')); task=N(d.get('task_name'))
+    customer=_customer_core(d.get('customer'))
+    task=_strip_markers_before_customer(d.get('task_name'),customer)
     if customer and task:
         if C(task)==C(customer):
             return customer
