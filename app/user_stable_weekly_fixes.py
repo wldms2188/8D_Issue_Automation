@@ -3117,44 +3117,41 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
 
 
 def _weekly_candidate_display_one_line(item):
-    """Compact a weekly-summary task label for dialogs only.
+    """Compact the ACTUAL weekly-summary label without losing qualifier text.
 
     Example:
       MBAG\nEB-L\n(EU,US) -> MBAG_EB-L(EU,US)
-    The underlying candidate/canonical value is not changed.
+
+    Do not prefer the catalog canonical name here because the weekly page may
+    legitimately contain a broader qualifier such as (EU,US).
     """
     if isinstance(item, dict):
-        canonical = N(item.get("canonical"))
         raw = N(item.get("display"))
     else:
-        canonical = ""
         raw = N(item)
-
-    # Prefer a known catalog spelling because it is already one-line and uses
-    # the user's expected customer_project convention.
-    if canonical and "\n" not in canonical and "\r" not in canonical:
-        return re.sub(r"\s+", " ", canonical).strip()
 
     parts = [x.strip() for x in re.split(r"[\r\n]+", raw) if x.strip()]
     if not parts:
         return ""
 
-    # Attach parenthetical-only continuation lines to the prior token.
     merged = []
     for part in parts:
-        if re.fullmatch(r"\([^()]*\)", part) and merged:
-            merged[-1] = merged[-1].rstrip() + part
+        compact = re.sub(r"\s+", "", part)
+        if re.fullmatch(r"\([^()]*\)", compact) and merged:
+            merged[-1] = merged[-1] + compact
         else:
-            merged.append(part)
+            merged.append(compact)
 
     if len(merged) >= 2:
-        # Weekly summary convention: first line is customer, remaining text is
-        # the project name. Keep the project text compact on one line.
-        customer = re.sub(r"\s+", "", merged[0])
-        project = "".join(re.sub(r"\s+", "", x) for x in merged[1:])
-        return customer + "_" + project
+        return merged[0] + "_" + "".join(merged[1:])
 
-    return re.sub(r"\s+", "", merged[0])
+    return merged[0]
+
+
+def _weekly_candidate_actual_value(item):
+    """Value to use after user confirmation: preserve the weekly-page label."""
+    return _weekly_candidate_display_one_line(item)
+
 
 
 def _choose_parenthesized_weekly_candidate(self, selected, candidates):
@@ -3182,7 +3179,7 @@ def _choose_parenthesized_weekly_candidate(self, selected, candidates):
         if choice is None:
             return "cancel", selected
         if choice == "use":
-            return "use", candidate["canonical"]
+            return "use", _weekly_candidate_actual_value(candidate)
         return "keep", selected
 
     # More than one same-base candidate, e.g. EB-L(EU) / EB-L(US).
@@ -3271,7 +3268,7 @@ def _choose_parenthesized_weekly_candidate(self, selected, candidates):
         if not sel:
             return
         item = candidates[int(sel[0])]
-        finish(("use", item["canonical"]))
+        finish(("use", _weekly_candidate_actual_value(item)))
 
     tk.Button(
         box,
