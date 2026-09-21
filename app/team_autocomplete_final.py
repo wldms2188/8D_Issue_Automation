@@ -122,8 +122,27 @@ def _team_autocomplete_entry(self, parent, label, key, hint):
     entry.bind("<Escape>", close_popup, add="+")
     entry.bind("<FocusOut>", delayed_close, add="+")
 
-    tk.Label(parent, text="표준 팀명 검색 후보 표시 · 클릭 시 입력 · 비표준 팀명은 실행 전 확인",
-             bg="white", fg="#98A3AD", font=("Malgun Gothic", 7)).pack(anchor="e")
+    # Keep the existing hint text, but constrain it to the 담당팀 input width.
+    # This prevents the hint from widening/overflowing the right edge of the card.
+    hint_label = tk.Label(
+        entry_wrap,
+        text="표준 팀명 검색 후보 표시 · 클릭 시 입력 · 비표준 팀명은 실행 전 확인",
+        bg="white",
+        fg="#98A3AD",
+        font=("Malgun Gothic", 7),
+        anchor="e",
+        justify="right",
+        width=1,
+    )
+    hint_label.pack(fill="x", anchor="e")
+
+    def fit_hint_to_entry(event):
+        try:
+            hint_label.configure(wraplength=max(120, int(event.width) - 4))
+        except Exception:
+            pass
+
+    entry_wrap.bind("<Configure>", fit_hint_to_entry, add="+")
 
 
 def _run_with_team_confirmation(self):
