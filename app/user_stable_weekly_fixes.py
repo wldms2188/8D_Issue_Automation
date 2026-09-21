@@ -235,16 +235,20 @@ def _project_parts(d):
 
 def _section_match_level(name, d):
     q = s13._k(name)
-    _, project, customer = _project_parts(d)
+    full, project, _customer = _project_parts(d)
     if not q:
         return 0
-    if customer and project and customer in q and project in q:
+    # "정확 매칭" is exact after normalization, not mere containment.
+    if full and q == full:
         return 3
     if project and q == project:
         return 2
-    if project and q and min(len(project), len(q)) >= 3:
-        if project in q or q in project:
-            return 1
+    # Anything with an added suffix/variant is suggestion-only and must be
+    # confirmed by the user before it can drive the summary fallback.
+    for key in (full, project):
+        if key and q and min(len(key), len(q)) >= 3:
+            if key in q or q in key:
+                return 1
     return 0
 
 
