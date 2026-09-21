@@ -1419,45 +1419,19 @@ def _summary_direct_keys(d, g=None):
 
 
 def _summary_hits(prs, d, g=None):
-    # Keep the strict detector for generic template creation.
+    """Find existing weekly projects with the restored simple matching rule."""
     pages = s14._summary_pages(prs)
+    full_q, project_q = _legacy_summary_target_keys(d, g)
 
-    direct_keys = _summary_direct_keys(d, g)
-    selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
-    if selected:
-        _full_key, project_key, customer_key = _identity_parts_from_label(
-            selected, N((d or {}).get("customer"))
-        )
-    else:
-        _full_key, project_key, customer_key = _project_parts(d)
-
-    direct_hits = []
-    project_hits = []
-
-    # IMPORTANT: finding an EXISTING project is intentionally simpler than
-    # choosing a generic summary template. Scan every non-detail slide for a
-    # table that has 과제명 plus at least two normal summary columns.
+    hits = []
     for si, sl in enumerate(prs.slides):
         if _strict_detail_template_fingerprint(sl)["ok"]:
             continue
 
-        found_tables = []
-        for sh in v310.walk(sl):
-            if not getattr(sh, "has_table", False):
+        for tb, hr, hm in _simple_summary_table_candidates(sl):
+            if "task" not in hm:
                 continue
-            tb = sh.table
-            for hr in range(min(8, len(tb.rows))):
-                hm = _summary_header_map(tb, hr)
-                if "task" not in hm:
-                    continue
-                data_fields = sum(
-                    1 for k in ("issue", "problem", "progress", "signal") if k in hm
-                )
-                if data_fields >= 2:
-                    found_tables.append((tb, hr, hm))
-                    break
 
-        for tb, hr, hm in found_tables:
             blocks = []
             current = None
             for r in range(hr + 1, len(tb.rows)):
@@ -1471,34 +1445,31 @@ def _summary_hits(prs, d, g=None):
             if current is not None:
                 blocks.append(current)
 
-            direct_rows = []
-            project_rows = []
+            matched_rows = []
+            best_rank = 0
             for block in blocks:
-                raw = block["label"]
-                rows = block["rows"]
-                raw_key = s13._k(raw)
+                rank = _legacy_summary_match_rank(
+                    block["label"], full_q, project_q
+                )
+                if rank:
+                    matched_rows.extend(block["rows"])
+                    best_rank = max(best_rank, rank)
 
-                # Old/simple behavior first: visible task text equality after
-                # removing separators. No catalog/customer split is required.
-                if raw_key and raw_key in direct_keys:
-                    direct_rows.extend(rows)
-                    continue
+            if matched_rows:
+                hits.append((best_rank, si, tb, hr, hm, matched_rows))
 
-                if (
-                    project_key
-                    and _summary_project_key_from_row(
-                        raw, project_key, customer_key
-                    ) == project_key
-                ):
-                    project_rows.extend(rows)
+    if not hits:
+        return pages, []
 
-            if direct_rows:
-                direct_hits.append((si, tb, hr, hm, direct_rows))
-            if project_rows:
-                project_hits.append((si, tb, hr, hm, project_rows))
-
-    # Exact direct text anywhere wins globally. Then exact project-only.
-    return pages, (direct_hits if direct_hits else project_hits)
+    # Exact/full matches first; among equivalent matches, the downstream caller
+    # intentionally chooses the LAST page where the project appears.
+    best_rank = max(x[0] for x in hits)
+    selected = [
+        (si, tb, hr, hm, rows)
+        for rank, si, tb, hr, hm, rows in hits
+        if rank == best_rank
+    ]
+    return pages, selected
 
 def _confirmed_section_summary_hits(pages, d, g):
     name = N((g or {}).get("_weekly_section_override_name"))
