@@ -126,8 +126,9 @@ def _title_owner_overlap_risk(sl,title_sh,title_text):
     return estimated>available or rendered_right>ox-.08
 
 def _strip_selected_project_prefix(issue,d):
-    """Remove a visible customer/project prefix from a short detail title."""
-    s=v319._clean_issue_label(issue)
+    """Remove routing markers and visible customer/project prefix from detail title."""
+    s=v319._trim_before_customer(issue,d.get('customer'))
+    s=v319._clean_issue_label(s)
     if not s:
         return ''
 
