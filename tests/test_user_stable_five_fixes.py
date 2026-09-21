@@ -599,6 +599,30 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "\n".join(getattr(sh, "text", "") for sh in prs.slides[4].shapes),
         )
 
+    def test_existing_detail_requires_same_issue_not_only_same_project(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+            sl.shapes.add_textbox(
+                Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+            ).text = token
+        sl.shapes.add_textbox(
+            Inches(3), Inches(0.5), Inches(4), Inches(0.4)
+        ).text = "GM_MBAG old issue"
+
+        d = {
+            "customer": "GM",
+            "task_name": "GM_MBAG",
+            "issue_name": "completely new issue",
+        }
+        self.assertIsNone(fix._find_existing_detail_exact_issue(prs, d))
+
+        sl.shapes.add_textbox(
+            Inches(3), Inches(1.0), Inches(4), Inches(0.4)
+        ).text = "completely new issue"
+        s13._clear_slide_text_cache()
+        self.assertEqual(fix._find_existing_detail_exact_issue(prs, d), 0)
+
     def test_detail_position_uses_last_existing_project_page(self):
         prs = Presentation()
         for label in ("OTHER", "GM_MBAG first", "GM_MBAG last", "TAIL"):
