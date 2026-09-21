@@ -360,6 +360,100 @@ class UserStableFiveFixesTest(unittest.TestCase):
         pages = fix._summary_pages_flexible(prs)
         self.assertEqual([x[0] for x in pages], [1])
 
+    def test_existing_task_page_can_match_even_if_header_variant_is_not_generic_template(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = sl.shapes.add_table(
+            4, 3, Inches(0.5), Inches(0.7), Inches(8.5), Inches(1.8)
+        ).table
+        # This older summary variant has only two recognized data columns,
+        # so it is intentionally NOT a generic-template candidate.
+        for col, h in enumerate(("과제명", "이슈명", "진행사항")):
+            tb.cell(0, col).text = h
+        tb.cell(1, 0).text = "MBAG EB-L(EU)"
+        tb.cell(1, 1).text = "old"
+        tb.cell(1, 2).text = "old progress"
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB-L(EU)"}
+
+        # Strict generic summary detection may exclude this page.
+        self.assertEqual(fix._summary_pages_flexible(prs), [])
+
+        _pages, hits = fix._summary_hits(prs, d, g)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 0)
+        self.assertEqual(hits[0][4], [1])
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+            s14._write_summary_row = writer
+
+            # _update_summary_by_task itself still needs at least one strict page
+            # for generic new-page fallback. Add a different valid template page;
+            # exact task matching must still choose slide 0, not that template.
+            add_summary_slide(prs, "OTHER_PROJECT", "x")
+            si, row, action = s14._update_summary_by_task(prs, d, g, "new")
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertIn("마지막", action)
+        self.assertEqual(tb.cell(row, 0).text, "MBAG EB-L(EU)")
+
+    def test_saved_blank_detail_shell_is_filled_before_section_creation(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            sl = prs.slides.add_slide(prs.slide_layouts[6])
+            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                sl.shapes.add_textbox(
+                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+                ).text = token
+            request = {
+                "name": "MBAG_EB-L(EU)",
+                "slide_index": 0,
+                "slide_id": int(sl.slide_id),
+            }
+            prs.save(out)
+
+            old_update = s13._update_detail_slide
+            try:
+                def fake_update(slide, d, g, mode):
+                    for i, key in enumerate(("2D", "3D", "4D_CAUSE", "5D")):
+                        sh = slide.shapes.add_textbox(
+                            Inches(3),
+                            Inches(0.5 + i * 0.4),
+                            Inches(2),
+                            Inches(0.3),
+                        )
+                        sh.name = "AUTO_8D_TEXT_" + key
+                        sh.text = key + " NEW"
+                s13._update_detail_slide = fake_update
+
+                idx, repaired = fix._ensure_saved_detail(
+                    str(out),
+                    {"customer": "MBAG", "task_name": "EB-L(EU)", "issue_name": "NEW"},
+                    {},
+                    "new",
+                    request,
+                )
+            finally:
+                s13._update_detail_slide = old_update
+
+            check = Presentation(out)
+            self.assertEqual(idx, 0)
+            self.assertTrue(fix._filled_detail_slide(check.slides[0]))
+            self.assertEqual(repaired["slide_index"], 0)
+
     def test_summary_direct_match_beats_all_fallback_logic(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "MBAG EB-L(EU)", "old")
