@@ -206,14 +206,21 @@ try {{
 }}
 """
         try:
+            # PowerShell COM is the fallback when pywin32 is unavailable.
+            # Keep output binary so Korean Office error text cannot trigger a
+            # cp949 UnicodeDecodeError, but preserve stderr for diagnostics.
             p=subprocess.run(
                 ['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],
-                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=45
+                stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=45
             )
         except Exception as e:
             raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+repr(e))
         if p.returncode!=0:
-            raise RuntimeError('PowerPoint 신규 구역 생성 실패 (PowerPoint COM 반환코드 '+str(p.returncode)+')')
+            detail=(p.stderr or b'').decode('utf-8','replace').strip()
+            if not detail:
+                detail=(p.stderr or b'').decode('cp949','replace').strip()
+            suffix=(' / '+detail[-500:]) if detail else ''
+            raise RuntimeError('PowerPoint 신규 구역 생성 실패 (PowerPoint COM 반환코드 '+str(p.returncode)+')'+suffix)
         return True
 
     app=None
