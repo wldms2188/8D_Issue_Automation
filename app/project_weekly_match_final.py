@@ -8,16 +8,34 @@ import project_autocomplete_final as catalog
 def _project_key(value):
     return catalog.project_key(value,False)
 
+def _full_key(value):
+    """Normalized customer+project identity, preserving the customer when present."""
+    return catalog._norm(value)
+
 def _task_rows_by_project(tb,hr,hm,task):
+    """Weekly-summary matching priority:
+    1) exact customer+project match across the whole summary;
+    2) only when none exists, exact project-name match regardless of customer.
+
+    This makes the project confirmed in the GUI/candidate popup the same identity
+    used to locate the weekly-summary row.
+    """
     if 'task' not in hm:return []
-    target=_project_key(task)
-    if not target:return []
-    rows=[]
+
+    target_full=_full_key(task)
+    target_project=_project_key(task)
+    if not target_full and not target_project:return []
+
+    full_rows=[]
+    project_rows=[]
     for r in range(hr+1,len(tb.rows)):
         raw=s13._row_text(tb,r,hm['task'])
-        if _project_key(raw)==target:
-            rows.append(r)
-    return rows
+        if target_full and _full_key(raw)==target_full:
+            full_rows.append(r)
+        if target_project and _project_key(raw)==target_project:
+            project_rows.append(r)
+
+    return full_rows if full_rows else project_rows
 
 def _row_match_score_by_project(tb,r,hm,task,issue):
     pk=_project_key(task)
