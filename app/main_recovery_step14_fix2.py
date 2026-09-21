@@ -93,9 +93,6 @@ def _section_match_level(name,d):
     # Section labels often add a variant/suffix to the confirmed project name
     # (e.g. MBAG -> MBAG E~).  Keep this as suggestion-only; never auto-select.
     if task and (task in q or q in task):return 1
-    if task and len(task)>=3:
-        from difflib import SequenceMatcher
-        if SequenceMatcher(None,task,q).ratio()>=0.72:return 1
     return 0
 
 def _matching_native_section(prs,d):
