@@ -127,6 +127,46 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertIn("신규 요약 페이지", action)
 
+    def test_summary_overflow_clones_immediately_after_last_match(self):
+        prs = Presentation()
+        add_summary_slide(prs, "OTHER", "old")
+        prs.slides.add_slide(prs.slide_layouts[6])
+        add_summary_slide(prs, "GM_MBAG", "old")
+
+        d = {
+            "customer": "GM",
+            "task_name": "GM_MBAG",
+            "issue_name": "new",
+        }
+        g = {"task_name": "GM_MBAG"}
+
+        old_fit = s14._summary_row_insert_fits
+        old_writer = s14._write_summary_row
+        try:
+            s14._summary_row_insert_fits = lambda *args, **kwargs: False
+
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                tb.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, _, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._summary_row_insert_fits = old_fit
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 3)
+        self.assertIn("바로 다음 페이지", action)
+
+    def test_section_match_levels_are_strict(self):
+        d = {"customer": "GM", "task_name": "GM_MBAG"}
+        self.assertEqual(fix._section_match_level("GM_MBAG", d), 3)
+        self.assertEqual(fix._section_match_level("MBAG", d), 2)
+        self.assertEqual(fix._section_match_level("GM_MBAG E~", d), 1)
+
     def test_clone_visual_cleanup_preserves_table_and_frame(self):
         prs = Presentation()
         sl = prs.slides.add_slide(prs.slide_layouts[6])
