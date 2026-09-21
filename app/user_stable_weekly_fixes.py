@@ -20,6 +20,8 @@ import main_recovery_step14 as s14
 import main_recovery_step14_fix2 as core
 import main_v310 as v310
 import project_autocomplete_final as catalog
+import main_enterprise_v3 as enterprise_v3
+import ui_enterprise as ui
 
 N = v310.N
 
@@ -1287,3 +1289,73 @@ def _weekly_with_real_native_section(src, out, d, g, mode):
 
 
 core.base.weekly = _weekly_with_real_native_section
+
+
+# ---------------------------------------------------------------------------
+# Final required-input gate.
+# This module loads last, so this guard cannot be bypassed by the team/project
+# autocomplete run wrappers loaded earlier.
+# ---------------------------------------------------------------------------
+_REQUIRED_INPUT_FIELDS = (
+    ("team", "담당팀"),
+    ("task_name", "고객사/과제명"),
+    ("owner", "담당자"),
+    ("sample", "발생 샘플"),
+    ("plm_no", "PMS/PLM 이슈번호"),
+    ("form_factor", "폼팩터"),
+    ("product_type", "제품 타입"),
+    ("occurrence_site", "발생처"),
+    ("stage", "개발 단계"),
+)
+
+
+def _required_user_input_missing(g):
+    g = g or {}
+    return [
+        label
+        for key, label in _REQUIRED_INPUT_FIELDS
+        if not N(g.get(key))
+    ]
+
+
+_original_enterprise_run_required_gate = enterprise_v3.EnterpriseAppV3.run
+
+
+def _run_with_required_inputs(self):
+    g = self.gui()
+    missing = _required_user_input_missing(g)
+    if missing:
+        try:
+            self.status_var.set("READY · 담당 및 분류 정보 입력이 필요합니다.")
+        except Exception:
+            pass
+        return ui.warning(
+            self,
+            "담당 및 분류 정보 확인",
+            "아래 항목을 모두 입력해 주세요.\n\n"
+            + " / ".join(missing)
+            + "\n\n모든 담당 및 분류 정보 입력 후 다시 실행해 주세요.",
+        )
+
+    # Keep the existing classification ○→✓ confirmation contract as well.
+    try:
+        unconfirmed = self._unconfirmed_classifications()
+    except Exception:
+        unconfirmed = []
+    if unconfirmed:
+        try:
+            self.status_var.set("READY · 분류 정보 확인이 필요합니다.")
+        except Exception:
+            pass
+        return ui.warning(
+            self,
+            "분류 정보 확인",
+            "아래 분류값을 확인해 주세요.\n\n"
+            + " / ".join(unconfirmed)
+            + "\n\n값을 직접 선택하거나, 현재 값이 맞으면 오른쪽 ○를 클릭해 ✓로 확인해 주세요.",
+        )
+
+    return _original_enterprise_run_required_gate(self)
+
+
+enterprise_v3.EnterpriseAppV3.run = _run_with_required_inputs
