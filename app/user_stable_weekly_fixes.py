@@ -472,19 +472,17 @@ def _set_shape_text_preserve_first_run(sh, value):
         paragraphs = list(tf.paragraphs)
         first_run = None
         for p in paragraphs:
-            if p.runs:
-                first_run = p.runs[0]
-                break
+            runs = list(p.runs)
+            if runs and first_run is None:
+                first_run = runs[0]
 
         if first_run is not None:
-            first_run.text = N(value)
-            found_first = False
+            # Clear everything first. pptx run proxy identity is not stable
+            # enough to safely compare with "is" while iterating again.
             for p in paragraphs:
-                for run in p.runs:
-                    if run is first_run and not found_first:
-                        found_first = True
-                        continue
+                for run in list(p.runs):
                     run.text = ""
+            first_run.text = N(value)
             return True
 
         sh.text = N(value)
