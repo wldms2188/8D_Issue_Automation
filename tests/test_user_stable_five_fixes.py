@@ -481,6 +481,46 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
+    def test_parenthetical_match_ignores_unrelated_parentheses_in_same_sentence(self):
+        d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
+        g = {"task_name": "MBAG_EB-L(EU)"}
+        full_keys, project_keys = fix._summary_identity_keys(d, g)
+
+        # The project qualifier is (EU), but the same cell/page may contain an
+        # unrelated note like (2차). That must not block the project match.
+        raw = "과제 : MBAG\nEB-L(EU)\n검토사항(2차)"
+        self.assertGreater(
+            fix._simple_task_match_rank(raw, full_keys, project_keys),
+            0,
+        )
+
+        # The inner qualifier text still distinguishes variants because _k()
+        # keeps EU/US while removing only punctuation/separators.
+        wrong = "과제 : MBAG\nEB-L(US)\n검토사항(2차)"
+        self.assertEqual(
+            fix._simple_task_match_rank(wrong, full_keys, project_keys),
+            0,
+        )
+
+    def test_existing_summary_project_finds_matching_qualifier_with_extra_parentheses(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = sl.shapes.add_table(
+            3, 4, Inches(0.5), Inches(0.7), Inches(9), Inches(1.5)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항")):
+            tb.cell(0, col).text = h
+        tb.cell(1, 0).text = "MBAG\nEB-L(EU)\n(2차)"
+        tb.cell(1, 1).text = "old"
+
+        hit = fix._find_existing_summary_project(
+            prs,
+            {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"},
+            {"task_name": "MBAG_EB-L(EU)"},
+        )
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 0)
+
     def test_parenthetical_project_variants_never_match_each_other(self):
         d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
         g = {"task_name": "MBAG_EB-L(EU)"}
