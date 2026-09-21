@@ -535,10 +535,67 @@ def _is_detail_metadata_table(sh):
 _original_clear_cloned_table_content_user = core._clear_cloned_table_content
 
 
+def _set_cell_text_preserve_title_style(cell, value):
+    """Set a cell's text while preserving its existing first-run formatting."""
+    try:
+        tf = cell.text_frame
+        first_run = None
+        paragraphs = list(tf.paragraphs)
+        for p in paragraphs:
+            runs = list(p.runs)
+            if runs and first_run is None:
+                first_run = runs[0]
+
+        if first_run is not None:
+            for p in paragraphs:
+                for run in list(p.runs):
+                    run.text = ""
+            first_run.text = N(value)
+            return
+
+        cell.text = N(value)
+    except Exception:
+        try:
+            cell.text = N(value)
+        except Exception:
+            pass
+
+
 def _clear_cloned_table_content_keep_metadata(sh):
+    """Preserve template table labels; clear only copied issue body values."""
+    if not getattr(sh, "has_table", False):
+        return
+
+    # Top classification/owner table is template data: preserve all text.
     if _is_detail_metadata_table(sh):
         return
-    return _original_clear_cloned_table_content_user(sh)
+
+    try:
+        tb = sh.table
+        for r in range(len(tb.rows)):
+            for col in range(len(tb.columns)):
+                cell = tb.cell(r, col)
+                text = N(cell.text)
+                if not text:
+                    continue
+
+                fixed = _fixed_detail_text_only(text)
+
+                # 2D~7D template title cell: keep it exactly as template.
+                if fixed and s13._k(text) == s13._k(fixed):
+                    continue
+
+                # Combined title + copied body in the same cell:
+                # retain only the fixed title.
+                if fixed:
+                    _set_cell_text_preserve_title_style(cell, fixed)
+                    continue
+
+                # Everything else in a detail-content table is prior issue body
+                # or placeholder text and must be cleared.
+                _set_cell_text_preserve_title_style(cell, "")
+    except Exception:
+        pass
 
 
 core._clear_cloned_table_content = _clear_cloned_table_content_keep_metadata
