@@ -169,10 +169,18 @@ class ProjectWeeklyMatchTests(unittest.TestCase):
   self.assertEqual(ntb.cell(nhr+1,0).text,'MBAG_EB565M')
 
  def test_create_native_section_for_new_project(self):
+  # python-pptx cannot create real PowerPoint native sections.
+  # This helper must return the pending COM instruction; the actual native
+  # section is created after the presentation is saved by
+  # _create_native_section_com().
   prs=Presentation(); prs.slides.add_slide(prs.slide_layouts[6])
   sec=core._create_native_section(prs,'NEW_PROJECT',0)
   self.assertIsNotNone(sec)
-  sections=core._native_sections(prs)
-  self.assertTrue(any(x['name']=='NEW_PROJECT' and 0 in x['indices'] for x in sections))
+  self.assertEqual(sec['name'],'NEW_PROJECT')
+  self.assertEqual(sec['indices'],[0])
+  self.assertTrue(sec['_pending_com'])
+  self.assertIsNone(sec['element'])
+  # It must not write an invalid fake section into the pptx package.
+  self.assertEqual(core._native_sections(prs),[])
 
 if __name__=='__main__':unittest.main()
