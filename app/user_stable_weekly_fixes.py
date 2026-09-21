@@ -460,6 +460,96 @@ core.section_resolution = _section_resolution_strict
 
 
 # ---------------------------------------------------------------------------
+# Mixed summary/detail native-section recovery.
+# Some legacy weekly decks keep summary pages and 2D~6D detail pages inside
+# one PowerPoint section.  That section is NOT a safe target for a newly cloned
+# detail page.  Treat it as template/source material only and create a fresh
+# native section for the new detail + attachments.
+# ---------------------------------------------------------------------------
+_original_selected_section = core._selected_section
+_original_template_detail_index = core._template_detail_index
+
+
+def _section_contains_summary(prs, section):
+    if not section:
+        return False
+    summary_indices = set(core._summary_indices(prs))
+    return any(i in summary_indices for i in section.get("indices", []))
+
+
+def _selected_section_without_mixed_summary(prs, d, g):
+    section = _original_selected_section(prs, d, g)
+    if section and _section_contains_summary(prs, section):
+        # This is the legacy layout that caused detail creation to disappear:
+        # summary and detail share one native section.  Do not append the clone
+        # to that mixed section.  The active weekly writer reads this flag
+        # immediately after _selected_section() and creates a new section.
+        g["_weekly_create_new_section"] = "1"
+        g["_weekly_mixed_section_recovered"] = N(section.get("name"))
+        return None
+    return section
+
+
+def _detail_template_score(sl, d):
+    """Score a reusable detail template independently from native sections."""
+    if not core._is_detail_like(sl):
+        return -1
+
+    text = s13._slide_text(sl)
+    q = s13._k(text)
+    score = 0
+
+    # Prefer the complete shared 8D detail skeleton.
+    for token in ("2d", "3d", "4d", "5d", "6d"):
+        if token in q:
+            score += 25
+    if "7d" in q or "수평전개" in q:
+        score += 10
+    for token in ("signal", "이슈기인", "발생단계"):
+        if token in q:
+            score += 12
+
+    # Same-project detail is the closest visual/template source, but section
+    # membership itself never blocks template reuse.
+    full, project, _customer = _project_parts(d)
+    if full and full in q:
+        score += 80
+    elif project and project in q:
+        score += 55
+
+    return score
+
+
+def _template_detail_index_any_section(prs, d):
+    """Find the best 2D~6D detail shell across the entire deck.
+
+    Summary-page section membership is deliberately ignored.  This recovers
+    legacy decks where valid detail templates live in the same section as the
+    summary pages.
+    """
+    summaries = set(core._summary_indices(prs))
+    candidates = []
+    for i, sl in enumerate(prs.slides):
+        if i in summaries:
+            continue
+        score = _detail_template_score(sl, d)
+        if score >= 0:
+            candidates.append((score, i))
+
+    if not candidates:
+        # Preserve the stable baseline error/fallback behavior if no reusable
+        # detail-like slide exists anywhere.
+        return _original_template_detail_index(prs, d)
+
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return candidates[0][1]
+
+
+core._selected_section = _selected_section_without_mixed_summary
+core._template_detail_index = _template_detail_index_any_section
+
+
+# ---------------------------------------------------------------------------
 # 2 + 4) Summary placement/matching across ALL summary pages.
 #    1. exact customer+project
 #    2. exact project
