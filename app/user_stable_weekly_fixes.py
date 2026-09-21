@@ -389,10 +389,37 @@ core.section_resolution = _section_resolution_strict
 #       "해당 구역 업데이트", match that section name against real summary labels.
 #       If absent, use the normal new-summary path with customer+project.
 # ---------------------------------------------------------------------------
-def _summary_hits(prs, selected):
+def _summary_match_key(value):
+    """Comparison-only key: separators such as _, spaces, -, / are ignored."""
+    return s13._k(value)
+
+
+def _summary_project_key_from_row(raw, project_key):
+    """Return exact project identity from a summary label.
+
+    A summary label may be either just the project name or customer+project
+    written with any separator (underscore, space, hyphen, slash, etc.).
+    Matching ignores those separators, while the original displayed label is
+    preserved unchanged.
+    """
+    q = _summary_match_key(raw)
+    if not q or not project_key:
+        return ""
+    if q == project_key:
+        return project_key
+    # Step 2 is project-only exact matching.  A customer prefix is allowed,
+    # but the project itself must be the exact normalized suffix.
+    if len(project_key) >= 3 and q.endswith(project_key):
+        return project_key
+    return ""
+
+
+def _summary_hits(prs, d, g=None):
     pages = s14._summary_pages(prs)
-    full_key = catalog._norm(selected)
-    project_key = catalog.project_key(selected, False)
+
+    # IMPORTANT: build the full identity from the canonical customer+project,
+    # not g["task_name"] alone.  GUI task_name can contain only the project.
+    full_key, project_key, _customer_key = _project_parts(d)
     full_hits = []
     project_hits = []
 
@@ -404,13 +431,22 @@ def _summary_hits(prs, selected):
         pr = []
         for r in range(hr + 1, len(tb.rows)):
             raw = s13._row_text(tb, r, hm["task"])
-            if full_key and catalog._norm(raw) == full_key:
+            raw_key = _summary_match_key(raw)
+
+            # 1) customer + project exact, separator-insensitive.
+            if full_key and raw_key == full_key:
                 fr.append(r)
+                continue
+
+            # 2) project exact, separator-insensitive.  Only used globally
+            # when no customer+project exact hit exists anywhere.
             if (
                 project_key
-                and catalog.project_key(raw, False) == project_key
+                and _summary_project_key_from_row(raw, project_key)
+                == project_key
             ):
                 pr.append(r)
+
         if fr:
             full_hits.append((si, tb, hr, hm, fr))
         if pr:
@@ -478,7 +514,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
     selected = N((g or {}).get("task_name")) or N(s13._customer_task(d))
     issue = s13._issue_display(d)
 
-    _, task_hits = _summary_hits(prs, selected)
+    _, task_hits = _summary_hits(prs, d, g)
     if not task_hits:
         task_hits = _confirmed_section_summary_hits(pages, d, g)
 
