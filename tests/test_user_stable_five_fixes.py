@@ -444,11 +444,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "weekly.pptx"
             prs = Presentation()
-            sl = prs.slides.add_slide(prs.slide_layouts[6])
-            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
-                sl.shapes.add_textbox(
-                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
-                ).text = token
+            sl = add_real_detail_slide(prs)
             request = {
                 "name": "MBAG_EB-L(EU)",
                 "slide_index": 0,
@@ -861,14 +857,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
     def test_clone_without_safe_section_records_new_section_request(self):
         prs = Presentation()
-        src = prs.slides.add_slide(prs.slide_layouts[6])
-        for i, token in enumerate(("2D 현상", "3D 임시조치", "4D 발생원인", "5D 개선대책", "6D 효과검증")):
-            src.shapes.add_textbox(
-                Inches(0.5),
-                Inches(0.5 + i * 0.45),
-                Inches(2.5),
-                Inches(0.35),
-            ).text = token
+        src = add_real_detail_slide(prs)
 
         old_clone = fix._original_clone_detail_shell
         old_pending = fix._pending_user_native_section
@@ -1075,11 +1064,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
     def test_existing_detail_requires_same_issue_not_only_same_project(self):
         prs = Presentation()
-        sl = prs.slides.add_slide(prs.slide_layouts[6])
-        for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
-            sl.shapes.add_textbox(
-                Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
-            ).text = token
+        sl = add_real_detail_slide(prs)
         sl.shapes.add_textbox(
             Inches(3), Inches(0.5), Inches(4), Inches(0.4)
         ).text = "GM_MBAG old issue"
@@ -1100,12 +1085,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
     def test_detail_position_uses_last_existing_project_page(self):
         prs = Presentation()
         for label in ("OTHER", "GM_MBAG first", "GM_MBAG last", "TAIL"):
-            sl = prs.slides.add_slide(prs.slide_layouts[6])
-            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
-                box = sl.shapes.add_textbox(
-                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
-                )
-                box.text = token
+            sl = add_real_detail_slide(prs)
             sl.shapes.add_textbox(
                 Inches(3), Inches(0.5), Inches(4), Inches(0.5)
             ).text = label
@@ -1214,11 +1194,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
                 Inches(0.5), Inches(0.5), Inches(2), Inches(0.4)
             ).text = "SUMMARY"
 
-            detail = prs.slides.add_slide(prs.slide_layouts[6])
-            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
-                detail.shapes.add_textbox(
-                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
-                ).text = token
+            detail = add_real_detail_slide(prs)
             detail.shapes.add_textbox(
                 Inches(3), Inches(0.5), Inches(3), Inches(0.4)
             ).text = "GM_MBAG"
@@ -1253,15 +1229,16 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
             def fake_active(src, out_path, d, g, mode):
                 prs = Presentation()
-                sl = prs.slides.add_slide(prs.slide_layouts[6])
-                for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                sl = add_real_detail_slide(prs)
+                for i, key in enumerate(("2D", "3D", "4D_CAUSE", "5D")):
                     sh = sl.shapes.add_textbox(
-                        Inches(0.5),
-                        Inches(0.5 + i * 0.4),
-                        Inches(2),
+                        Inches(3.0),
+                        Inches(0.8 + i * 0.35),
+                        Inches(2.0),
                         Inches(0.3),
                     )
-                    sh.text = token
+                    sh.name = "AUTO_8D_TEXT_" + key
+                    sh.text = "generated " + key
                 prs.save(out_path)
                 fix._create_native_section_pending(prs, "GM_MBAG", 0)
                 return "ok", str(out_path)
