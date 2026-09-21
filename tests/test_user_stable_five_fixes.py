@@ -29,6 +29,28 @@ def add_summary_slide(prs, task, issue="old", top=0.7, rows=3):
 
 
 class UserStableFiveFixesTest(unittest.TestCase):
+    def test_required_owner_and_classification_fields_are_all_mandatory(self):
+        complete = {
+            "team": "파우치형Pack개발품질1팀",
+            "task_name": "MBAG_EB-L(EU)",
+            "owner": "홍길동",
+            "sample": "B2",
+            "plm_no": "PLM-123",
+            "form_factor": "파우치형",
+            "product_type": "EV Pack",
+            "occurrence_site": "제품 생산",
+            "stage": "DV",
+        }
+        self.assertEqual(fix._required_user_input_missing(complete), [])
+
+        missing = dict(complete)
+        missing["owner"] = ""
+        missing["stage"] = ""
+        self.assertEqual(
+            fix._required_user_input_missing(missing),
+            ["담당자", "개발 단계"],
+        )
+
     def test_detail_title_exact_user_format(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
         g = {
