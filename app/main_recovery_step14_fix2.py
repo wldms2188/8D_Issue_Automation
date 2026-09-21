@@ -93,9 +93,6 @@ def _section_match_level(name,d):
     # Section labels often add a variant/suffix to the confirmed project name
     # (e.g. MBAG -> MBAG E~).  Keep this as suggestion-only; never auto-select.
     if task and (task in q or q in task):return 1
-    if task and len(task)>=3:
-        from difflib import SequenceMatcher
-        if SequenceMatcher(None,task,q).ratio()>=0.72:return 1
     return 0
 
 def _matching_native_section(prs,d):
@@ -191,18 +188,46 @@ def _create_native_section_com(ppt_path,name,slide_index):
         path_q=_ps_quote(Path(ppt_path).resolve())
         name_q=_ps_quote(N(name) or '신규 과제')
         slide_no=max(1,int(slide_index)+1)
+        # Work on a temporary copy, then atomically replace the python-pptx
+        # output after PowerPoint has fully closed it.  On company PCs the
+        # just-saved output can briefly be unavailable to Presentations.Open
+        # (AV/sync/indexing), which previously made native-section creation fail.
         script=f"""
 $ErrorActionPreference='Stop'
+$src='{path_q}'
+$tmp=[System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($src),([System.IO.Path]::GetFileNameWithoutExtension($src)+'.section_work_'+[guid]::NewGuid().ToString('N')+[System.IO.Path]::GetExtension($src)))
 $ppt=$null; $pres=$null
 try {{
+  if (-not (Test-Path -LiteralPath $src)) {{ throw 'saved PPT does not exist: '+$src }}
+  $last=-1
+  for($i=0;$i -lt 10;$i++) {{
+    $len=(Get-Item -LiteralPath $src).Length
+    if($len -gt 0 -and $len -eq $last) {{ break }}
+    $last=$len
+    Start-Sleep -Milliseconds 250
+  }}
+  Copy-Item -LiteralPath $src -Destination $tmp -Force
   $ppt=New-Object -ComObject PowerPoint.Application
-  $pres=$ppt.Presentations.Open('{path_q}',0,0,0)
+  $opened=$false
+  for($i=0;$i -lt 4 -and -not $opened;$i++) {{
+    try {{
+      $pres=$ppt.Presentations.Open($tmp,0,0,0)
+      $opened=$true
+    }} catch {{
+      if($i -ge 3) {{ throw }}
+      Start-Sleep -Milliseconds (400*($i+1))
+    }}
+  }}
   $n=[Math]::Min({slide_no},$pres.Slides.Count)
   [void]$pres.SectionProperties.AddBeforeSlide($n,'{name_q}')
   $pres.Save()
+  $pres.Close(); $pres=$null
+  $ppt.Quit(); $ppt=$null
+  Copy-Item -LiteralPath $tmp -Destination $src -Force
 }} finally {{
   if ($pres -ne $null) {{ try {{$pres.Close()}} catch {{}} }}
   if ($ppt -ne $null) {{ try {{$ppt.Quit()}} catch {{}} }}
+  if (Test-Path -LiteralPath $tmp) {{ try {{Remove-Item -LiteralPath $tmp -Force}} catch {{}} }}
 }}
 """
         try:
@@ -394,29 +419,18 @@ def _remove_shape(sh):
 def _clear_cloned_issue_content(sl):
     """Turn a copied detail page into a clean shell.
 
-    Large pictures/charts/media copied from another issue are always stale issue
-    content. Remove them regardless of zone overlap; the fixed weekly template
-    does not rely on embedded issue photos.
+    Preserve the fixed detail-page frame/labels, but remove the previous issue's
+    content from the D zones.  Pictures/groups are NOT globally deleted outside
+    those zones because the template itself may contain fixed visual elements.
+    Current 8D attachments are appended later from the source presentation.
     """
     v310.remove_previous_auto(sl)
     zones=_content_zones()
 
-    # Pass 1: remove every top-level copied picture/chart/media object first.
-    # The old overlap gate was the reason large photos spanning/outside D zones
-    # survived cloning.
     for sh in list(sl.shapes):
-        st=getattr(sh,'shape_type',None)
-        if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.MEDIA):
-            _remove_shape(sh)
-            continue
-        if st==MSO_SHAPE_TYPE.GROUP:
-            children=[x for x in v310.walk(sh) if x is not sh]
-            if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
-                _remove_shape(sh)
-
-    # Pass 2: inside issue-content zones, keep only true fixed labels/tables and
-    # remove old arrows, lines, callouts, free text and other issue drawings.
-    for sh in list(sl.shapes):
+        # Only issue-content zones are cleaned.  This restores the intended
+        # behavior: old issue drawings/photos disappear, fixed template visuals
+        # elsewhere remain intact.
         if not any(_overlap_ratio(sh,z)>=0.12 for z in zones):
             continue
         if getattr(sh,'has_table',False):
@@ -592,12 +606,17 @@ def weekly_fix5(src,out,d,g,mode):
     except PermissionError:
         p=Path(out); saved=str(p.with_name(p.stem+'_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+p.suffix)); prs.save(saved)
 
+    # Finalize attachments first. This is deliberately before native-section
+    # creation: InsertFromFile already exercises a real PowerPoint COM open/save
+    # cycle and leaves the file in an Office-normalized state. Creating the
+    # section against that finalized file avoids reopening the raw python-pptx
+    # save that failed on the company PC.
+    _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
+    attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
+
     if force_new:
         _weekly_progress(g,'PowerPoint 신규 과제 구역을 생성하는 중...')
         _create_native_section_com(saved,_new_section_name(d,g),target)
-
-    _weekly_progress(g,'8D 유첨 페이지를 확인하는 중...')
-    attached,attach_error=_append_8d_attachments_safe(saved,g.get('ppt8d',''),target,d)
     sec_name=N(matched_section.get('name')) if matched_section else ('신규 구역' if force_new else '확인된 상세페이지 주변')
     if attach_error:
         attach_msg=' / 8D 유첨 추가 실패(주간회의 본문은 저장됨): '+attach_error[:220]

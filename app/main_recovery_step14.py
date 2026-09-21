@@ -136,29 +136,41 @@ def _prepare_new_summary_page(prs,pages,g,template_index=None):
     tb,hr=found
     row=_clear_summary_data(tb,hr)
 
-    # A newly cloned SUMMARY page must not inherit issue-specific pictures,
-    # charts or drawing objects from the page used as its style template.
-    # Keep the summary table and ordinary header/team text only.
+    # A newly cloned SUMMARY page must not inherit issue-specific visual
+    # content from the page used as its style template.  Keep the summary table
+    # and text/header objects, but remove pictures/charts/media AND non-text
+    # drawing/group objects.  This covers arrows/diagrams that are ordinary
+    # AUTO_SHAPE/FREEFORM objects rather than PowerPoint pictures.
     table_shape=_summary_table_shape(sl,tb)
     for sh in list(sl.shapes):
         if sh is table_shape:
             continue
         st=getattr(sh,'shape_type',None)
+        has_text=bool(N(getattr(sh,'text','')))
+        has_table=bool(getattr(sh,'has_table',False))
+        remove=False
         if st in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.MEDIA):
+            remove=True
+        elif st==MSO_SHAPE_TYPE.GROUP:
+            # Summary groups are issue-specific visual content unless the group
+            # actually carries text that belongs to the page header.
+            children=[x for x in v310.walk(sh) if x is not sh]
+            child_text=any(bool(N(getattr(x,'text',''))) for x in children)
+            remove=not child_text or any(
+                getattr(x,'shape_type',None) in
+                (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA)
+                for x in children
+            )
+        elif not has_text and not has_table:
+            # Lines, arrows, freeforms and other drawing-only objects copied
+            # from the previous issue must not survive on a continuation page.
+            remove=True
+        if remove:
             try:
                 el=sh._element
                 if el.getparent() is not None: el.getparent().remove(el)
             except Exception:
                 pass
-            continue
-        if st==MSO_SHAPE_TYPE.GROUP:
-            children=[x for x in v310.walk(sh) if x is not sh]
-            if any(getattr(x,'shape_type',None) in (MSO_SHAPE_TYPE.PICTURE,MSO_SHAPE_TYPE.CHART,MSO_SHAPE_TYPE.MEDIA) for x in children):
-                try:
-                    el=sh._element
-                    if el.getparent() is not None: el.getparent().remove(el)
-                except Exception:
-                    pass
 
     # Keep the shared page style and only replace the team token when present.
     team=N(g.get('team'))
