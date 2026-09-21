@@ -946,7 +946,14 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(changed, 1)
         self.assertEqual(tb._tbl.xml, before_table_xml)
-        self.assertEqual(str(title.line.fill.type).lower(), "background (5)")
+
+        # Re-fetch the shape proxy because python-pptx caches LineFormat/FillFormat
+        # objects on an existing proxy even after another proxy mutates the same XML.
+        refreshed = next(
+            sh for sh in sl.shapes
+            if getattr(sh, "text", "") == "파우치Pack개발품질1팀 주요 논의 사항"
+        )
+        self.assertEqual(str(refreshed.line.fill.type).lower(), "background (5)")
 
     def test_summary_clone_red_annotations_are_removed_only_below_header(self):
         prs = Presentation()
