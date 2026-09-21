@@ -161,7 +161,8 @@ def _strip_selected_project_prefix(issue,d):
                         start=idx-1
                 anchored='_'.join(parts[start:]).strip(' _-/／|:：')
                 if anchored:
-                    s=anchored
+                    # Detail-page issue line keeps customer/project and removes only routing/model prefixes.
+                    return anchored
                 break
 
     prefix=N(v319._weekly_task(d))
@@ -324,7 +325,7 @@ def _force_page2_header(sl,d,g):
     _fit_full_title_before_owner(sl,title_sh,title)
 
     if issue_sh is not None:
-        issue=v319._trim_before_customer(d.get('issue_name'),customer)
+        issue=_strip_selected_project_prefix(d.get('issue_name'),d)
         v319._set_issue_line(issue_sh,issue)
 
 
