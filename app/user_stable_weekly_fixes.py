@@ -365,9 +365,10 @@ def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
 
     # Do not allow an "attachments only" result. The cloned page itself must
     # still contain a recognizable 2D~6D detail structure before continuing.
-    if not core._is_detail_like(sl):
+    if not _strict_detail_template_fingerprint(sl)["ok"]:
         raise RuntimeError(
-            "복제한 상세 양식의 2D~6D 구조가 유지되지 않았습니다. "
+            "복제한 페이지가 실제 2D~6D 상세 양식이 아닙니다. "
+            "일정표/게이트/로드맵 페이지는 상세로 사용하지 않습니다. "
             f"(양식 원본 slide {template_index + 1})"
         )
 
@@ -937,7 +938,7 @@ def _summary_hits(prs, d, g=None):
     # choosing a generic summary template. Scan every non-detail slide for a
     # table that has 과제명 plus at least two normal summary columns.
     for si, sl in enumerate(prs.slides):
-        if core._is_detail_like(sl):
+        if _strict_detail_template_fingerprint(sl)["ok"]:
             continue
 
         found_tables = []
@@ -1193,7 +1194,7 @@ def _new_detail_position_after_last_project(prs, d):
     full, project, _customer = _project_parts(d)
     hits = []
     for i, sl in enumerate(prs.slides):
-        if i in summaries or not core._is_detail_like(sl):
+        if i in summaries or not _strict_detail_template_fingerprint(sl)["ok"]:
             continue
         q = s13._k(s13._slide_text(sl))
         if (full and full in q) or (project and project in q):
@@ -1216,7 +1217,7 @@ def _find_existing_detail_exact_issue(prs, d):
 
     hits = []
     for i, sl in enumerate(prs.slides):
-        if i in summaries or not core._is_detail_like(sl):
+        if i in summaries or not _strict_detail_template_fingerprint(sl)["ok"]:
             continue
         q = s13._k(s13._slide_text(sl))
 
@@ -1416,7 +1417,10 @@ def _generated_detail_shape_count(sl):
 
 
 def _filled_detail_slide(sl):
-    return core._is_detail_like(sl) and _generated_detail_shape_count(sl) >= 4
+    return (
+        _strict_detail_template_fingerprint(sl)["ok"]
+        and _generated_detail_shape_count(sl) >= 4
+    )
 
 
 def _current_attachment_first_index(prs, d):
@@ -1545,7 +1549,7 @@ def _find_saved_pending_detail(saved, request, d=None):
         for i, sl in enumerate(prs.slides):
             try:
                 if int(sl.slide_id) == int(wanted_id):
-                    if core._is_detail_like(sl):
+                    if _strict_detail_template_fingerprint(sl)["ok"]:
                         return i
                     break
             except Exception:
@@ -1553,14 +1557,17 @@ def _find_saved_pending_detail(saved, request, d=None):
 
     # Old-index fallback for files where the slide-id was unavailable.
     old_idx = int(request.get("slide_index", -1))
-    if 0 <= old_idx < len(prs.slides) and core._is_detail_like(prs.slides[old_idx]):
+    if (
+        0 <= old_idx < len(prs.slides)
+        and _strict_detail_template_fingerprint(prs.slides[old_idx])["ok"]
+    ):
         return old_idx
 
     # Final recovery: find a detail-like slide carrying the current project/title.
     full, project, _customer = _project_parts(d or {})
     candidates = []
     for i, sl in enumerate(prs.slides):
-        if not core._is_detail_like(sl):
+        if not _strict_detail_template_fingerprint(sl)["ok"]:
             continue
         q = s13._k(s13._slide_text(sl))
         score = 0
@@ -1868,7 +1875,7 @@ def _find_existing_summary_project(prs, d, g):
 
     hits = []
     for si, sl in enumerate(prs.slides):
-        if core._is_detail_like(sl):
+        if _strict_detail_template_fingerprint(sl)["ok"]:
             continue
         for tb, hr, hm in _simple_summary_table_candidates(sl):
             rows = []
