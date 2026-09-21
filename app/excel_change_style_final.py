@@ -2,6 +2,9 @@
 import datetime
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
+import os
+import subprocess
+from pathlib import Path
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.styles import Font
@@ -93,7 +96,53 @@ def update_excel_change_aware(src,out,d,g,new=False):
                 _style_modified_date(cell,before.get(c),cell.value)
             else:
                 _set_change_rich_text(cell,before.get(c,""),_plain(cell.value))
-    wb.save(saved)
+    # Do not save the already-saved workbook through openpyxl a second time.
+    # A second OOXML round-trip can break embedded/unsupported Excel drawing
+    # relationships and produce "그림을 표시할 수 없습니다" in the Issue DB.
+    # Apply the final style changes through native Excel COM when available.
+    changes=[]
+    row = (base.find(ws,d,g)[0] if new else target_row)
+    if row:
+        for col in MANAGED_COLS:
+            cell=ws.cell(row,col)
+            if col==2:
+                oldv=None if new else before.get(col)
+                changed=new or _date_text(oldv)!=_date_text(cell.value)
+            else:
+                oldv="" if new else before.get(col,"")
+                changed=new or _norm(oldv)!=_norm(cell.value)
+            if changed:
+                changes.append((row,col))
+    try:
+        wb.close()
+    except Exception:
+        pass
+
+    if changes and os.name=='nt':
+        path=str(Path(saved).resolve()).replace("'","''")
+        commands=[]
+        for rr,cc in changes:
+            # Excel COM uses the workbook's existing formatting and only changes
+            # the font color of changed cells, preserving pictures/shapes.
+            commands.append(f"$ws.Cells.Item({rr},{cc}).Font.Color = 16711680")
+        script=f"""
+$ErrorActionPreference='Stop'
+$xl=$null; $book=$null
+try {{
+  $xl=New-Object -ComObject Excel.Application
+  $xl.DisplayAlerts=$false
+  $book=$xl.Workbooks.Open('{path}')
+  $ws=$book.Worksheets.Item(1)
+  {chr(10).join(commands)}
+  $book.Save()
+}} finally {{
+  if ($book -ne $null) {{ try {{$book.Close($true)}} catch {{}} }}
+  if ($xl -ne $null) {{ try {{$xl.Quit()}} catch {{}} }}
+}}
+"""
+        p=subprocess.run(['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=45)
+        if p.returncode!=0:
+            raise RuntimeError('Excel 서식 적용 중 오류: '+(p.stderr or p.stdout or '')[-700:])
     return msg+(" / 신규 입력 내용 파란색 표시" if new else " / 변경 내용 파란색 표시"),saved
 
 base.update_excel=update_excel_change_aware
