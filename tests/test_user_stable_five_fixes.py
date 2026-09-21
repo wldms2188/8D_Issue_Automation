@@ -454,6 +454,102 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
+    def test_page_level_project_match_finds_old_summary_even_when_task_cell_is_blank(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = sl.shapes.add_table(
+            4, 4, Inches(0.5), Inches(0.7), Inches(9), Inches(1.7)
+        ).table
+        for col, h in enumerate(("과제명", "이슈명", "현상", "진행사항")):
+            tb.cell(0, col).text = h
+        # Simulate a legacy merged/template layout where python-pptx exposes
+        # the project text as a separate visible shape instead of the row cell.
+        tb.cell(1, 1).text = "old issue"
+        tb.cell(1, 2).text = "old problem"
+        sl.shapes.add_textbox(
+            Inches(0.6), Inches(0.2), Inches(3), Inches(0.35)
+        ).text = "MBAG EB-L(EU)"
+
+        hit = fix._find_existing_summary_project(
+            prs,
+            {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"},
+            {"task_name": "MBAG_EB-L(EU)"},
+        )
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 0)
+
+    def test_single_path_always_creates_filled_detail_before_attachments(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            weekly = td / "weekly.pptx"
+            source8d = td / "source8d.pptx"
+            out = td / "weekly_update.pptx"
+
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG EB-L(EU)", "old")
+            detail = prs.slides.add_slide(prs.slide_layouts[6])
+            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D", "7D")):
+                detail.shapes.add_textbox(
+                    Inches(0.4), Inches(2.0 + i * 0.55), Inches(0.7), Inches(0.3)
+                ).text = token
+                detail.shapes.add_textbox(
+                    Inches(1.1), Inches(2.0 + i * 0.55), Inches(1.6), Inches(0.3)
+                ).text = token + " 항목"
+            detail.shapes.add_textbox(
+                Inches(8.5), Inches(0.5), Inches(2), Inches(0.3)
+            ).text = "Signal"
+            detail.shapes.add_textbox(
+                Inches(8.5), Inches(0.9), Inches(2), Inches(0.3)
+            ).text = "이슈기인"
+            detail.shapes.add_textbox(
+                Inches(8.5), Inches(1.3), Inches(2), Inches(0.3)
+            ).text = "발생단계"
+            prs.save(weekly)
+
+            src = Presentation()
+            src.slides.add_slide(src.slide_layouts[6])
+            src.save(source8d)
+
+            d = {
+                "customer": "MBAG",
+                "task_name": "MBAG_EB-L(EU)",
+                "issue_name": "신규 시험 이슈",
+                "problem": "문제 현상",
+                "temporary_action": "임시조치",
+                "cause_4d": "발생원인",
+                "leak_cause": "유출원인",
+                "action_5d": "개선대책",
+                "verification_6d": "효과검증",
+            }
+            g = {
+                "ppt8d": str(source8d),
+                "task_name": "MBAG_EB-L(EU)",
+                "team": "원통형Pack개발품질팀",
+                "owner": "홍길동",
+                "sample": "B2",
+                "stage": "DV",
+                "occurrence_site": "제품 생산",
+                "_weekly_create_new_section": "1",
+            }
+
+            old_section = fix._create_native_section_com_saved
+            try:
+                fix._create_native_section_com_saved = lambda *args, **kwargs: True
+                msg, saved = fix._weekly_single_path(
+                    str(weekly), str(out), d, g, "new"
+                )
+            finally:
+                fix._create_native_section_com_saved = old_section
+
+            result = Presentation(saved)
+            filled = [
+                i for i, slide in enumerate(result.slides)
+                if fix._verified_generated_detail(slide)
+            ]
+            self.assertTrue(filled)
+            self.assertIn("기존 과제 [MBAG EB-L(EU)]", msg)
+            self.assertIn("상세 신규 생성", msg)
+
     def test_summary_direct_match_beats_all_fallback_logic(self):
         prs = Presentation()
         _, tb = add_summary_slide(prs, "MBAG EB-L(EU)", "old")
