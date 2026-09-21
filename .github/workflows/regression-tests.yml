@@ -28,7 +28,7 @@ jobs:
       - name: Install runtime dependencies
         run: python -m pip install openpyxl python-pptx
       - name: Compile final modules
-        run: python -m py_compile app/origin_v1_refined_patch.py app/final_output_polish.py app/output_variant_final.py app/team_autocomplete_final.py app/project_autocomplete_final.py app/project_weekly_match_final.py app/english_8d_final.py app/main_enterprise_final.py
+        run: python -m py_compile app/origin_v1_refined_patch.py app/final_output_polish.py app/output_variant_final.py app/team_autocomplete_final.py app/project_autocomplete_final.py app/project_weekly_match_final.py app/english_8d_final.py app/continuation_fix_final.py app/main_enterprise_final.py
       - name: Origin classifier regression
         run: python -m unittest tests.test_origin_classifier -v
       - name: Project catalog regression
@@ -43,3 +43,5 @@ jobs:
         run: python -m unittest tests.test_problem_summary_blocks -v
       - name: UI state regression
         run: python -m unittest tests.test_ui_state -v
+      - name: Continuation regression
+        run: python -m unittest tests.test_continuation_fix -v
