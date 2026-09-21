@@ -800,6 +800,39 @@ class UserStableFiveFixesTest(unittest.TestCase):
             1,
         )
 
+    def test_top_metadata_table_text_is_preserved_during_detail_cleanup(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+        tb = sl.shapes.add_table(
+            3, 4, Inches(6.5), Inches(0.4), Inches(5.2), Inches(1.3)
+        ).table
+        values = (
+            ("발생 단계", "DV (26.05.26)", "이슈 기인", "공정"),
+            ("재발여부", "신규", "수평전개", "필요"),
+            ("발생 상황", "시험", "이슈 영향도", "신뢰성"),
+        )
+        for r, row in enumerate(values):
+            for col, value in enumerate(row):
+                tb.cell(r, col).text = value
+
+        shape = next(
+            sh for sh in sl.shapes
+            if getattr(sh, "has_table", False)
+        )
+        before = [
+            [tb.cell(r, col).text for col in range(len(tb.columns))]
+            for r in range(len(tb.rows))
+        ]
+
+        self.assertTrue(fix._is_detail_metadata_table(shape))
+        fix._purge_cloned_detail_artifacts(sl)
+
+        after = [
+            [tb.cell(r, col).text for col in range(len(tb.columns))]
+            for r in range(len(tb.rows))
+        ]
+        self.assertEqual(after, before)
+
     def test_large_detail_zone_old_text_is_cleared_but_frame_remains(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
