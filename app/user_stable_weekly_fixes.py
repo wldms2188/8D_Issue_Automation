@@ -1137,6 +1137,26 @@ def _short_shape_tokens(sl):
     return out
 
 
+def _fresh_slide_text(sl):
+    """Read slide text without the id()-based cache used by the legacy module."""
+    parts = []
+    for sh in v310.walk(sl):
+        text = N(getattr(sh, "text", ""))
+        if text:
+            parts.append(text)
+        if getattr(sh, "has_table", False):
+            try:
+                tb = sh.table
+                for r in range(len(tb.rows)):
+                    for col in range(len(tb.columns)):
+                        value = N(tb.cell(r, col).text)
+                        if value:
+                            parts.append(value)
+            except Exception:
+                pass
+    return "\n".join(parts)
+
+
 def _strict_detail_template_fingerprint(sl):
     """Recognize real 8D detail layouts without requiring separate marker shapes.
 
@@ -1144,7 +1164,7 @@ def _strict_detail_template_fingerprint(sl):
     title boxes, so geometry/shape separation is not mandatory.  Timeline/Gate
     pages are rejected by their schedule vocabulary and weak 8D structure.
     """
-    whole_text = s13._slide_text(sl)
+    whole_text = _fresh_slide_text(sl)
     whole = s13._k(whole_text)
 
     d_tokens = ("2d", "3d", "4d", "5d", "6d")
