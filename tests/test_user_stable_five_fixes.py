@@ -511,6 +511,24 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix._weekly_candidate_display_one_line("MBAG\nEB-L\n(EU,US)"),
         )
 
+    def test_parenthesized_exact_candidate_is_identified_for_silent_use(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG EB-L(EU)", "right")
+            prs.save(path)
+
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB-L(EU)",
+                "원통형Pack개발품질팀",
+                "MBAG",
+            )
+
+        exact = [x for x in candidates if x.get("exact")]
+        self.assertEqual(len(exact), 1)
+        self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
+
     def test_parenthesized_weekly_candidate_scanner_returns_eu_and_us_choices(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "weekly.pptx"
