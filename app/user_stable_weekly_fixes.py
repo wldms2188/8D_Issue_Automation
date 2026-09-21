@@ -199,52 +199,101 @@ def _move_slide_by_id(prs, slide_id, index):
     return index
 
 
+def _find_summary_table_on_slide(sl):
+    """Find a weekly summary table without requiring an exact Signal header."""
+    for sh in v310.walk(sl):
+        if not getattr(sh, "has_table", False):
+            continue
+        tb = sh.table
+        for hr in range(min(8, len(tb.rows))):
+            hm = s13._summary_map(tb, hr)
+            if "task" not in hm:
+                continue
+            # Real templates can expose Signal differently after cloning/merging.
+            # 과제명 plus any normal summary column is enough to identify the table.
+            if any(k in hm for k in ("issue", "problem", "progress", "signal")):
+                return tb, hr
+    return None, None
+
+
 def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
-    """Clone overflow immediately after the actual last matched summary slide.
+    """Clone a summary page and rediscover its table with the SAME flexible rule.
 
-    Do not trust the legacy helper's final insertion index.  Remember the source
-    slide by PowerPoint slide-id, let the stable helper build/clear the page, then
-    move the newly created slide beside the remembered source slide.
+    The legacy helper required an exact 'Signal' header after cloning, which
+    made valid weekly templates fail even though the source summary page had
+    already been found successfully.
     """
-    template_id = None
-    if template_index is not None and 0 <= int(template_index) < len(prs.slides):
-        template_id = _slide_id_value(prs.slides[int(template_index)])
+    if not pages:
+        raise ValueError(
+            "주간회의 PPT에서 과제명 요약 양식 페이지를 찾지 못했습니다."
+        )
 
-    before_ids = {_slide_id_value(sl) for sl in prs.slides}
-    result = _original_prepare_new_summary_page(
-        prs, pages, g, template_index=template_index
-    )
+    # For an overflow continuation, clone the actual last matching page and
+    # insert immediately after it.  For a brand-new project, preserve the
+    # stable leading-summary-block placement.
+    if template_index is None:
+        template_index = pages[0][0]
+        try:
+            desired_index = s14._first_summary_section_insert_index(prs, pages)
+        except Exception:
+            desired_index = template_index + 1
+    else:
+        template_index = int(template_index)
+        desired_index = template_index + 1
 
-    # Identify the clone by slide-id rather than by a possibly stale numeric index.
+    if template_index < 0 or template_index >= len(prs.slides):
+        raise ValueError("복제할 주간회의 요약 양식 페이지 위치가 올바르지 않습니다.")
+
+    source_id = _slide_id_value(prs.slides[template_index])
+
+    # Clone directly instead of calling the legacy helper, because that helper
+    # is exactly where the strict '과제명 + Signal' re-scan raises the error.
+    s13._clone_slide_with_rels(prs, template_index)
+
     created_id = None
-    for sl in prs.slides:
+    for sl in reversed(list(prs.slides)):
         sid = _slide_id_value(sl)
-        if sid not in before_ids:
+        if sid != source_id:
+            # The clone is appended at the end by _clone_slide_with_rels.
             created_id = sid
             break
 
-    final_index = result[0]
-    if template_id is not None and created_id is not None:
-        created_index = _index_by_slide_id(prs, created_id)
-        source_index = _index_by_slide_id(prs, template_id)
-        if created_index is not None and source_index is not None:
-            # _move_slide_by_id removes the created slide before reinserting it.
-            # If the clone currently sits before the source, removing it shifts the
-            # source left by one, so "after source" is the old source_index.
-            target_index = (
-                source_index
-                if created_index < source_index
-                else source_index + 1
-            )
-            moved = _move_slide_by_id(prs, created_id, target_index)
-            if moved is not None:
-                final_index = moved
+    if created_id is None:
+        raise ValueError("주간회의 요약 페이지 복제본을 확인하지 못했습니다.")
+
+    moved = _move_slide_by_id(prs, created_id, desired_index)
+    if moved is None:
+        raise ValueError("복제한 주간회의 요약 페이지의 위치를 조정하지 못했습니다.")
+
+    final_index = moved
+    sl = prs.slides[final_index]
+    tb, hr = _find_summary_table_on_slide(sl)
+    if tb is None:
+        raise ValueError(
+            "복제한 주간회의 요약 페이지에서 과제명 표를 다시 찾지 못했습니다."
+        )
+
+    row = s14._clear_summary_data(tb, hr)
+
+    # Keep the shared page style and only replace the team token when present.
+    team = N((g or {}).get("team"))
+    if team:
+        for sh in v310.walk(sl):
+            if not hasattr(sh, "text_frame"):
+                continue
+            old = N(getattr(sh, "text", ""))
+            if "000팀" in old:
+                try:
+                    sh.text = old.replace("000팀", team + "팀")
+                except Exception:
+                    pass
 
     try:
-        _remove_copied_visuals(prs.slides[final_index])
+        _remove_copied_visuals(sl)
     except Exception:
         pass
-    return final_index, result[1], result[2], result[3]
+
+    return final_index, tb, hr, row
 
 
 s14._prepare_new_summary_page = _prepare_new_summary_page_stable
