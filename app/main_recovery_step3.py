@@ -56,9 +56,11 @@ def _event_name(d):
             if pref and C(name).startswith(C(pref)):
                 name=name[len(pref):]
             return '시험',name
+    # Build is recognized only when the issue explicitly contains the word "빌드".
+    # A sample name such as B2 must not become "B2 이슈 발생".
     for src in (issue,N(d.get('problem'))):
-        m=re.search(r'(?<![A-Za-z0-9])([A-D]\d+)(?![A-Za-z0-9])',src,re.I)
-        if m: return '빌드',m.group(1).upper()
+        m=re.search(r'(?<![A-Za-z0-9가-힣])([^_\s,;:()]+빌드)(?![A-Za-z0-9가-힣])',src,re.I)
+        if m:return '빌드',N(m.group(1))
     return '',''
 
 # Strict symptom mode: do not retain generic descriptive lines.
