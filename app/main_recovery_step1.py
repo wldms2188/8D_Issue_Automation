@@ -53,7 +53,7 @@ def _page1_issue(d):
         project=re.sub(r'^\s*'+re.escape(customer)+r'\s*[_\-/／|:： ]+\s*','',project,flags=re.I)
     project=N(project).strip(' _-/／|:：')
 
-    parts=[x for x in re.split(r'[_/|:：\\-]+',issue) if N(x)]
+    parts=[x for x in re.split(r'[_/|:：\-]+',issue) if N(x)]
     pk=re.sub(r'[^0-9A-Za-z가-힣]+','',project).lower()
     for idx,part in enumerate(parts):
         q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
