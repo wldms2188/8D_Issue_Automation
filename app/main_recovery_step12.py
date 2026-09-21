@@ -108,12 +108,17 @@ def _update_page2_step12(sl,d,g,mode):
             _,y7,_,_=v310.box(parent7 if parent7 is not None else marker7)
             current_y7=float(y7)/v310.EMU
             z6=zones['6D']
-            desired_y7=max(current_y7, z6['y']+z6['h']+.22)
-            if desired_y7>current_y7+.01:
-                if parent7 is not None:
-                    x7,_,_,_=v310.box(parent7)
-                else:
-                    x7,_,_,_=v310.box(marker7)
+            # The template's 7D unit itself was too high. Move the whole
+            # native marker+title visibly downward; do not squeeze or cap 6D.
+            unit=parent7 if parent7 is not None else marker7
+            x7,_,_,h7=v310.box(unit)
+            try:
+                slide_h=float(sl.part.package.presentation_part.presentation.slide_height)/v310.EMU
+            except Exception:
+                slide_h=7.5
+            desired_y7=max(current_y7+.24, z6['y']+z6['h']+.28)
+            desired_y7=min(desired_y7, max(.10,slide_h-float(h7)/v310.EMU-.06))
+            if abs(desired_y7-current_y7)>.01:
                 v310.move_marker_unit(sl,'7D',float(x7)/v310.EMU,desired_y7)
     except Exception:
         pass
