@@ -179,13 +179,42 @@ def _create_native_section_com(ppt_path,name,slide_index):
         return False
     try:
         import win32com.client
-    except Exception as e:
-        raise RuntimeError('PowerPoint 신규 구역 생성에 pywin32가 필요합니다: '+repr(e))
+        dispatch=lambda: win32com.client.DispatchEx('PowerPoint.Application')
+    except Exception:
+        # Fallback for PCs that have Office but have not installed pywin32 yet.
+        # Do not capture text output, avoiding the cp949 reader-thread failure.
+        path_q=_ps_quote(Path(ppt_path).resolve())
+        name_q=_ps_quote(N(name) or '신규 과제')
+        slide_no=max(1,int(slide_index)+1)
+        script=f"""
+$ErrorActionPreference='Stop'
+$ppt=$null; $pres=$null
+try {{
+  $ppt=New-Object -ComObject PowerPoint.Application
+  $pres=$ppt.Presentations.Open('{path_q}',0,0,0)
+  $n=[Math]::Min({slide_no},$pres.Slides.Count)
+  [void]$pres.SectionProperties.AddBeforeSlide($n,'{name_q}')
+  $pres.Save()
+}} finally {{
+  if ($pres -ne $null) {{ try {{$pres.Close()}} catch {{}} }}
+  if ($ppt -ne $null) {{ try {{$ppt.Quit()}} catch {{}} }}
+}}
+"""
+        try:
+            p=subprocess.run(
+                ['powershell.exe','-NoProfile','-Sta','-ExecutionPolicy','Bypass','-Command',script],
+                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=45
+            )
+        except Exception as e:
+            raise RuntimeError('PowerPoint 신규 구역 생성 실패: '+repr(e))
+        if p.returncode!=0:
+            raise RuntimeError('PowerPoint 신규 구역 생성 실패 (PowerPoint COM 반환코드 '+str(p.returncode)+')')
+        return True
 
     app=None
     pres=None
     try:
-        app=win32com.client.DispatchEx('PowerPoint.Application')
+        app=dispatch()
         pres=app.Presentations.Open(str(Path(ppt_path).resolve()), False, False, False)
         # PowerPoint COM slide numbers are 1-based.
         slide_no=max(1,min(int(slide_index)+1,pres.Slides.Count))
