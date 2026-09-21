@@ -629,72 +629,63 @@ def _short_shape_tokens(sl):
 
 
 def _strict_detail_template_fingerprint(sl):
-    """Return evidence that this is a REAL 8D detail-layout slide.
+    """Recognize real 8D detail layouts without requiring separate marker shapes.
 
-    A roadmap/schedule slide can mention 4D, DV, PD, etc. in normal content.
-    A detail template must carry the dedicated D marker skeleton plus metadata.
+    Real company templates can place D labels inside groups/tables/combined
+    title boxes, so geometry/shape separation is not mandatory.  Timeline/Gate
+    pages are rejected by their schedule vocabulary and weak 8D structure.
     """
-    short = _short_shape_tokens(sl)
-    normalized = [q for q, _raw in short]
+    whole_text = s13._slide_text(sl)
+    whole = s13._k(whole_text)
 
-    marker_hits = set()
-    for marker in ("2d", "3d", "4d", "5d", "6d"):
-        # Dedicated circles/labels are short shapes. Accept marker alone or a
-        # compact marker+title unit such as "2D 현상".
-        if any(
-            q == marker
-            or (
-                q.startswith(marker)
-                and len(q) <= 18
-                and any(
-                    word in q
-                    for word in (
-                        "현상", "문제", "임시", "조치", "원인",
-                        "개선", "대책", "효과", "검증"
-                    )
-                )
-            )
-            for q in normalized
-        ):
-            marker_hits.add(marker)
+    d_tokens = ("2d", "3d", "4d", "5d", "6d")
+    d_hits = {token for token in d_tokens if token in whole}
 
-    whole = s13._k(s13._slide_text(sl))
     metadata_hits = sum(
         1 for token in ("signal", "이슈기인", "발생단계") if token in whole
     )
-
     title_hits = sum(
         1
         for token in (
-            "현상", "임시조치", "발생원인", "유출원인",
-            "개선대책", "효과검증", "수평전개"
+            "현상", "문제현상",
+            "임시조치", "임시대응", "임시대책",
+            "원인분석", "발생원인", "유출원인", "시스템원인",
+            "개선대책", "효과검증", "유효성점검", "수평전개",
         )
         if token in whole
     )
 
-    # Strong positive evidence: all five dedicated D markers plus either
-    # the expected detail item titles or the top metadata structure.  This lets
-    # older detail templates omit some metadata without accepting timelines.
-    strong = (
-        len(marker_hits) >= 5
-        and (title_hits >= 4 or metadata_hits >= 2)
-    )
+    # Reuse the legacy score because it already reads text from groups/tables.
+    legacy_structure = s13._detail_structure_score(sl)
 
-    # Explicit schedule/roadmap penalty. These words alone do not reject a real
-    # detail page, but they reject an incomplete D skeleton like the screenshot.
     schedule_hits = sum(
         whole.count(token)
         for token in ("cv", "dv", "pd", "pv", "sop", "gate", "target", "now")
     )
-    if schedule_hits >= 5 and len(marker_hits) < 5:
-        strong = False
+
+    # A true detail page normally carries most D stages.  This deliberately
+    # accepts legacy/grouped layouts that do not expose separate marker shapes.
+    strong_detail = (
+        len(d_hits) >= 4
+        and legacy_structure >= 5
+        and (title_hits >= 2 or metadata_hits >= 1 or len(d_hits) == 5)
+    )
+
+    # A schedule/timeline may mention one or two D items, but if schedule terms
+    # dominate and the detail titles/meta are weak it must never be a template.
+    schedule_dominant = (
+        schedule_hits >= 5
+        and title_hits < 3
+        and metadata_hits < 2
+    )
 
     return {
-        "ok": bool(strong),
-        "markers": marker_hits,
+        "ok": bool(strong_detail and not schedule_dominant),
+        "markers": d_hits,
         "metadata_hits": metadata_hits,
         "title_hits": title_hits,
         "schedule_hits": schedule_hits,
+        "legacy_structure": legacy_structure,
     }
 
 
