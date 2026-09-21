@@ -191,18 +191,46 @@ def _create_native_section_com(ppt_path,name,slide_index):
         path_q=_ps_quote(Path(ppt_path).resolve())
         name_q=_ps_quote(N(name) or '신규 과제')
         slide_no=max(1,int(slide_index)+1)
+        # Work on a temporary copy, then atomically replace the python-pptx
+        # output after PowerPoint has fully closed it.  On company PCs the
+        # just-saved output can briefly be unavailable to Presentations.Open
+        # (AV/sync/indexing), which previously made native-section creation fail.
         script=f"""
 $ErrorActionPreference='Stop'
+$src='{path_q}'
+$tmp=[System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($src),([System.IO.Path]::GetFileNameWithoutExtension($src)+'.section_work_'+[guid]::NewGuid().ToString('N')+[System.IO.Path]::GetExtension($src)))
 $ppt=$null; $pres=$null
 try {{
+  if (-not (Test-Path -LiteralPath $src)) {{ throw 'saved PPT does not exist: '+$src }}
+  $last=-1
+  for($i=0;$i -lt 10;$i++) {{
+    $len=(Get-Item -LiteralPath $src).Length
+    if($len -gt 0 -and $len -eq $last) {{ break }}
+    $last=$len
+    Start-Sleep -Milliseconds 250
+  }}
+  Copy-Item -LiteralPath $src -Destination $tmp -Force
   $ppt=New-Object -ComObject PowerPoint.Application
-  $pres=$ppt.Presentations.Open('{path_q}',0,0,0)
+  $opened=$false
+  for($i=0;$i -lt 4 -and -not $opened;$i++) {{
+    try {{
+      $pres=$ppt.Presentations.Open($tmp,0,0,0)
+      $opened=$true
+    }} catch {{
+      if($i -ge 3) {{ throw }}
+      Start-Sleep -Milliseconds (400*($i+1))
+    }}
+  }}
   $n=[Math]::Min({slide_no},$pres.Slides.Count)
   [void]$pres.SectionProperties.AddBeforeSlide($n,'{name_q}')
   $pres.Save()
+  $pres.Close(); $pres=$null
+  $ppt.Quit(); $ppt=$null
+  Copy-Item -LiteralPath $tmp -Destination $src -Force
 }} finally {{
   if ($pres -ne $null) {{ try {{$pres.Close()}} catch {{}} }}
   if ($ppt -ne $null) {{ try {{$ppt.Quit()}} catch {{}} }}
+  if (Test-Path -LiteralPath $tmp) {{ try {{Remove-Item -LiteralPath $tmp -Force}} catch {{}} }}
 }}
 """
         try:
