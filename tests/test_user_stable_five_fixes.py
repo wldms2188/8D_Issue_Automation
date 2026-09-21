@@ -639,6 +639,58 @@ class UserStableFiveFixesTest(unittest.TestCase):
             1,
         )
 
+    def test_detail_clone_cleanup_removes_red_annotations_and_grouped_old_text(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        # Old red selection circle outside the D content zones.
+        red = sl.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(8.2),
+            Inches(0.6),
+            Inches(0.7),
+            Inches(0.35),
+        )
+        red.fill.background()
+        red.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+
+        # Simulate a preserved 4D group that also carries old issue body text.
+        group = sl.shapes.add_group_shape()
+        fixed = group.shapes.add_textbox(
+            Inches(0.2), Inches(0.2), Inches(1.4), Inches(0.35)
+        )
+        fixed.text = "4D 발생원인"
+        old = group.shapes.add_textbox(
+            Inches(1.7), Inches(0.2), Inches(3.0), Inches(0.5)
+        )
+        old.text = "기존 이슈 검정 본문은 삭제되어야 함"
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        all_text = "\n".join(
+            str(getattr(sh, "text", "") or "")
+            for sh in fix.v310.walk(sl)
+        )
+        self.assertIn("4D 발생원인", all_text)
+        self.assertNotIn("기존 이슈 검정 본문은 삭제되어야 함", all_text)
+
+        # No strong-red old annotation should remain.
+        self.assertFalse(
+            any(fix._is_red_annotation_shape(sh) for sh in fix.v310.walk(sl))
+        )
+
+    def test_detail_cleanup_keeps_fixed_markers_titles(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+        before = fix._strict_detail_template_fingerprint(sl)
+        self.assertTrue(before["ok"])
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        after = fix._strict_detail_template_fingerprint(sl)
+        self.assertTrue(after["ok"])
+        self.assertGreaterEqual(len(after["markers"]), 4)
+
     def test_new_detail_text_is_blue_even_in_existing_mode(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
