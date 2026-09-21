@@ -1094,6 +1094,38 @@ def _new_detail_position_after_last_project(prs, d):
 core._new_detail_position = _new_detail_position_after_last_project
 
 
+def _find_existing_detail_exact_issue(prs, d):
+    """Do not reuse another issue's detail page just because the project matches."""
+    summaries = set(core._summary_indices(prs))
+    full, project, _customer = _project_parts(d)
+    issue = s13._k(s13._issue_display(d))
+    if not issue:
+        return None
+
+    hits = []
+    for i, sl in enumerate(prs.slides):
+        if i in summaries or not core._is_detail_like(sl):
+            continue
+        q = s13._k(s13._slide_text(sl))
+
+        project_ok = (
+            (full and full in q)
+            or (project and project in q)
+        )
+        if not project_ok:
+            continue
+
+        # Existing-detail update is allowed only when the actual issue identity
+        # is present. Otherwise a new detail page must be cloned.
+        if issue in q:
+            hits.append(i)
+
+    return max(hits) if hits else None
+
+
+core._find_existing_detail = _find_existing_detail_exact_issue
+
+
 # ---------------------------------------------------------------------------
 # Attachment recovery:
 # - keep the existing de-duplication path first;
