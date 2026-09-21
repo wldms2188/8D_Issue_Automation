@@ -454,6 +454,68 @@ class UserStableFiveFixesTest(unittest.TestCase):
             self.assertTrue(fix._filled_detail_slide(check.slides[0]))
             self.assertEqual(repaired["slide_index"], 0)
 
+    def test_summary_identity_matches_underscore_space_and_newline(self):
+        d = {"customer": "A", "task_name": "B"}
+        g = {"task_name": "B"}
+        full_keys, project_keys = fix._summary_identity_keys(d, g)
+
+        self.assertEqual(
+            fix._simple_task_match_rank("A_B", full_keys, project_keys),
+            400,
+        )
+        self.assertEqual(
+            fix._simple_task_match_rank("A B", full_keys, project_keys),
+            400,
+        )
+        self.assertEqual(
+            fix._simple_task_match_rank("A\nB", full_keys, project_keys),
+            400,
+        )
+        self.assertEqual(
+            fix._simple_task_match_rank("B", full_keys, project_keys),
+            360,
+        )
+
+    def test_summary_project_only_sentence_match_is_same_project(self):
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+        }
+        g = {"task_name": "MBAG_EB-L(EU)"}
+        full_keys, project_keys = fix._summary_identity_keys(d, g)
+
+        self.assertGreaterEqual(
+            fix._simple_task_match_rank(
+                "주간 현황\nEB-L(EU)\n신규 이슈",
+                full_keys,
+                project_keys,
+            ),
+            280,
+        )
+        self.assertGreaterEqual(
+            fix._simple_task_match_rank(
+                "MBAG\nEB-L(EU)",
+                full_keys,
+                project_keys,
+            ),
+            320,
+        )
+
+    def test_project_only_cell_can_drive_existing_summary_page(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "EB-L(EU)", "old")
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB-L(EU)"}
+
+        hit = fix._find_existing_summary_project(prs, d, g)
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 0)
+        self.assertEqual(hit[6], "EB-L(EU)")
+
     def test_page_level_project_match_finds_old_summary_even_when_task_cell_is_blank(self):
         prs = Presentation()
         sl = prs.slides.add_slide(prs.slide_layouts[6])
