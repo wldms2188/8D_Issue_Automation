@@ -904,6 +904,36 @@ def _purge_cloned_detail_artifacts(sl):
             _clear_old_detail_text_shape(sh)
 
 
+def _remove_detail_textbox_outlines(sl):
+    """Remove accidental borders from detail text boxes only.
+
+    Structural tables, frame lines, marker circles and other AutoShapes are
+    untouched. This targets the rectangular outlines that can appear around
+    plain text boxes after clone/edit operations.
+    """
+    changed = 0
+
+    def clean_shapes(shapes):
+        nonlocal changed
+        for sh in list(shapes):
+            st = getattr(sh, "shape_type", None)
+            if st == MSO_SHAPE_TYPE.GROUP:
+                clean_shapes(getattr(sh, "shapes", ()))
+                continue
+            if st != getattr(MSO_SHAPE_TYPE, "TEXT_BOX", None):
+                continue
+            if not hasattr(sh, "text_frame"):
+                continue
+            try:
+                sh.line.fill.background()
+                changed += 1
+            except Exception:
+                pass
+
+    clean_shapes(sl.shapes)
+    return changed
+
+
 def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
     result = _original_clone_detail_shell(prs, d, insert_at, matched_section)
     sl, template_index, section = result
@@ -914,6 +944,10 @@ def _clone_detail_shell_clean(prs, d, insert_at, matched_section=None):
         pass
     try:
         _purge_cloned_detail_artifacts(sl)
+    except Exception:
+        pass
+    try:
+        _remove_detail_textbox_outlines(sl)
     except Exception:
         pass
 
