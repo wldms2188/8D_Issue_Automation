@@ -1733,7 +1733,10 @@ def _merge_inserted_summary_task_block(tb, hr, hm, rows, new_row, display):
     try:
         top = tb.cell(start, task_col)
         bottom = tb.cell(end, task_col)
-        merged = top.merge(bottom) if end > start else top
+        if end > start:
+            # python-pptx Cell.merge() mutates the origin cell and returns None.
+            top.merge(bottom)
+        merged = top
 
         # Use the same small summary font instead of merged.text, which can fall
         # back to the PowerPoint theme's large default font.
