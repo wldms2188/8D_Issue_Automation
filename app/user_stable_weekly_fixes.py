@@ -352,6 +352,10 @@ def _static_cloned_detail_shape_preserve_layout(sh):
     if any(marker in joined for marker in ("2d","3d","4d","5d","6d","7d")) and len(joined) <= 28:
         return True
 
+    # Fixed gray section heading above the D content areas.
+    if "업무진행현황" in joined:
+        return True
+
     return _original_static_cloned_detail_shape(sh)
 
 
