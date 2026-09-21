@@ -27,6 +27,7 @@ import main_final as legacy_final
 import ui_enterprise as ui
 import final_output_polish as final_polish
 import output_variant_final as output_variant
+import weekly_style_final as weekly_style
 
 N = v310.N
 
@@ -616,27 +617,106 @@ def _selected_section_without_mixed_summary(prs, d, g):
     return section
 
 
+def _short_shape_tokens(sl):
+    """Collect short visible labels, including children of grouped markers."""
+    out = []
+    for sh in v310.walk(sl):
+        text = N(getattr(sh, "text", ""))
+        if text and len(text) <= 40:
+            out.append((s13._k(text), text))
+    return out
+
+
+def _strict_detail_template_fingerprint(sl):
+    """Return evidence that this is a REAL 8D detail-layout slide.
+
+    A roadmap/schedule slide can mention 4D, DV, PD, etc. in normal content.
+    A detail template must carry the dedicated D marker skeleton plus metadata.
+    """
+    short = _short_shape_tokens(sl)
+    normalized = [q for q, _raw in short]
+
+    marker_hits = set()
+    for marker in ("2d", "3d", "4d", "5d", "6d"):
+        # Dedicated circles/labels are short shapes. Accept marker alone or a
+        # compact marker+title unit such as "2D 현상".
+        if any(
+            q == marker
+            or (
+                q.startswith(marker)
+                and len(q) <= 18
+                and any(
+                    word in q
+                    for word in (
+                        "현상", "문제", "임시", "조치", "원인",
+                        "개선", "대책", "효과", "검증"
+                    )
+                )
+            )
+            for q in normalized
+        ):
+            marker_hits.add(marker)
+
+    whole = s13._k(s13._slide_text(sl))
+    metadata_hits = sum(
+        1 for token in ("signal", "이슈기인", "발생단계") if token in whole
+    )
+
+    title_hits = sum(
+        1
+        for token in (
+            "현상", "임시조치", "발생원인", "유출원인",
+            "개선대책", "효과검증", "수평전개"
+        )
+        if token in whole
+    )
+
+    # Strong positive evidence: all five D markers and at least two metadata
+    # fields. Four markers are accepted only when the detail titles are very
+    # complete, covering templates whose 4D marker is shared by two blocks.
+    strong = (
+        (len(marker_hits) >= 5 and metadata_hits >= 2)
+        or (len(marker_hits) >= 4 and metadata_hits >= 2 and title_hits >= 5)
+    )
+
+    # Explicit schedule/roadmap penalty. These words alone do not reject a real
+    # detail page, but they reject an incomplete D skeleton like the screenshot.
+    schedule_hits = sum(
+        whole.count(token)
+        for token in ("cv", "dv", "pd", "pv", "sop", "gate", "target", "now")
+    )
+    if schedule_hits >= 5 and len(marker_hits) < 5:
+        strong = False
+
+    return {
+        "ok": bool(strong),
+        "markers": marker_hits,
+        "metadata_hits": metadata_hits,
+        "title_hits": title_hits,
+        "schedule_hits": schedule_hits,
+    }
+
+
 def _detail_template_score(sl, d):
-    """Score a reusable detail template independently from native sections."""
-    if not core._is_detail_like(sl):
+    """Score only slides proven to have the real 8D detail skeleton."""
+    fp = _strict_detail_template_fingerprint(sl)
+    if not fp["ok"]:
         return -1
 
     text = s13._slide_text(sl)
     q = s13._k(text)
-    score = 0
 
-    # Prefer the complete shared 8D detail skeleton.
-    for token in ("2d", "3d", "4d", "5d", "6d"):
-        if token in q:
-            score += 25
+    # Structure dominates project similarity. A wrong-layout same-project slide
+    # must NEVER beat a true detail template from another project.
+    score = (
+        len(fp["markers"]) * 100
+        + fp["metadata_hits"] * 40
+        + fp["title_hits"] * 10
+    )
+
     if "7d" in q or "수평전개" in q:
-        score += 10
-    for token in ("signal", "이슈기인", "발생단계"):
-        if token in q:
-            score += 12
+        score += 30
 
-    # Same-project detail is the closest visual/template source, but section
-    # membership itself never blocks template reuse.
     full, project, _customer = _project_parts(d)
     if full and full in q:
         score += 80
@@ -647,14 +727,10 @@ def _detail_template_score(sl, d):
 
 
 def _template_detail_index_any_section(prs, d):
-    """Find the best 2D~6D detail shell across the entire deck.
-
-    Summary-page section membership is deliberately ignored.  This recovers
-    legacy decks where valid detail templates live in the same section as the
-    summary pages.
-    """
+    """Find a proven detail template anywhere; never fall back to a roadmap."""
     summaries = set(core._summary_indices(prs))
     candidates = []
+
     for i, sl in enumerate(prs.slides):
         if i in summaries:
             continue
@@ -663,9 +739,10 @@ def _template_detail_index_any_section(prs, d):
             candidates.append((score, i))
 
     if not candidates:
-        # Preserve the stable baseline error/fallback behavior if no reusable
-        # detail-like slide exists anywhere.
-        return _original_template_detail_index(prs, d)
+        raise ValueError(
+            "주간회의 PPT에서 실제 2D~6D 상세 양식을 찾지 못했습니다. "
+            "일정표/게이트/로드맵 페이지는 상세 양식으로 사용하지 않습니다."
+        )
 
     candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
     return candidates[0][1]
@@ -1990,7 +2067,8 @@ def _verified_generated_detail(sl):
         "AUTO_8D_TEXT_6D",
     )
     generated = sum(1 for key in required if key in names)
-    return core._is_detail_like(sl) and generated >= 4
+    fp = _strict_detail_template_fingerprint(sl)
+    return fp["ok"] and generated >= 4
 
 
 def _create_detail_direct(prs, d, g, mode, matched_section, force_new):
@@ -2093,6 +2171,53 @@ def _assert_final_weekly_detail(saved):
             f"(전체 {manifest['slide_count']}p, 유첨 {len(manifest['attachments'])}p)"
         )
     return manifest
+
+
+# ---------------------------------------------------------------------------
+# Detail change highlighting.
+# weekly_style_final treated "existing mode + newly cloned detail page" as
+# unchanged because no AUTO_8D_TEXT_* existed in the pre-update snapshot.
+# Any newly-created detail content must be blue, regardless of GUI mode.
+# ---------------------------------------------------------------------------
+_detail_update_before_blue_fix = s13._update_detail_slide
+
+
+def _detail_auto_snapshot(sl):
+    out = {}
+    for sh in v310.walk(sl):
+        name = str(getattr(sh, "name", "") or "")
+        if name.startswith("AUTO_8D_TEXT_"):
+            out[name] = N(getattr(sh, "text", ""))
+    return out
+
+
+def _update_detail_slide_force_new_text_blue(sl, d, g, mode):
+    before = _detail_auto_snapshot(sl)
+    _detail_update_before_blue_fix(sl, d, g, mode)
+    after = _detail_auto_snapshot(sl)
+
+    for sh in v310.walk(sl):
+        name = str(getattr(sh, "name", "") or "")
+        if not name.startswith("AUTO_8D_TEXT_"):
+            continue
+
+        new_text = after.get(name, N(getattr(sh, "text", "")))
+        old_exists = name in before
+        old_text = before.get(name, "")
+
+        # New shape/text => blue. Existing but changed => blue.
+        # Only truly unchanged existing content stays black.
+        changed = (not old_exists and bool(new_text)) or (old_exists and old_text != new_text)
+        try:
+            weekly_style._color_shape(
+                sh,
+                weekly_style.UPDATE_BLUE if changed else weekly_style.BLACK,
+            )
+        except Exception:
+            pass
+
+
+s13._update_detail_slide = _update_detail_slide_force_new_text_blue
 
 
 # Use the pre-polish weekly_fix5 writer for detail generation. It is the
