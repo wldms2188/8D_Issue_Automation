@@ -169,34 +169,71 @@ def _remove_copied_visuals(sl):
 _original_prepare_new_summary_page = s14._prepare_new_summary_page
 
 
-def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
-    """Clone overflow immediately after the LAST matched summary page.
+def _slide_id_value(sl):
+    try:
+        return int(sl.slide_id)
+    except Exception:
+        return None
 
-    New-task behavior stays on the stable baseline path.
+
+def _index_by_slide_id(prs, slide_id):
+    if slide_id is None:
+        return None
+    for i, sl in enumerate(prs.slides):
+        if _slide_id_value(sl) == slide_id:
+            return i
+    return None
+
+
+def _move_slide_by_id(prs, slide_id, index):
+    current = _index_by_slide_id(prs, slide_id)
+    if current is None:
+        return None
+    sld_id_lst = prs.slides._sldIdLst
+    node = sld_id_lst[current]
+    sld_id_lst.remove(node)
+    index = max(0, min(int(index), len(sld_id_lst)))
+    sld_id_lst.insert(index, node)
+    return index
+
+
+def _prepare_new_summary_page_stable(prs, pages, g, template_index=None):
+    """Clone overflow immediately after the actual last matched summary slide.
+
+    Do not trust the legacy helper's final insertion index.  Remember the source
+    slide by PowerPoint slide-id, let the stable helper build/clear the page, then
+    move the newly created slide beside the remembered source slide.
     """
-    if template_index is None:
-        result = _original_prepare_new_summary_page(
-            prs, pages, g, template_index=None
-        )
-    else:
-        original_picker = s14._first_summary_section_insert_index
-        try:
-            s14._first_summary_section_insert_index = (
-                lambda _prs, _pages: min(
-                    len(_prs.slides), int(template_index) + 1
-                )
-            )
-            result = _original_prepare_new_summary_page(
-                prs, pages, g, template_index=template_index
-            )
-        finally:
-            s14._first_summary_section_insert_index = original_picker
+    template_id = None
+    if template_index is not None and 0 <= int(template_index) < len(prs.slides):
+        template_id = _slide_id_value(prs.slides[int(template_index)])
+
+    before_ids = {_slide_id_value(sl) for sl in prs.slides}
+    result = _original_prepare_new_summary_page(
+        prs, pages, g, template_index=template_index
+    )
+
+    # Identify the clone by slide-id rather than by a possibly stale numeric index.
+    created_id = None
+    for sl in prs.slides:
+        sid = _slide_id_value(sl)
+        if sid not in before_ids:
+            created_id = sid
+            break
+
+    final_index = result[0]
+    if template_id is not None and created_id is not None:
+        source_index = _index_by_slide_id(prs, template_id)
+        if source_index is not None:
+            moved = _move_slide_by_id(prs, created_id, source_index + 1)
+            if moved is not None:
+                final_index = moved
 
     try:
-        _remove_copied_visuals(prs.slides[result[0]])
+        _remove_copied_visuals(prs.slides[final_index])
     except Exception:
         pass
-    return result
+    return final_index, result[1], result[2], result[3]
 
 
 s14._prepare_new_summary_page = _prepare_new_summary_page_stable
@@ -495,3 +532,101 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
 
 
 s14._update_summary_by_task = _update_summary_exact_then_confirmed
+
+
+# ---------------------------------------------------------------------------
+# Detail-page placement: when the project already exists, add after its LAST
+# detail page instead of falling through to the end of the whole deck.
+# ---------------------------------------------------------------------------
+_original_new_detail_position = core._new_detail_position
+
+
+def _new_detail_position_after_last_project(prs, d):
+    summaries = core._summary_indices(prs)
+    full, project, _customer = _project_parts(d)
+    hits = []
+    for i, sl in enumerate(prs.slides):
+        if i in summaries or not core._is_detail_like(sl):
+            continue
+        q = s13._k(s13._slide_text(sl))
+        if (full and full in q) or (project and project in q):
+            hits.append(i)
+    if hits:
+        return max(hits) + 1
+    return _original_new_detail_position(prs, d)
+
+
+core._new_detail_position = _new_detail_position_after_last_project
+
+
+# ---------------------------------------------------------------------------
+# Attachment recovery:
+# - keep the existing de-duplication path first;
+# - if it reports zero although the source really has attachment slides and no
+#   current issue attachment exists in the output, retry the stable direct COM
+#   inserter once;
+# - if de-duplication raises, retry direct insertion once.
+# This also preserves the baseline behavior that replaces AUTO_8D_ATTACH_<key>
+# pages for the same issue rather than accumulating repeated copies.
+# ---------------------------------------------------------------------------
+_original_attachment_safe = core._append_8d_attachments_safe
+
+
+def _count_source_attachment_slides(path):
+    try:
+        from pptx import Presentation
+        return max(0, len(Presentation(path).slides) - 1)
+    except Exception:
+        return 0
+
+
+def _has_current_auto_attachment(out_path, d):
+    try:
+        from pptx import Presentation
+        prefix = "AUTO_8D_ATTACH_" + core._attachment_key(d) + "_"
+        return any(
+            str(getattr(sl, "name", "") or "").startswith(prefix)
+            for sl in Presentation(out_path).slides
+        )
+    except Exception:
+        return False
+
+
+def _direct_attachment_inserter():
+    try:
+        import attachment_dedupe_final as dedupe
+        return getattr(dedupe, "_original_append", None)
+    except Exception:
+        return None
+
+
+def _append_8d_attachments_safe_recover(out_path, src8d_path, detail_index, d):
+    expected = _count_source_attachment_slides(src8d_path)
+    if expected <= 0:
+        return 0, ""
+
+    try:
+        added, err = _original_attachment_safe(
+            out_path, src8d_path, detail_index, d
+        )
+    except Exception as exc:
+        added, err = 0, str(exc)
+
+    if added or _has_current_auto_attachment(out_path, d):
+        return added, err
+
+    direct = _direct_attachment_inserter()
+    if callable(direct):
+        try:
+            added = direct(out_path, src8d_path, detail_index, d)
+            return added, ""
+        except Exception as exc:
+            direct_err = str(exc)
+            if err:
+                return 0, err + " / direct retry: " + direct_err
+            return 0, direct_err
+
+    return added, err or "8D 유첨 페이지가 확인되었지만 출력 PPT에 추가되지 않았습니다."
+
+
+core._append_8d_attachments_safe = _append_8d_attachments_safe_recover
