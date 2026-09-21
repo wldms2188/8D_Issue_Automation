@@ -550,6 +550,69 @@ core._template_detail_index = _template_detail_index_any_section
 
 
 # ---------------------------------------------------------------------------
+# Real weekly-summary table compatibility.
+# Existing decks may merge the project cell vertically or leave the project cell
+# blank on continuation issue rows.  Also, some continuation pages use slightly
+# different header wording.  Detect those pages and treat blank task rows as
+# belonging to the previous visible project until the next project label.
+# ---------------------------------------------------------------------------
+_original_summary_pages_user = s14._summary_pages
+
+
+def _summary_pages_flexible(prs):
+    pages = []
+    for si, sl in enumerate(prs.slides):
+        found = None
+        for sh in v310.walk(sl):
+            if not getattr(sh, "has_table", False):
+                continue
+            tb = sh.table
+            for hr in range(min(8, len(tb.rows))):
+                hm = s13._summary_map(tb, hr)
+                if "task" not in hm:
+                    continue
+                # Do not require an exact "Signal" header.  A real summary table
+                # is sufficiently identified by 과제명 plus at least one normal
+                # summary-data column.
+                if any(k in hm for k in ("issue", "problem", "progress", "signal")):
+                    found = (si, tb, hr)
+                    break
+            if found:
+                break
+        if found:
+            pages.append(found)
+
+    # Preserve the stable detector if the flexible scan finds nothing.
+    return pages or _original_summary_pages_user(prs)
+
+
+s14._summary_pages = _summary_pages_flexible
+
+
+def _summary_row_has_payload(tb, r, hm):
+    """True when a continuation row actually contains issue-summary content."""
+    for key in ("issue", "problem", "progress", "signal"):
+        if key not in hm:
+            continue
+        if N(s13._row_text(tb, r, hm[key])):
+            return True
+    return False
+
+
+def _summary_display_for_rows(tb, hr, hm, rows):
+    """Recover the visible project spelling for a matched project block."""
+    if "task" not in hm or not rows:
+        return ""
+    start = min(rows)
+    # The task can be the merge origin above a continuation row.
+    for r in range(start, hr, -1):
+        raw = N(s13._row_text(tb, r, hm["task"]))
+        if raw:
+            return raw
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # 2 + 4) Summary placement/matching across ALL summary pages.
 #    1. exact customer+project
 #    2. exact project
@@ -596,10 +659,6 @@ def _summary_project_key_from_row(raw, project_key, customer_key=""):
 def _summary_hits(prs, d, g=None):
     pages = s14._summary_pages(prs)
 
-    # IMPORTANT: build the full identity from the canonical customer+project,
-    # not g["task_name"] alone.  GUI task_name can contain only the project.
-    # Prefer the explicit GUI selection when present, but resolve it through
-    # the same catalog/separator alias logic used by native-section matching.
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
     if selected:
         full_key, project_key, customer_key = _identity_parts_from_label(
@@ -607,6 +666,7 @@ def _summary_hits(prs, d, g=None):
         )
     else:
         full_key, project_key, customer_key = _project_parts(d)
+
     full_hits = []
     project_hits = []
 
@@ -614,34 +674,53 @@ def _summary_hits(prs, d, g=None):
         hm = s13._summary_map(tb, hr)
         if "task" not in hm:
             continue
-        fr = []
-        pr = []
-        for r in range(hr + 1, len(tb.rows)):
-            raw = s13._row_text(tb, r, hm["task"])
-            raw_key = _summary_match_key(raw)
 
-            # 1) customer + project exact, separator-insensitive.
-            if full_key and raw_key == full_key:
-                fr.append(r)
+        # Build visual project blocks. A blank task cell below a visible task is
+        # a continuation of that project only while the row contains real data.
+        blocks = []
+        current = None
+        for r in range(hr + 1, len(tb.rows)):
+            raw = N(s13._row_text(tb, r, hm["task"]))
+            if raw:
+                if current is not None:
+                    blocks.append(current)
+                current = {"label": raw, "rows": [r]}
                 continue
 
-            # 2) project exact, separator-insensitive.  Only used globally
-            # when no customer+project exact hit exists anywhere.
+            if current is not None and _summary_row_has_payload(tb, r, hm):
+                current["rows"].append(r)
+
+        if current is not None:
+            blocks.append(current)
+
+        fr = []
+        pr = []
+        for block in blocks:
+            raw = block["label"]
+            rows = block["rows"]
+            raw_key = _summary_match_key(raw)
+
+            # 1) customer+project exact after separator normalization.
+            if full_key and raw_key == full_key:
+                fr.extend(rows)
+                continue
+
+            # 2) project-only exact, independent of customer.
             if (
                 project_key
                 and _summary_project_key_from_row(
                     raw, project_key, customer_key
                 ) == project_key
             ):
-                pr.append(r)
+                pr.extend(rows)
 
         if fr:
             full_hits.append((si, tb, hr, hm, fr))
         if pr:
             project_hits.append((si, tb, hr, hm, pr))
 
+    # Exact customer+project anywhere in the deck always has priority.
     return pages, (full_hits if full_hits else project_hits)
-
 
 def _confirmed_section_summary_hits(pages, d, g):
     name = N((g or {}).get("_weekly_section_override_name"))
@@ -708,7 +787,10 @@ def _existing_summary_display(selected, task_hits):
     si, tb, hr, hm, rows = sorted(
         task_hits, key=lambda x: x[0]
     )[-1]
-    raw = N(s13._row_text(tb, max(rows), hm["task"]))
+    # In real weekly tables the last issue row often has an empty/spanned task
+    # cell. Recover the visible label from the project block instead of falling
+    # back to the user's input spelling.
+    raw = _summary_display_for_rows(tb, hr, hm, rows)
     return raw or N(selected)
 
 
