@@ -306,6 +306,63 @@ class UserStableFiveFixesTest(unittest.TestCase):
             getattr(sh, "text", "") for sh in prs.slides[5].shapes
         ))
 
+    def test_mixed_separator_last_page_overflow_preserves_existing_label(self):
+        prs = Presentation()
+        add_summary_slide(prs, "MBAG_EB565M", "old-1")
+        tail0 = prs.slides.add_slide(prs.slide_layouts[6])
+        tail0.shapes.add_textbox(
+            Inches(1), Inches(1), Inches(2), Inches(1)
+        ).text = "BETWEEN"
+        _, last_tb = add_summary_slide(prs, "MBAG EB565M", "old-2")
+        tail1 = prs.slides.add_slide(prs.slide_layouts[6])
+        tail1.shapes.add_textbox(
+            Inches(1), Inches(1), Inches(2), Inches(1)
+        ).text = "TAIL"
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAGEB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAGEB565M"}
+
+        old_fit = s14._summary_row_insert_fits
+        old_writer = s14._write_summary_row
+        try:
+            s14._summary_row_insert_fits = lambda *args, **kwargs: False
+
+            def writer(tb, row, hr, _d, _g):
+                hm = s13._summary_map(tb, hr)
+                tb.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb.cell(row, hm["issue"]).text = "NEW"
+
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._summary_row_insert_fits = old_fit
+            s14._write_summary_row = old_writer
+
+        # The last matching summary page was index 2, so continuation must be 3.
+        self.assertEqual(si, 3)
+        self.assertIn("바로 다음 페이지", action)
+
+        # The copied continuation must keep the exact label spelling/style from
+        # the last existing occurrence, not rewrite it as the input spelling.
+        new_tb = next(
+            sh.table for sh in prs.slides[3].shapes
+            if getattr(sh, "has_table", False)
+        )
+        hm = s13._summary_map(new_tb, 0)
+        self.assertEqual(new_tb.cell(row, hm["task"]).text, "MBAG EB565M")
+
+        # The unrelated trailing page must remain after the inserted continuation.
+        self.assertIn(
+            "TAIL",
+            "\n".join(getattr(sh, "text", "") for sh in prs.slides[4].shapes),
+        )
+
     def test_detail_position_uses_last_existing_project_page(self):
         prs = Presentation()
         for label in ("OTHER", "GM_MBAG first", "GM_MBAG last", "TAIL"):
