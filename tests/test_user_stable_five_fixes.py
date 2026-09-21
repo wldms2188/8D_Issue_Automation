@@ -306,6 +306,57 @@ class UserStableFiveFixesTest(unittest.TestCase):
             getattr(sh, "text", "") for sh in prs.slides[5].shapes
         ))
 
+    def test_summary_detector_ignores_decoy_project_table(self):
+        prs = Presentation()
+        decoy = prs.slides.add_slide(prs.slide_layouts[6])
+        dt = decoy.shapes.add_table(
+            3, 2, Inches(0.5), Inches(0.5), Inches(5), Inches(1.2)
+        ).table
+        dt.cell(0, 0).text = "과제명"
+        dt.cell(0, 1).text = "이슈명"
+        dt.cell(1, 0).text = "WRONG_TEMPLATE"
+        dt.cell(1, 1).text = "x"
+
+        real = prs.slides.add_slide(prs.slide_layouts[6])
+        rt = real.shapes.add_table(
+            3, 5, Inches(0.5), Inches(0.7), Inches(9.5), Inches(1.5)
+        ).table
+        headers = ("고객사/과제명", "이슈명", "현상", "진행사항", "Signal 상태")
+        for col, h in enumerate(headers):
+            rt.cell(0, col).text = h
+        rt.cell(1, 0).text = "MBAG EB-L(EU)"
+        rt.cell(1, 1).text = "old"
+
+        pages = fix._summary_pages_flexible(prs)
+        self.assertEqual([x[0] for x in pages], [1])
+
+    def test_mbag_ebl_space_and_underscore_match_exact_summary(self):
+        prs = Presentation()
+        _, tb = add_summary_slide(prs, "MBAG EB-L(EU)", "old")
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB-L(EU)"}
+
+        old_writer = s14._write_summary_row
+        try:
+            def writer(tb0, row, hr, _d, _g):
+                hm = s13._summary_map(tb0, hr)
+                tb0.cell(row, hm["task"]).text = s13._customer_task(_d)
+                tb0.cell(row, hm["issue"]).text = "NEW"
+            s14._write_summary_row = writer
+            si, row, action = s14._update_summary_by_task(
+                prs, d, g, "new"
+            )
+        finally:
+            s14._write_summary_row = old_writer
+
+        self.assertEqual(si, 0)
+        self.assertIn("마지막", action)
+        self.assertEqual(tb.cell(row, 0).text, "MBAG EB-L(EU)")
+
     def test_cloned_summary_does_not_require_exact_signal_header(self):
         prs = Presentation()
         sl = prs.slides.add_slide(prs.slide_layouts[6])
