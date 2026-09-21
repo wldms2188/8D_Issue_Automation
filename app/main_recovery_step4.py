@@ -151,7 +151,15 @@ def _strip_selected_project_prefix(issue,d):
         for idx,part in enumerate(parts):
             q=re.sub(r'[^0-9A-Za-z가-힣]+','',N(part)).lower()
             if pk and q and (pk==q or (min(len(pk),len(q))>=4 and (pk in q or q in pk))):
-                anchored='_'.join(parts[idx:]).strip(' _-/／|:：')
+                # Keep the customer token when it is immediately before the
+                # project. Remove only routing/model prefixes before customer.
+                start=idx
+                ck=re.sub(r'[^0-9A-Za-z가-힣]+','',N(customer)).lower()
+                if idx>0 and ck:
+                    prev=re.sub(r'[^0-9A-Za-z가-힣]+','',N(parts[idx-1])).lower()
+                    if prev==ck:
+                        start=idx-1
+                anchored='_'.join(parts[start:]).strip(' _-/／|:：')
                 if anchored:
                     s=anchored
                 break
