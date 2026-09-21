@@ -74,6 +74,73 @@ def _detail_title_from_user_inputs(d,g):
     return _original_detail_title_text(d,g)
 
 
+
+def _weekly_task_display(selected, task_hits):
+    """Use the exact customer/project text style already present in the matched summary row."""
+    if not task_hits:
+        return N(selected)
+    si,tb,hr,hm,rows=sorted(task_hits,key=lambda x:x[0])[-1]
+    raw=N(s13._row_text(tb,max(rows),hm['task']))
+    return raw or N(selected)
+
+
+def _update_summary_customer_project_then_project(prs,d,g,mode):
+    pages=s14._summary_pages(prs)
+    if not pages:
+        raise ValueError('주간회의 PPT에서 과제명/Signal 요약 양식 페이지를 찾지 못했습니다.')
+
+    selected=N((g or {}).get('task_name')) or N(s13._customer_task(d))
+    full_key=catalog._norm(selected)
+    project_key=catalog.project_key(selected,False)
+    issue=s13._issue_display(d)
+
+    full_hits=[]; project_hits=[]
+    for si,tb,hr in pages:
+        hm=s13._summary_map(tb,hr)
+        if 'task' not in hm: continue
+        fr=[]; pr=[]
+        for r in range(hr+1,len(tb.rows)):
+            raw=s13._row_text(tb,r,hm['task'])
+            if full_key and catalog._norm(raw)==full_key: fr.append(r)
+            if project_key and catalog.project_key(raw,False)==project_key: pr.append(r)
+        if fr: full_hits.append((si,tb,hr,hm,fr))
+        if pr: project_hits.append((si,tb,hr,hm,pr))
+
+    task_hits=full_hits if full_hits else project_hits
+    display=_weekly_task_display(selected,task_hits)
+
+    original_customer_task=s13._customer_task
+    if task_hits:
+        s13._customer_task=lambda _d: display
+    try:
+        if mode=='existing' and task_hits:
+            best=None
+            for si,tb,hr,hm,rows in task_hits:
+                for r in rows:
+                    sc=s13._row_match_score(tb,r,hm,display,issue)
+                    if best is None or sc>best[0]: best=(sc,si,tb,hr,r)
+            if best and best[0]>=140:
+                _,si,tb,hr,row=best
+                s14._write_summary_row(tb,row,hr,d,g)
+                return si,row,'기존 행 업데이트'
+
+        if task_hits:
+            si,tb,hr,hm,rows=sorted(task_hits,key=lambda x:x[0])[-1]
+            after=max(rows)
+            if s14._summary_row_insert_fits(prs,si,tb,after):
+                row=s14._insert_row_after(tb,after)
+                s14._write_summary_row(tb,row,hr,d,g)
+                return si,row,'확정 과제의 마지막 요약 행 바로 아래 삽입'
+            nsi,ntb,nhr,nrow=s14._prepare_new_summary_page(prs,pages,g,template_index=si)
+            s14._write_summary_row(ntb,nrow,nhr,d,g)
+            return nsi,nrow,'확정 과제 요약 공간 초과로 바로 다음 페이지에 추가'
+
+        si,tb,hr,row=s14._prepare_new_summary_page(prs,pages,g)
+        s14._write_summary_row(tb,row,hr,d,g)
+        return si,row,'고객사/과제명 모두 없음: 신규 요약 페이지 생성'
+    finally:
+        s13._customer_task=original_customer_task
+
 s14._prepare_new_summary_page=_prepare_new_summary_page_after_last_match
 s14._update_summary_by_task=_update_summary_customer_project_then_project
 s4._detail_title_text=_detail_title_from_user_inputs
