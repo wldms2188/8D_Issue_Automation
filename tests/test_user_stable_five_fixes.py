@@ -540,6 +540,47 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertEqual(hit[1], 0)
 
+    def test_final_full_manifest_requires_real_detail(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = td / "final.pptx"
+
+            prs = Presentation()
+            detail = prs.slides.add_slide(prs.slide_layouts[6])
+            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                detail.shapes.add_textbox(
+                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+                ).text = token
+            for i, key in enumerate(("2D", "3D", "4D_CAUSE", "5D")):
+                sh = detail.shapes.add_textbox(
+                    Inches(3), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+                )
+                sh.name = "AUTO_8D_TEXT_" + key
+                sh.text = "generated " + key
+            prs.save(p)
+
+            manifest = fix._assert_final_weekly_detail(str(p))
+            self.assertEqual(manifest["details"], [0])
+
+            p2 = td / "attach_only.pptx"
+            bad = Presentation()
+            sl = bad.slides.add_slide(bad.slide_layouts[6])
+            try:
+                sl.name = "AUTO_8D_ATTACH_TEST_1"
+            except Exception:
+                sl._element.cSld.set("name", "AUTO_8D_ATTACH_TEST_1")
+            bad.save(p2)
+
+            with self.assertRaises(RuntimeError):
+                fix._assert_final_weekly_detail(str(p2))
+
+    def test_all_runtime_weekly_aliases_point_to_single_path(self):
+        self.assertIs(core.base.weekly, fix._weekly_single_path)
+        self.assertIs(s14.base.weekly, fix._weekly_single_path)
+        self.assertIs(s13.base.weekly, fix._weekly_single_path)
+        self.assertIs(fix.enterprise_main.base.weekly, fix._weekly_single_path)
+        self.assertIs(fix.legacy_final.base.weekly, fix._weekly_single_path)
+
     def test_reduced_output_never_drops_marked_detail_before_attachments(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
