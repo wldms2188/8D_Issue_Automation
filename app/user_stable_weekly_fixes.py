@@ -200,18 +200,14 @@ def _move_slide_by_id(prs, slide_id, index):
 
 
 def _find_summary_table_on_slide(sl):
-    """Find a weekly summary table without requiring an exact Signal header."""
+    """Rediscover only the same real weekly-summary structure after cloning."""
     for sh in v310.walk(sl):
         if not getattr(sh, "has_table", False):
             continue
         tb = sh.table
         for hr in range(min(8, len(tb.rows))):
-            hm = s13._summary_map(tb, hr)
-            if "task" not in hm:
-                continue
-            # Real templates can expose Signal differently after cloning/merging.
-            # 과제명 plus any normal summary column is enough to identify the table.
-            if any(k in hm for k in ("issue", "problem", "progress", "signal")):
+            hm = _summary_header_map(tb, hr)
+            if _is_real_summary_header(hm):
                 return tb, hr
     return None, None
 
@@ -608,6 +604,44 @@ core._template_detail_index = _template_detail_index_any_section
 _original_summary_pages_user = s14._summary_pages
 
 
+def _summary_header_map(tb, hr):
+    """Map the REAL weekly-summary header without accepting unrelated tables."""
+    hm = {}
+    for col in range(len(tb.columns)):
+        q = v310.C(tb.cell(hr, col).text)
+        if not q:
+            continue
+        if "과제명" in q:
+            hm["task"] = col
+        elif q == "이슈" or "이슈명" in q:
+            hm["issue"] = col
+        elif "현상" in q or "문제" in q:
+            hm["problem"] = col
+        elif "진행사항" in q or "진행현황" in q or "진행내용" in q:
+            hm["progress"] = col
+        elif "signal" in q:
+            # Accept Signal / Signal상태 / Signal 등, but only as one field in
+            # a structurally complete summary table.
+            hm["signal"] = col
+    return hm
+
+
+def _is_real_summary_header(hm):
+    """A summary table must have 과제명 plus most of the known summary columns."""
+    if "task" not in hm:
+        return False
+    data_fields = sum(
+        1 for key in ("issue", "problem", "progress", "signal") if key in hm
+    )
+    # Requiring 3 prevents unrelated '과제명 + 이슈명' tables from being used
+    # as the clone template while still allowing one optional column to differ.
+    return data_fields >= 3
+
+
+# Make every downstream summary operation use the same header interpretation.
+s13._summary_map = _summary_header_map
+
+
 def _summary_pages_flexible(prs):
     pages = []
     for si, sl in enumerate(prs.slides):
@@ -617,13 +651,8 @@ def _summary_pages_flexible(prs):
                 continue
             tb = sh.table
             for hr in range(min(8, len(tb.rows))):
-                hm = s13._summary_map(tb, hr)
-                if "task" not in hm:
-                    continue
-                # Do not require an exact "Signal" header.  A real summary table
-                # is sufficiently identified by 과제명 plus at least one normal
-                # summary-data column.
-                if any(k in hm for k in ("issue", "problem", "progress", "signal")):
+                hm = _summary_header_map(tb, hr)
+                if _is_real_summary_header(hm):
                     found = (si, tb, hr)
                     break
             if found:
@@ -631,8 +660,9 @@ def _summary_pages_flexible(prs):
         if found:
             pages.append(found)
 
-    # Preserve the stable detector if the flexible scan finds nothing.
-    return pages or _original_summary_pages_user(prs)
+    # Do NOT broaden to a random weaker table here. If this strict structural
+    # scan finds nothing, let the caller fail instead of cloning a wrong format.
+    return pages
 
 
 s14._summary_pages = _summary_pages_flexible
