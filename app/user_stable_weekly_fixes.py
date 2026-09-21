@@ -1686,8 +1686,7 @@ def _summary_identity_keys(d, g=None):
         if q:
             project_keys.add(q)
 
-    # Direct spellings entered/selected by the user.
-    add_full(selected_raw)
+    # Canonical customer_task is always a full identity when available.
     add_full(canonical_raw)
 
     # Catalog-aware split first.
@@ -1695,14 +1694,14 @@ def _summary_identity_keys(d, g=None):
     split_source = alias or selected_raw
     split_customer, split_project = catalog.split_customer_task(split_source)
 
-    # If the selected value already contains customer_project, use that project.
+    # If the selected value already contains customer_project, it is a full
+    # identity. Otherwise it is PROJECT-ONLY and must not be promoted to full.
     if split_customer and split_project:
         add_full(split_source)
         add_project(split_project)
         if not customer_raw:
             customer_raw = split_customer
     else:
-        # Otherwise the GUI task value itself is the project name.
         add_project(selected_raw)
 
     # Canonical customer_task may contain the full identity even when selected
