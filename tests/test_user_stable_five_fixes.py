@@ -10,6 +10,7 @@ import main_recovery_step12 as s12
 import main_recovery_step13 as s13
 import main_recovery_step14 as s14
 import user_stable_weekly_fixes as fix
+import main_recovery_step14_fix2 as core
 
 
 def add_summary_slide(prs, task, issue="old", top=0.7, rows=3):
@@ -133,6 +134,13 @@ class UserStableFiveFixesTest(unittest.TestCase):
         prs.slides.add_slide(prs.slide_layouts[6])
         add_summary_slide(prs, "GM_MBAG", "old")
 
+        # Add trailing detail pages so "next page" is observably different
+        # from "append to the end of the deck".
+        tail1 = prs.slides.add_slide(prs.slide_layouts[6])
+        tail1.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1)).text = "TAIL-1"
+        tail2 = prs.slides.add_slide(prs.slide_layouts[6])
+        tail2.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1)).text = "TAIL-2"
+
         d = {
             "customer": "GM",
             "task_name": "GM_MBAG",
@@ -160,6 +168,57 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(si, 3)
         self.assertIn("바로 다음 페이지", action)
+        self.assertIn("TAIL-1", "\n".join(
+            getattr(sh, "text", "") for sh in prs.slides[4].shapes
+        ))
+        self.assertIn("TAIL-2", "\n".join(
+            getattr(sh, "text", "") for sh in prs.slides[5].shapes
+        ))
+
+    def test_detail_position_uses_last_existing_project_page(self):
+        prs = Presentation()
+        for label in ("OTHER", "GM_MBAG first", "GM_MBAG last", "TAIL"):
+            sl = prs.slides.add_slide(prs.slide_layouts[6])
+            for i, token in enumerate(("2D", "3D", "4D", "5D", "6D")):
+                box = sl.shapes.add_textbox(
+                    Inches(0.5), Inches(0.5 + i * 0.4), Inches(2), Inches(0.3)
+                )
+                box.text = token
+            sl.shapes.add_textbox(
+                Inches(3), Inches(0.5), Inches(4), Inches(0.5)
+            ).text = label
+
+        d = {"customer": "GM", "task_name": "GM_MBAG"}
+        self.assertEqual(core._new_detail_position(prs, d), 3)
+
+    def test_attachment_safe_retries_direct_when_dedupe_adds_nothing(self):
+        old_count = fix._count_source_attachment_slides
+        old_safe = fix._original_attachment_safe
+        old_has = fix._has_current_auto_attachment
+        old_direct = fix._direct_attachment_inserter
+        called = {"direct": 0}
+        try:
+            fix._count_source_attachment_slides = lambda _p: 2
+            fix._original_attachment_safe = lambda *args, **kwargs: (0, "")
+            fix._has_current_auto_attachment = lambda *args, **kwargs: False
+
+            def direct(*args, **kwargs):
+                called["direct"] += 1
+                return 2
+
+            fix._direct_attachment_inserter = lambda: direct
+            added, err = core._append_8d_attachments_safe(
+                "out.pptx", "src.pptx", 4, {"task_name": "GM_MBAG"}
+            )
+        finally:
+            fix._count_source_attachment_slides = old_count
+            fix._original_attachment_safe = old_safe
+            fix._has_current_auto_attachment = old_has
+            fix._direct_attachment_inserter = old_direct
+
+        self.assertEqual(added, 2)
+        self.assertEqual(err, "")
+        self.assertEqual(called["direct"], 1)
 
     def test_section_match_levels_are_strict(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
