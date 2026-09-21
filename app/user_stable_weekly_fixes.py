@@ -271,32 +271,106 @@ core._clone_detail_shell = _clone_detail_shell_clean
 #    2. project-only strict
 #    3. similar section only as a USER-CONFIRMABLE suggestion
 # ---------------------------------------------------------------------------
+def _catalog_separator_alias(value):
+    """Resolve catalog names ignoring separators.
+
+    Example: MBAG_EB565M == MBAGEB565M == MBAG EB565M.
+    """
+    q = s13._k(value)
+    if not q:
+        return ""
+    for values in catalog.PROJECTS.values():
+        for candidate in values:
+            if s13._k(candidate) == q:
+                return N(candidate)
+    return ""
+
+
+def _identity_parts_from_label(value, customer_hint=""):
+    """Return separator-insensitive (full, project, customer) identity.
+
+    Catalog aliases win because the first underscore in catalog names is semantic
+    customer/project metadata, while its visual presence is NOT required in the
+    weekly PPT label.
+    """
+    raw = N(value)
+    q = s13._k(raw)
+    hint = s13._k(customer_hint)
+    if not q:
+        return "", "", hint
+
+    canonical = _catalog_separator_alias(raw)
+    if canonical:
+        c0, p0 = catalog.split_customer_task(canonical)
+        ck = s13._k(c0)
+        pk = s13._k(p0 or canonical)
+        fk = s13._k(canonical)
+        return fk, pk, ck
+
+    # For non-catalog labels, use the known customer only as a prefix hint.
+    # This makes GM_MBAG / GM MBAG / GMMBAG identical without treating every
+    # underscore inside a project name as a mandatory split point.
+    if hint:
+        if q.startswith(hint) and len(q) > len(hint):
+            return q, q[len(hint):], hint
+        return hint + q, q, hint
+
+    # Last-resort canonical A_B behavior when no customer hint exists.
+    c0, p0 = catalog.split_customer_task(raw)
+    if c0 and p0:
+        return q, s13._k(p0), s13._k(c0)
+    return q, q, ""
+
+
 def _project_parts(d):
     d = d or {}
-    full_raw = N(s13._customer_task(d))
-    selected = N(d.get("task_name")) or full_raw
-    selected_customer, project_raw = catalog.split_customer_task(selected)
-    customer_raw = N(d.get("customer")) or N(selected_customer)
-    project_raw = N(project_raw or selected)
-    return s13._k(full_raw), s13._k(project_raw), s13._k(customer_raw)
+    selected = N(d.get("task_name")) or N(s13._customer_task(d))
+    return _identity_parts_from_label(selected, N(d.get("customer")))
+
+
+def _project_key_for_match(value, customer_key=""):
+    """Project identity for matching only; separators never affect equality."""
+    q = s13._k(value)
+    if not q:
+        return ""
+
+    canonical = _catalog_separator_alias(value)
+    if canonical:
+        _c0, p0 = catalog.split_customer_task(canonical)
+        return s13._k(p0 or canonical)
+
+    ck = s13._k(customer_key)
+    if ck and q.startswith(ck) and len(q) > len(ck):
+        return q[len(ck):]
+    return q
 
 
 def _section_match_level(name, d):
     q = s13._k(name)
-    full, project, _customer = _project_parts(d)
+    full, project, customer = _project_parts(d)
     if not q:
         return 0
-    # "정확 매칭" is exact after normalization, not mere containment.
+
+    # Exact customer+project always wins. Visual separators are ignored.
     if full and q == full:
         return 3
-    if project and q == project:
+
+    # Then exact project. A section containing the known customer prefix is
+    # reduced with the SAME rule used by summary-page matching.
+    section_project = _project_key_for_match(name, customer)
+    if project and section_project == project:
         return 2
-    # Anything with an added suffix/variant is suggestion-only and must be
-    # confirmed by the user before it can drive the summary fallback.
-    for key in (full, project):
-        if key and q and min(len(key), len(q)) >= 3:
-            if key in q or q in key:
-                return 1
+
+    # Similarity is suggestion-only and can never override levels 3/2.
+    keys = [x for x in (full, project) if x]
+    candidates = [q]
+    if section_project and section_project != q:
+        candidates.append(section_project)
+    for key in keys:
+        for candidate in candidates:
+            if min(len(key), len(candidate)) >= 3:
+                if key in candidate or candidate in key:
+                    return 1
     return 0
 
 
@@ -394,24 +468,12 @@ def _summary_match_key(value):
     return s13._k(value)
 
 
-def _summary_project_key_from_row(raw, project_key):
-    """Return exact project identity from a summary label.
-
-    A summary label may be either just the project name or customer+project
-    written with any separator (underscore, space, hyphen, slash, etc.).
-    Matching ignores those separators, while the original displayed label is
-    preserved unchanged.
-    """
-    q = _summary_match_key(raw)
-    if not q or not project_key:
+def _summary_project_key_from_row(raw, project_key, customer_key=""):
+    """Return exact project identity using the shared separator-insensitive rule."""
+    if not project_key:
         return ""
-    if q == project_key:
-        return project_key
-    # Step 2 is project-only exact matching.  A customer prefix is allowed,
-    # but the project itself must be the exact normalized suffix.
-    if len(project_key) >= 3 and q.endswith(project_key):
-        return project_key
-    return ""
+    row_project = _project_key_for_match(raw, customer_key)
+    return project_key if row_project == project_key else ""
 
 
 def _summary_hits(prs, d, g=None):
@@ -419,7 +481,15 @@ def _summary_hits(prs, d, g=None):
 
     # IMPORTANT: build the full identity from the canonical customer+project,
     # not g["task_name"] alone.  GUI task_name can contain only the project.
-    full_key, project_key, _customer_key = _project_parts(d)
+    # Prefer the explicit GUI selection when present, but resolve it through
+    # the same catalog/separator alias logic used by native-section matching.
+    selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
+    if selected:
+        full_key, project_key, customer_key = _identity_parts_from_label(
+            selected, N((d or {}).get("customer"))
+        )
+    else:
+        full_key, project_key, customer_key = _project_parts(d)
     full_hits = []
     project_hits = []
 
@@ -442,8 +512,9 @@ def _summary_hits(prs, d, g=None):
             # when no customer+project exact hit exists anywhere.
             if (
                 project_key
-                and _summary_project_key_from_row(raw, project_key)
-                == project_key
+                and _summary_project_key_from_row(
+                    raw, project_key, customer_key
+                ) == project_key
             ):
                 pr.append(r)
 
@@ -460,13 +531,15 @@ def _confirmed_section_summary_hits(pages, d, g):
     if not name:
         return []
 
-    # Level 1 means this section was only available through the confirmation
-    # dialog; exact sections are levels 3/2 and do not unlock fuzzy summary use.
+    # Level 1 means this section was only available through explicit user
+    # confirmation. Exact section matches never need this fallback.
     if _section_match_level(name, d) != 1:
         return []
 
-    confirmed_project = catalog.project_key(name, False)
-    if not confirmed_project:
+    _full, _project, customer = _project_parts(d)
+    confirmed_key = s13._k(name)
+    confirmed_project = _project_key_for_match(name, customer)
+    if not confirmed_key:
         return []
 
     hits = []
@@ -477,18 +550,36 @@ def _confirmed_section_summary_hits(pages, d, g):
         rows = []
         for r in range(hr + 1, len(tb.rows)):
             raw = s13._row_text(tb, r, hm["task"])
-            raw_project = catalog.project_key(raw, False)
-            if not raw_project:
-                continue
-            if raw_project == confirmed_project:
+            raw_key = s13._k(raw)
+            raw_project = _project_key_for_match(raw, customer)
+
+            # Exact same confirmed label after separator normalization.
+            if raw_key and raw_key == confirmed_key:
                 rows.append(r)
                 continue
-            if min(len(raw_project), len(confirmed_project)) >= 4:
-                if (
-                    raw_project in confirmed_project
-                    or confirmed_project in raw_project
-                ):
-                    rows.append(r)
+
+            # Or exact same project identity after the same normalization.
+            if (
+                confirmed_project
+                and raw_project
+                and raw_project == confirmed_project
+            ):
+                rows.append(r)
+                continue
+
+            # Similarity is allowed only here because the user already selected
+            # "해당 구역 업데이트".
+            pairs = (
+                (raw_key, confirmed_key),
+                (raw_project, confirmed_project),
+            )
+            if any(
+                a and b and min(len(a), len(b)) >= 4
+                and (a in b or b in a)
+                for a, b in pairs
+            ):
+                rows.append(r)
+
         if rows:
             hits.append((si, tb, hr, hm, rows))
     return hits
@@ -579,6 +670,39 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
 
 
 s14._update_summary_by_task = _update_summary_exact_then_confirmed
+
+
+def _row_match_score_separator_agnostic(tb, r, hm, task, issue):
+    """Existing-summary row scoring with the same separator-insensitive identity."""
+    task_key = s13._k(task)
+    row_task = (
+        s13._k(s13._row_text(tb, r, hm["task"]))
+        if "task" in hm else ""
+    )
+    issue_key = s13._k(issue)
+    row_issue = (
+        s13._k(s13._row_text(tb, r, hm["issue"]))
+        if "issue" in hm else ""
+    )
+
+    score = 0
+    if task_key and row_task == task_key:
+        score += 100
+    elif task_key and row_task and (task_key in row_task or row_task in task_key):
+        score += 60
+
+    if issue_key and row_issue == issue_key:
+        score += 100
+    elif issue_key and row_issue and (
+        issue_key in row_issue or row_issue in issue_key
+    ):
+        score += 70
+    return score
+
+
+# Loaded last: override the older project_key-based scorer, which treated
+# MBAG_EB565M and MBAGEB565M differently.
+s13._row_match_score = _row_match_score_separator_agnostic
 
 
 # ---------------------------------------------------------------------------
