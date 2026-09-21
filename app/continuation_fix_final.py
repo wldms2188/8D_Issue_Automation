@@ -94,19 +94,32 @@ def _update_summary_customer_project_then_project(prs,d,g,mode):
     project_key=catalog.project_key(selected,False)
     issue=s13._issue_display(d)
 
-    full_hits=[]; project_hits=[]
+    full_hits=[]; project_hits=[]; similar_hits=[]
     for si,tb,hr in pages:
         hm=s13._summary_map(tb,hr)
         if 'task' not in hm: continue
-        fr=[]; pr=[]
+        fr=[]; pr=[]; sr=[]
         for r in range(hr+1,len(tb.rows)):
             raw=s13._row_text(tb,r,hm['task'])
-            if full_key and catalog._norm(raw)==full_key: fr.append(r)
-            if project_key and catalog.project_key(raw,False)==project_key: pr.append(r)
+            raw_full=catalog._norm(raw)
+            raw_project=catalog.project_key(raw,False)
+            if full_key and raw_full==full_key:
+                fr.append(r)
+            if project_key and raw_project==project_key:
+                pr.append(r)
+            # Last fallback: project prefix/containment similarity.
+            # Example: selected MBAG can match an existing "MBAG E~".
+            # Require at least 4 normalized characters to avoid weak accidental hits.
+            if project_key and raw_project and min(len(project_key),len(raw_project))>=4:
+                if project_key in raw_project or raw_project in project_key:
+                    sr.append(r)
         if fr: full_hits.append((si,tb,hr,hm,fr))
         if pr: project_hits.append((si,tb,hr,hm,pr))
+        if sr: similar_hits.append((si,tb,hr,hm,sr))
 
-    task_hits=full_hits if full_hits else project_hits
+    # Global priority across ALL summary pages:
+    # customer+project exact > project exact > project similar.
+    task_hits=full_hits if full_hits else (project_hits if project_hits else similar_hits)
     display=_weekly_task_display(selected,task_hits)
 
     original_customer_task=s13._customer_task
