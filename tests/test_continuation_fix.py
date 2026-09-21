@@ -15,6 +15,8 @@ import continuation_fix_final as fix
 import main_recovery_step1 as step1
 import main_recovery_step4 as step4
 import main_recovery_step14_fix2 as step14fix
+import main_recovery_step12 as step12
+import main_v310 as v310
 
 
 HEADERS = ['과제명', '이슈', '현상', '진행현황', 'Signal']
@@ -264,6 +266,44 @@ class ContinuationFixTests(unittest.TestCase):
         d = {'customer': 'GM', 'task_name': 'MBAG'}
         g = {'task_name': 'GM_MBAG'}
         self.assertEqual(step14fix._new_section_name(d, g), 'GM_MBAG')
+
+
+    def test_7d_marker_unit_moves_below_6d_without_limiting_6d(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        # Synthetic native 7D marker and its nearby title start too high.
+        marker = sl.shapes.add_textbox(Inches(5.59), Inches(6.05), Inches(.35), Inches(.25))
+        marker.text = '7D'
+        title = sl.shapes.add_textbox(Inches(5.98), Inches(6.05), Inches(1.3), Inches(.25))
+        title.text = '수평전개'
+
+        old_layout = step12.step11._adaptive_cascade_layout
+        old_render = step12.v319._render
+        old_meta = step12.v319._page2_meta
+        old_ensure = step12.v315._ensure_4d_units
+        try:
+            zones = {
+                k: dict(v) for k, v in v310.ZONES.items()
+            }
+            zones['6D']['y'] = 5.90
+            zones['6D']['h'] = .95
+            texts = {k: '' for k in zones}
+            fonts = {k: 8 for k in zones}
+            step12.step11._adaptive_cascade_layout = lambda d, imgs: (zones, texts, fonts)
+            step12.v319._render = lambda *args, **kwargs: None
+            step12.v319._page2_meta = lambda *args, **kwargs: None
+            step12.v315._ensure_4d_units = lambda *args, **kwargs: None
+
+            step12._update_page2_step12(sl, {}, {}, 'new')
+        finally:
+            step12.step11._adaptive_cascade_layout = old_layout
+            step12.v319._render = old_render
+            step12.v319._page2_meta = old_meta
+            step12.v315._ensure_4d_units = old_ensure
+
+        moved, parent = v310.find_marker(sl, '7D')
+        self.assertIsNotNone(moved)
+        self.assertGreaterEqual(float(moved.top) / v310.EMU, 5.90 + .95 + .22 - .01)
 
 
 if __name__ == '__main__':
