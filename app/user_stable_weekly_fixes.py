@@ -22,6 +22,8 @@ import main_recovery_step14_fix2 as core
 import main_v310 as v310
 import project_autocomplete_final as catalog
 import main_enterprise_v3 as enterprise_v3
+import main_enterprise as enterprise_main
+import main_final as legacy_final
 import ui_enterprise as ui
 import final_output_polish as final_polish
 import output_variant_final as output_variant
@@ -2018,6 +2020,45 @@ def _find_saved_slide_index_by_id(saved, slide_id):
     return None
 
 
+def _final_weekly_manifest(saved):
+    from pptx import Presentation
+
+    prs = Presentation(saved)
+    details = []
+    attachments = []
+    summaries = []
+
+    for i, sl in enumerate(prs.slides):
+        name = str(getattr(sl, "name", "") or "")
+        if _verified_generated_detail(sl):
+            details.append(i)
+        if name.startswith("AUTO_8D_ATTACH_"):
+            attachments.append(i)
+        try:
+            if _simple_summary_table_candidates(sl):
+                summaries.append(i)
+        except Exception:
+            pass
+
+    return {
+        "slide_count": len(prs.slides),
+        "details": details,
+        "attachments": attachments,
+        "summaries": summaries,
+    }
+
+
+def _assert_final_weekly_detail(saved):
+    manifest = _final_weekly_manifest(saved)
+    if not manifest["details"]:
+        raise RuntimeError(
+            "최종 전체본 검증 실패: 2D~6D 상세페이지가 없습니다. "
+            "유첨만 남는 결과는 완료 처리하지 않았습니다. "
+            f"(전체 {manifest['slide_count']}p, 유첨 {len(manifest['attachments'])}p)"
+        )
+    return manifest
+
+
 def _weekly_single_path(src, out, d, g, mode):
     from pptx import Presentation
 
@@ -2106,6 +2147,15 @@ def _weekly_single_path(src, out, d, g, mode):
     except Exception:
         pass
 
+    # FINAL whole-file verification after attachments AND native-section COM.
+    # This is the file the user actually opens.
+    manifest = _assert_final_weekly_detail(saved)
+
+    # Prefer the generated detail belonging to this run. If PowerPoint changed
+    # the numeric position, report the actual final page number from the file.
+    final_detail_pages = [i + 1 for i in manifest["details"]]
+    final_attachment_pages = [i + 1 for i in manifest["attachments"]]
+
     attach_text = (
         f"유첨 {attached}페이지"
         if attached
@@ -2120,14 +2170,26 @@ def _weekly_single_path(src, out, d, g, mode):
         + section_action
         + " / "
         + attach_text
-        + f" / 상세 page {final_detail_index + 1}"
+        + f" / FINAL 상세 page={final_detail_pages}"
+        + f" / FINAL 유첨 page={final_attachment_pages}"
+        + f" / FINAL 전체={manifest['slide_count']}p"
+        + " / WRITER=SINGLE_PATH"
         + f" / 버전 저장={Path(saved).name}",
         saved,
     )
 
 
-# Absolute last assignment: no earlier wrapper can bypass this writer.
-core.base.weekly = _weekly_single_path
+# Absolute last assignment: force every runtime alias used by the GUI/core to
+# the SAME weekly writer. This removes ambiguity from earlier imported wrappers.
+for _runtime_base in (
+    core.base,
+    s14.base,
+    s13.base,
+    enterprise_main.base,
+    legacy_final.base,
+    final_polish.base,
+):
+    _runtime_base.weekly = _weekly_single_path
 
 
 # ---------------------------------------------------------------------------
