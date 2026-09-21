@@ -35,13 +35,23 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "task_name": "MBAG_EB-L(EU)",
             "owner": "홍길동",
             "sample": "B2",
-            "plm_no": "PLM-123",
+            "plm_no": "",
+            "xlsx": "",
             "form_factor": "파우치형",
             "product_type": "EV Pack",
             "occurrence_site": "제품 생산",
             "stage": "DV",
         }
+        # Weekly-only: PLM number is optional.
         self.assertEqual(fix._required_user_input_missing(complete), [])
+
+        # Issue DB selected: PLM number becomes mandatory.
+        with_excel = dict(complete)
+        with_excel["xlsx"] = "issue_db.xlsx"
+        self.assertEqual(
+            fix._required_user_input_missing(with_excel),
+            ["PMS/PLM 이슈번호"],
+        )
 
         missing = dict(complete)
         missing["owner"] = ""
