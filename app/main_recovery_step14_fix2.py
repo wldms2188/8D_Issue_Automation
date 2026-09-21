@@ -246,9 +246,23 @@ def _template_detail_index(prs,d):
     candidates.sort(reverse=True); return candidates[0][1]
 
 def _overlap_ratio(sh,zone):
-    try:x=float(sh.left)/v310.EMU; y=float(sh.top)/v310.EMU; w=float(sh.width)/v310.EMU; h=float(sh.height)/v310.EMU
-    except Exception:return 0.0
-    zx,zy,zw,zh=zone; ix=max(0,min(x+w,zx+zw)-max(x,zx)); iy=max(0,min(y+h,zy+zh)-max(y,zy)); return ix*iy/max(w*h,1e-6)
+    try:
+        x=float(sh.left)/v310.EMU; y=float(sh.top)/v310.EMU
+        w=float(sh.width)/v310.EMU; h=float(sh.height)/v310.EMU
+    except Exception:
+        return 0.0
+    zx,zy,zw,zh=zone
+    # Lines/arrows can have zero width or height, so area-only overlap misses
+    # exactly the stale drawing artifacts that must be removed from cloned pages.
+    if w<0.03 or h<0.03:
+        x2=x+w; y2=y+h
+        pad=.04
+        if max(x,x2)>=zx-pad and min(x,x2)<=zx+zw+pad and max(y,y2)>=zy-pad and min(y,y2)<=zy+zh+pad:
+            return 1.0
+        return 0.0
+    ix=max(0,min(x+w,zx+zw)-max(x,zx))
+    iy=max(0,min(y+h,zy+zh)-max(y,zy))
+    return ix*iy/max(w*h,1e-6)
 
 def _content_zones():return [(.38,2.35,5.05,1.30),(.38,3.72,5.05,1.50),(.38,5.18,5.05,2.05),(5.58,2.30,5.10,1.25),(5.58,3.56,5.10,2.10),(5.58,5.72,5.10,1.25)]
 def _static_detail_label(text):
