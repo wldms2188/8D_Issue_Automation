@@ -800,6 +800,35 @@ class UserStableFiveFixesTest(unittest.TestCase):
             1,
         )
 
+    def test_detail_table_titles_2d_to_7d_are_preserved_but_body_is_cleared(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+        table_shape = sl.shapes.add_table(
+            7, 2, Inches(0.4), Inches(1.8), Inches(10.5), Inches(4.8)
+        )
+        tb = table_shape.table
+        titles = (
+            "2D 현상",
+            "3D 임시대책(필요시)",
+            "4D 원인분석",
+            "5D 개선대책",
+            "6D 유효성점검",
+            "7D 수평전개",
+        )
+        for r, title in enumerate(titles):
+            tb.cell(r, 0).text = title
+            tb.cell(r, 1).text = "기존 이슈 내용"
+        tb.cell(6, 0).text = "기타"
+        tb.cell(6, 1).text = "텍스트를 입력하십시오"
+
+        fix._clear_cloned_table_content_keep_metadata(table_shape)
+
+        for r, title in enumerate(titles):
+            self.assertEqual(fix.s13._k(tb.cell(r, 0).text), fix.s13._k(title))
+            self.assertEqual(tb.cell(r, 1).text.strip(), "")
+
+        self.assertEqual(tb.cell(6, 1).text.strip(), "")
+
     def test_top_metadata_table_text_is_preserved_during_detail_cleanup(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
