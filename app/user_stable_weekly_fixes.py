@@ -1992,134 +1992,89 @@ def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
 
     return 0
 
-def _catalog_project_match_spec(d, g=None):
-    """Build one of TWO independent project-matching modes.
+def _legacy_summary_target_keys(d, g=None):
+    """Simple project-name matching restored from the previously working behavior.
 
-    normal:
-      legacy/simple matching for the majority of catalog projects without ().
-    qualified:
-      catalog/input project contains (); the normalized project INCLUDING the
-      parenthetical content must occur in the visible task text.
-
-    Catalog names are authoritative when an exact catalog identity is available.
+    Separators are ignored by s13._k():
+      A_B == A B == A\\nB
+    Parenthetical CONTENT is preserved:
+      EB-L(EU) != EB-L(US)
     """
     d = d or {}
     g = g or {}
+
     selected = N(g.get("task_name")) or N(d.get("task_name"))
     customer = N(d.get("customer"))
-    team = N(g.get("team"))
 
-    # Search the user's supplied catalog, team first, then all projects.
-    pool = list(catalog.PROJECTS.get(team, ()) or ())
-    seen = set(pool)
-    for item in catalog._all_projects():
-        if item not in seen:
-            pool.append(item)
-            seen.add(item)
+    # Prefer the user's supplied catalog spelling only when it is an exact
+    # separator-insensitive alias. This does not control matching; it only helps
+    # us recover the project-only part reliably.
+    canonical = _catalog_separator_alias(selected) or selected
+    cat_customer, cat_project = catalog.split_customer_task(canonical)
 
-    selected_q = s13._k(selected)
-    customer_q = s13._k(customer)
-    combined_q = customer_q + selected_q if customer_q else selected_q
+    customer_q = s13._k(cat_customer or customer)
+    selected_q = s13._k(canonical)
 
-    canonical = ""
-    best_score = -1
-    for item in pool:
-        item_q = s13._k(item)
-        part = catalog.project_part(item)
-        part_q = s13._k(part)
+    if cat_customer and cat_project:
+        project_q = s13._k(cat_project)
+        full_q = selected_q
+    else:
+        # No underscore in the visible/input spelling. If it starts with the
+        # separately entered customer, the remainder is the project name.
+        if customer_q and selected_q.startswith(customer_q) and len(selected_q) > len(customer_q):
+            project_q = selected_q[len(customer_q):]
+            full_q = selected_q
+        else:
+            project_q = selected_q
+            full_q = customer_q + project_q if customer_q else project_q
 
-        score = -1
-        if item_q and item_q == selected_q:
-            score = 500
-        elif part_q and part_q == selected_q:
-            score = 480
-        elif item_q and item_q == combined_q:
-            score = 470
-        elif customer_q and part_q and (customer_q + part_q) == selected_q:
-            score = 460
-
-        if score > best_score:
-            best_score = score
-            canonical = item
-
-    source = canonical or selected
-    project = N(catalog.project_part(source) or source)
-    catalog_customer, _ = catalog.split_customer_task(source)
-
-    # If the catalog value is project-only, retain the separately entered customer.
-    effective_customer = N(catalog_customer or customer)
-
-    project_q = s13._k(project)
-    full_q = (
-        s13._k(effective_customer) + project_q
-        if effective_customer and project_q
-        else s13._k(source)
-    )
-
-    # Parentheses-sensitive lane is used only for catalog/input project names
-    # that actually contain parentheses. The majority of the user's list stays
-    # on the old normal path.
-    qualified = bool(re.search(r"\([^()]+\)", project))
-
-    return {
-        "mode": "qualified" if qualified else "normal",
-        "canonical": source,
-        "project": project,
-        "project_key": project_q,
-        "full_key": full_q,
-    }
+    return full_q, project_q
 
 
-def _catalog_qualified_task_rank(raw, spec):
-    """Strict lane for the small set of project names containing parentheses."""
+def _legacy_summary_match_rank(raw, full_q, project_q):
+    """Old/simple exact-name-first matcher used only for weekly summary lookup."""
     q = s13._k(raw)
     if not q:
         return 0
 
-    full = N(spec.get("full_key"))
-    project = N(spec.get("project_key"))
+    if full_q and q == full_q:
+        return 400
+    if project_q and q == project_q:
+        return 380
 
-    # _k removes the literal punctuation but preserves parenthetical CONTENT.
-    # Therefore EB-L(EU)->ebleu and EB-L(US)->eblus remain different.
-    if full and q == full:
-        return 500
-    if project and q == project:
-        return 480
-    if full and len(full) >= 4 and full in q:
-        return 440
-    if project and len(project) >= 4 and project in q:
-        return 420
+    # Existing weekly files sometimes contain the project label plus a note in
+    # the same cell. Keep this narrow; normalized qualifier text still makes
+    # (EU) and (US) different strings.
+    if full_q and len(full_q) >= 4 and full_q in q:
+        return 340
+    if project_q and len(project_q) >= 4 and project_q in q:
+        return 320
+
     return 0
 
 
-def _weekly_task_match_rank(raw, d, g, full_keys, project_keys, spec=None):
-    """Dispatch to two isolated matching logics instead of mixing exceptions."""
-    spec = spec or _catalog_project_match_spec(d, g)
-    if spec.get("mode") == "qualified":
-        return _catalog_qualified_task_rank(raw, spec)
-
-    # NO-PAREN projects use the previously working simple matcher unchanged.
-    return _simple_task_match_rank(raw, full_keys, project_keys)
-
 
 def _find_existing_summary_project(prs, d, g):
-    full_keys, project_keys = _summary_identity_keys(d, g)
+    """Restore the simple project-name search that previously worked.
+
+    No catalog-mode split, no parenthesis side-gate, no fuzzy section logic.
+    """
+    full_q, project_q = _legacy_summary_target_keys(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
-    match_spec = _catalog_project_match_spec(d, g)
 
     hits = []
     for si, sl in enumerate(prs.slides):
         if _strict_detail_template_fingerprint(sl)["ok"]:
             continue
+
         for tb, hr, hm in _simple_summary_table_candidates(sl):
             rows = []
             best_rank = 0
             display = ""
+
             for r in range(hr + 1, len(tb.rows)):
                 raw = N(s13._row_text(tb, r, hm["task"]))
-                rank = _weekly_task_match_rank(
-                    raw, d, g, full_keys, project_keys, match_spec
-                )
+                rank = _legacy_summary_match_rank(raw, full_q, project_q)
                 if rank:
                     rows.append(r)
                     if rank > best_rank:
@@ -2127,8 +2082,8 @@ def _find_existing_summary_project(prs, d, g):
                         display = raw
 
             if rows:
-                # Include blank/merged continuation issue rows belonging to this
-                # visible project until the next non-empty project label.
+                # Blank/merged continuation rows belong to the last visible
+                # project until the next non-empty task label.
                 last = max(rows)
                 for r in range(last + 1, len(tb.rows)):
                     raw = N(s13._row_text(tb, r, hm["task"]))
@@ -2136,43 +2091,50 @@ def _find_existing_summary_project(prs, d, g):
                         break
                     if _summary_row_has_payload(tb, r, hm):
                         rows.append(r)
+
                 hits.append((best_rank, si, tb, hr, hm, rows, display))
                 continue
 
-            # Last fallback mirrors the old "find the project page" behavior:
-            # exact normalized project text somewhere on this slide + a task
-            # column is enough to choose the page. This covers merged/template
-            # layouts where python-pptx cannot expose the visible task cell.
-            slide_text = s13._slide_text(sl)
-            slide_rank = _weekly_task_match_rank(
-                slide_text, d, g, full_keys, project_keys, match_spec
+            # Some weekly templates expose the visible project name outside the
+            # task cell because of merging/grouping. Use the same simple match
+            # against the page text as a final fallback.
+            slide_rank = _legacy_summary_match_rank(
+                s13._slide_text(sl), full_q, project_q
             )
             if slide_rank:
                 payload_rows = [
-                    r for r in range(hr + 1, len(tb.rows))
+                    r
+                    for r in range(hr + 1, len(tb.rows))
                     if _summary_row_has_payload(tb, r, hm)
                 ]
                 if payload_rows:
-                    # Recover an existing visible label if possible; otherwise
-                    # preserve the user-selected spelling.
                     visible = ""
                     for r in range(hr + 1, len(tb.rows)):
                         raw = N(s13._row_text(tb, r, hm["task"]))
-                        if raw:
+                        if raw and _legacy_summary_match_rank(raw, full_q, project_q):
                             visible = raw
                             break
+
                     hits.append(
-                        (slide_rank, si, tb, hr, hm, payload_rows, visible or selected)
+                        (
+                            slide_rank,
+                            si,
+                            tb,
+                            hr,
+                            hm,
+                            payload_rows,
+                            visible or selected,
+                        )
                     )
 
     if not hits:
         return None
 
-    # Highest exactness first; among equal matches use the LAST page.
-    hits.sort(key=lambda x: (x[0], x[1]))
-    best_rank = hits[-1][0]
+    # Same project on multiple pages -> use the LAST matching page.
+    best_rank = max(x[0] for x in hits)
     same_rank = [x for x in hits if x[0] == best_rank]
     return max(same_rank, key=lambda x: x[1])
+
 
 
 def _clone_matched_summary_page(prs, source_index, display, g):
