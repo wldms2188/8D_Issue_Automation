@@ -11,5 +11,9 @@ import final_output_polish  # noqa: F401
 import origin_v1_refined_patch  # noqa: F401
 import output_variant_final  # noqa: F401
 
+# Keep the user-confirmed stable baseline intact and apply only the five
+# weekly-meeting fixes after every existing patch has loaded.
+import user_stable_weekly_fixes  # noqa: F401
+
 if __name__ == '__main__':
     EnterpriseAppV3().mainloop()
