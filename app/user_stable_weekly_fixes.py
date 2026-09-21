@@ -1937,11 +1937,17 @@ def _summary_identity_keys(d, g=None):
 
 
 def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
-    """Rank visible text while preserving parenthetical project variants."""
+    """Rank visible text by normalized identity.
+
+    s13._k() removes separators and punctuation but KEEPS the text inside
+    parentheses, so:
+      A_B == A B == A\\nB
+      EB-L(EU) != EB-L(US)
+    No separate parenthesis-list equality is used because a summary cell/page
+    can legitimately contain unrelated parentheses elsewhere in the sentence.
+    """
     q = s13._k(raw)
     if not q:
-        return 0
-    if not _paren_compatible(raw, required_parens):
         return 0
 
     # 1) Exact customer+project, regardless of _, space or newline.
@@ -1967,7 +1973,6 @@ def _simple_task_match_rank(raw, full_keys, project_keys, required_parens=()):
 
 def _find_existing_summary_project(prs, d, g):
     full_keys, project_keys = _summary_identity_keys(d, g)
-    required_parens = _required_project_parens(d, g)
     selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
 
     hits = []
@@ -1981,7 +1986,7 @@ def _find_existing_summary_project(prs, d, g):
             for r in range(hr + 1, len(tb.rows)):
                 raw = N(s13._row_text(tb, r, hm["task"]))
                 rank = _simple_task_match_rank(
-                    raw, full_keys, project_keys, required_parens
+                    raw, full_keys, project_keys
                 )
                 if rank:
                     rows.append(r)
@@ -2008,7 +2013,7 @@ def _find_existing_summary_project(prs, d, g):
             # layouts where python-pptx cannot expose the visible task cell.
             slide_text = s13._slide_text(sl)
             slide_rank = _simple_task_match_rank(
-                slide_text, full_keys, project_keys, required_parens
+                slide_text, full_keys, project_keys
             )
             if slide_rank:
                 payload_rows = [
