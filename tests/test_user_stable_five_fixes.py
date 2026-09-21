@@ -861,6 +861,53 @@ class UserStableFiveFixesTest(unittest.TestCase):
 
         self.assertEqual(tb.cell(6, 1).text.strip(), "")
 
+    def test_split_top_metadata_tables_are_preserved_even_with_one_label_each(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        left_shape = sl.shapes.add_table(
+            1, 2, Inches(7.0), Inches(0.5), Inches(3.0), Inches(0.45)
+        )
+        left = left_shape.table
+        left.cell(0, 0).text = "발생 상황"
+        left.cell(0, 1).text = "시험 / 생산"
+
+        right_shape = sl.shapes.add_table(
+            1, 2, Inches(10.0), Inches(0.5), Inches(2.5), Inches(0.45)
+        )
+        right = right_shape.table
+        right.cell(0, 0).text = "이슈 기인"
+        right.cell(0, 1).text = "공정"
+
+        self.assertTrue(fix._is_detail_metadata_table(left_shape))
+        self.assertTrue(fix._is_detail_metadata_table(right_shape))
+
+        fix._purge_cloned_detail_artifacts(sl)
+
+        self.assertEqual(left.cell(0, 0).text, "발생 상황")
+        self.assertEqual(left.cell(0, 1).text, "시험 / 생산")
+        self.assertEqual(right.cell(0, 0).text, "이슈 기인")
+        self.assertEqual(right.cell(0, 1).text, "공정")
+
+    def test_any_top_header_table_keeps_all_text(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        sh = sl.shapes.add_table(
+            1, 3, Inches(0.5), Inches(1.0), Inches(5.0), Inches(0.45)
+        )
+        tb = sh.table
+        tb.cell(0, 0).text = "고정 항목명"
+        tb.cell(0, 1).text = "고정 값"
+        tb.cell(0, 2).text = "담당 정보"
+
+        self.assertTrue(fix._is_detail_metadata_table(sh))
+        fix._purge_cloned_detail_artifacts(sl)
+
+        self.assertEqual(tb.cell(0, 0).text, "고정 항목명")
+        self.assertEqual(tb.cell(0, 1).text, "고정 값")
+        self.assertEqual(tb.cell(0, 2).text, "담당 정보")
+
     def test_top_metadata_table_text_is_preserved_during_detail_cleanup(self):
         prs = Presentation()
         sl = add_real_detail_slide(prs)
