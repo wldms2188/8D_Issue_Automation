@@ -778,7 +778,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix.s13._k("MBAG_EB565M"),
         )
 
-    def test_similar_summary_label_is_candidate_but_not_automatic_exact(self):
+    def test_same_project_with_trailing_note_is_safe_existing_match(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "weekly.pptx"
             prs = Presentation()
@@ -799,6 +799,33 @@ class UserStableFiveFixesTest(unittest.TestCase):
                 "issue_name": "new",
             }
             g = {"task_name": "MBAG_EB565M"}
+            _pages, hits = fix._summary_hits(reopened, d, g)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertTrue(candidates[0].get("exact"))
+        self.assertEqual(len(hits), 1)
+
+    def test_real_project_qualifier_change_stays_user_confirmable_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG_EB-L(EU,US)", "old")
+            prs.save(path)
+
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB-L(EU)",
+                "원통형Pack개발품질팀",
+                "MBAG",
+            )
+
+            reopened = Presentation(path)
+            d = {
+                "customer": "MBAG",
+                "task_name": "MBAG_EB-L(EU)",
+                "issue_name": "new",
+            }
+            g = {"task_name": "MBAG_EB-L(EU)"}
             _pages, hits = fix._summary_hits(reopened, d, g)
 
         self.assertEqual(len(candidates), 1)
