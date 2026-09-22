@@ -45,15 +45,95 @@ _WEEKLY_ISSUE_DROP_TOKENS = {
 }
 
 
-def _clean_weekly_issue_name(value):
+def _weekly_issue_project_prefixes(d=None, g=None):
+    """Exact task spellings used ONLY to clean the displayed weekly issue name.
+
+    This helper does not participate in summary/project matching.
+    """
+    d = d or {}
+    g = g or {}
+    customer = N(d.get("customer"))
+    seeds = [
+        N(g.get("_weekly_summary_confirmed_label")),
+        N(g.get("task_name")),
+        N(d.get("task_name")),
+        N(s13._customer_task(d)),
+    ]
+
+    values = []
+    seen = set()
+
+    def add(value):
+        value = N(value)
+        key = s13._k(value)
+        if value and key and key not in seen:
+            seen.add(key)
+            values.append(value)
+
+    for seed in seeds:
+        if not seed:
+            continue
+        add(seed)
+        _c, project = catalog.split_customer_task(seed)
+        project = N(project)
+        if project:
+            add(project)
+            if customer:
+                add(customer + "_" + project)
+
+            # Issue labels sometimes omit the market/variant qualifier although
+            # the selected task contains one. This is display cleanup only.
+            base = N(re.sub(r"\([^()]*\)", "", project)).strip(" _-/|:：")
+            if base:
+                add(base)
+                if customer:
+                    add(customer + "_" + base)
+
+    return sorted(values, key=lambda x: len(s13._k(x)), reverse=True)
+
+
+def _strip_weekly_project_prefix(value, d=None, g=None):
+    out = N(value)
+    if not out:
+        return ""
+
+    for candidate in _weekly_issue_project_prefixes(d, g):
+        parts = [
+            x for x in re.split(r"[\s_/|:：]+", N(candidate))
+            if N(x)
+        ]
+        if not parts:
+            continue
+
+        pattern = (
+            r"^\s*"
+            + r"[\s_/|:：]*".join(re.escape(x) for x in parts)
+            + r"(?=$|[\s_/|:：-]|\()"
+        )
+        m = re.match(pattern, out, re.I)
+        if not m:
+            continue
+
+        end = m.end()
+        # If the exact task seed was reduced to its parenthesis-free base,
+        # consume one leading qualifier too, e.g. EB-L(EU)_... .
+        qm = re.match(r"\s*\([^()]*\)", out[end:])
+        if qm:
+            end += qm.end()
+
+        rest = out[end:].lstrip(" _-/|:：")
+        if rest:
+            return rest
+
+    return out
+
+
+def _clean_weekly_issue_name(value, d=None, g=None):
     s = N(value)
     if not s:
         return ""
 
-    # Split into words and separators so only complete tokens are removed.
-    # Hyphen remains a separator for token detection, but non-target names such
-    # as EB-L are reconstructed unchanged apart from redundant delimiters left
-    # by removed prefix tokens.
+    # First remove only complete routing/product tokens.
     parts = re.split(r"([\s_/|:：-]+)", s)
     kept = []
     for part in parts:
@@ -63,22 +143,25 @@ def _clean_weekly_issue_name(value):
             kept.append(part)
             continue
         if part.casefold() in _WEEKLY_ISSUE_DROP_TOKENS:
-            # Remove an adjacent separator later during cleanup.
             continue
         kept.append(part)
 
     out = "".join(kept)
-
-    # Collapse separators that became doubled after token deletion while
-    # preserving a normal issue-name convention.
     out = re.sub(r"[ _/|:：-]{2,}", "_", out)
-    out = re.sub(r"\s+", " ", out)
+    out = re.sub(r"\s+", " ", out).strip(" _/|:：-")
+
+    # Remove the project identity only when it is the LEADING issue prefix.
+    # The project-matching logic itself remains exactly the 9264f9e baseline.
+    out = _strip_weekly_project_prefix(out, d, g)
+    out = re.sub(r"[ _/|:：-]{2,}", "_", out)
     return out.strip(" _/|:：-")
 
 
-def _weekly_issue_data(d):
+def _weekly_issue_data(d, g=None):
     dd = dict(d or {})
-    dd["issue_name"] = _clean_weekly_issue_name(dd.get("issue_name"))
+    dd["issue_name"] = _clean_weekly_issue_name(
+        dd.get("issue_name"), dd, g
+    )
     return dd
 
 
@@ -87,7 +170,7 @@ _original_summary_write_user = s14._write_summary_row
 
 def _write_summary_row_clean_issue(tb, row, hr, d, g):
     return _original_summary_write_user(
-        tb, row, hr, _weekly_issue_data(d), g
+        tb, row, hr, _weekly_issue_data(d, g), g
     )
 
 
@@ -1898,7 +1981,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
         or N((g or {}).get("task_name"))
         or N(s13._customer_task(d))
     )
-    issue = s13._issue_display(_weekly_issue_data(d))
+    issue = s13._issue_display(_weekly_issue_data(d, g))
 
     _, task_hits = _summary_hits(prs, d, g)
     if not task_hits:
@@ -2947,7 +3030,7 @@ def _clone_matched_summary_page(prs, source_index, display, g):
 
 def _update_summary_old_style(prs, d, g, mode):
     hit = _find_existing_summary_project(prs, d, g)
-    issue = s13._issue_display(_weekly_issue_data(d))
+    issue = s13._issue_display(_weekly_issue_data(d, g))
     original_customer_task = s13._customer_task
 
     if hit is not None:
@@ -3162,7 +3245,7 @@ def _detail_auto_snapshot(sl):
 
 def _update_detail_slide_force_new_text_blue(sl, d, g, mode):
     before = _detail_auto_snapshot(sl)
-    clean_d = _weekly_issue_data(d)
+    clean_d = _weekly_issue_data(d, g)
     _detail_update_before_blue_fix(sl, clean_d, g, mode)
     after = _detail_auto_snapshot(sl)
 
