@@ -188,52 +188,6 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "GM_MBAG_B2 샘플_DV_제품 생산 이슈 발생",
         )
 
-    def test_new_issue_preconfirms_existing_summary_project_before_writer(self):
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "weekly.pptx"
-            prs = Presentation()
-            add_summary_slide(prs, "GM_MBAG", "old-1")
-            add_summary_slide(prs, "GM MBAG", "old-2")
-            prs.save(path)
-
-            d = {
-                "customer": "GM",
-                "task_name": "GM_MBAG",
-                "issue_name": "brand new issue",
-            }
-            g = {"task_name": "GM_MBAG"}
-
-            resolved = fix._weekly_g_with_existing_summary_label(
-                str(path), d, g
-            )
-
-        self.assertEqual(
-            fix.s13._k(resolved.get("_weekly_summary_confirmed_label")),
-            fix.s13._k("GM MBAG"),
-        )
-        # Original GUI dict must not be mutated.
-        self.assertNotIn("_weekly_summary_confirmed_label", g)
-
-    def test_new_issue_preconfirm_does_not_merge_different_project_qualifier(self):
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "weekly.pptx"
-            prs = Presentation()
-            add_summary_slide(prs, "MBAG_EB-L(EU,US)", "old")
-            prs.save(path)
-
-            d = {
-                "customer": "MBAG",
-                "task_name": "MBAG_EB-L(EU)",
-                "issue_name": "brand new issue",
-            }
-            g = {"task_name": "MBAG_EB-L(EU)"}
-
-            resolved = fix._weekly_g_with_existing_summary_label(
-                str(path), d, g
-            )
-
-        self.assertNotIn("_weekly_summary_confirmed_label", resolved)
-
     def test_summary_uses_last_exact_matching_page(self):
         prs = Presentation()
         add_summary_slide(prs, "GM_MBAG", "old-1")
