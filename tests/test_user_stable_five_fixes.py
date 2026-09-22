@@ -107,6 +107,40 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(title, "분류 정보 확인")
         self.assertIn("개발 단계", message)
 
+    def test_weekly_issue_name_removes_requested_prefix_tokens_only(self):
+        self.assertEqual(
+            fix._clean_weekly_issue_name(
+                "EF_MO_Pack_EB-L_Endwall_Hook_Fracture"
+            ),
+            "EB-L_Endwall_Hook_Fracture",
+        )
+        self.assertEqual(
+            fix._clean_weekly_issue_name(
+                "IF_Module_ES_AA_Test Issue"
+            ),
+            "Test Issue",
+        )
+        # Do not remove matching letters embedded inside a real word.
+        self.assertEqual(
+            fix._clean_weekly_issue_name("PACKAGING_AA1_ModuleBracket"),
+            "PACKAGING_AA1_ModuleBracket",
+        )
+
+    def test_summary_issue_cell_uses_cleaned_weekly_issue_name(self):
+        prs = Presentation()
+        _sl, tb = add_summary_slide(prs, "MBAG_EB-L(EU)", "old")
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "EF_MO_Pack_EB-L_Endwall_Hook_Fracture",
+        }
+        fix.s14._write_summary_row(tb, 1, 0, d, {})
+        hm = s13._summary_map(tb, 0)
+        self.assertEqual(
+            tb.cell(1, hm["issue"]).text,
+            "EB-L_Endwall_Hook_Fracture",
+        )
+
     def test_detail_title_exact_user_format(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
         g = {
