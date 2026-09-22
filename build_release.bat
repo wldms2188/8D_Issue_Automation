@@ -55,8 +55,14 @@ if not exist "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe" (
 )
 
 echo.
+echo Creating ZIP distribution copy...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe' -DestinationPath 'installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip' -Force"
+if errorlevel 1 goto :fail
+
+echo.
 echo Stable installer complete:
 echo   installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe
+echo   installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip
 goto :done
 
 :fail
