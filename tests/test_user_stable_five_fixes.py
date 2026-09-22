@@ -728,6 +728,38 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix.s13._k("MBAG_EB-L(EU,US)"),
         )
 
+    def test_fresh_confirmed_locator_forces_exact_existing_summary_page(self):
+        prs = Presentation()
+        add_summary_slide(prs, "OTHER_TASK", "other")
+        _sl, tb = add_summary_slide(
+            prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4
+        )
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "SOMETHING_ELSE",
+            "issue_name": "new",
+        }
+        g = {
+            "task_name": "SOMETHING_ELSE",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+            "_weekly_summary_confirmed_slide_index": "1",
+            "_weekly_summary_confirmed_row": "1",
+        }
+
+        _pages, hits = fix._summary_hits(prs, d, g)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 1)
+        self.assertEqual(hits[0][-1], [1])
+
+        si, row, action = fix._update_summary_exact_then_confirmed(
+            prs, d, g, "new"
+        )
+        self.assertEqual(si, 1)
+        self.assertIn("마지막 요약 행 바로 아래 삽입", action)
+        self.assertTrue(tb.cell(1, 0).is_merge_origin)
+        self.assertTrue(tb.cell(row, 0).is_spanned)
+
     def test_stale_locator_is_ignored_and_actual_confirmed_label_is_rescanned(self):
         prs = Presentation()
         add_summary_slide(prs, "OTHER_TASK", "other")
