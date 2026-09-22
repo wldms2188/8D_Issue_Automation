@@ -81,6 +81,8 @@ def _weekly_issue_project_candidates(d=None, g=None):
             values.append(value)
 
     for seed in list(seeds):
+        if not N(seed):
+            continue
         add(seed)
         try:
             for item in catalog.canonical_candidates(seed, team):
