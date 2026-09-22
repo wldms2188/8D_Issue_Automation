@@ -679,6 +679,48 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_runtime_confirmed_label_is_injected_into_weekly_writer_data(self):
+        old = fix._runtime_confirmed_weekly_label
+        try:
+            fix._runtime_confirmed_weekly_label = "MBAG_EB-L(EU,US)"
+            g = fix._weekly_g_with_runtime_confirmation(
+                {"task_name": "MBAG_EB-L(EU)"}
+            )
+            self.assertEqual(
+                g["_weekly_summary_confirmed_label"],
+                "MBAG_EB-L(EU,US)",
+            )
+
+            # An explicit per-run value remains authoritative.
+            g2 = fix._weekly_g_with_runtime_confirmation(
+                {
+                    "task_name": "MBAG_EB-L(EU)",
+                    "_weekly_summary_confirmed_label": "EXPLICIT",
+                }
+            )
+            self.assertEqual(g2["_weekly_summary_confirmed_label"], "EXPLICIT")
+        finally:
+            fix._runtime_confirmed_weekly_label = old
+
+    def test_confirmed_section_resolves_actual_summary_label_last_occurrence(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old-1")
+            add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old-2")
+            prs.save(path)
+
+            actual = fix._summary_label_for_confirmed_section(
+                str(path),
+                "MBAG_EB-L(EU)",
+                "MBAG_EB-L(EU)",
+            )
+
+        self.assertEqual(
+            fix.s13._k(actual),
+            fix.s13._k("MBAG_EB-L(EU,US)"),
+        )
+
     def test_confirmed_weekly_project_is_found_after_save_and_reopen(self):
         with tempfile.TemporaryDirectory() as td:
             first_path = Path(td) / "first.pptx"
