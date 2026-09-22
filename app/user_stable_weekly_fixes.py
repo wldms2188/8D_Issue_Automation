@@ -1662,8 +1662,15 @@ def _summary_hits(prs, d, g=None):
     g = g or {}
     pages = s14._summary_pages(prs)
 
-    # Known-good 048fcd7 behavior: scan the actual summary tables by label each
-    # run. Do not trust a cached slide/row locator from an earlier pass.
+    # If the user just chose a candidate from the ACTUAL weekly summary, use
+    # that exact slide/row first. This locator is created fresh for this run,
+    # before the weekly PPT is mutated, so it is more reliable than re-searching
+    # the same label through multiple wrappers.
+    located = _confirmed_summary_hit_by_locator(prs, g)
+    if located is not None:
+        return pages, [located]
+
+    # Fallback: search actual summary tables by the confirmed visible label.
     confirmed = N(g.get("_weekly_summary_confirmed_label"))
     confirmed_q = s13._k(confirmed)
     full_q, project_q = _legacy_summary_target_keys(d, g)
@@ -4059,6 +4066,7 @@ def _run_with_parenthesized_weekly_choice(self):
     weekly = N(g.get("pptweekly"))
     selected = N(g.get("task_name"))
     confirmed_label = ""
+    confirmed_target = None
 
     # Only projects containing parentheses get the weekly-summary confirmation.
     if (
@@ -4077,13 +4085,30 @@ def _run_with_parenthesized_weekly_choice(self):
 
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
-                # Keep the ACTUAL weekly-page spelling, not a catalog alias.
+                # Keep the ACTUAL weekly-page spelling and locator.
                 action = "use"
-                chosen = _weekly_candidate_actual_value(exact_candidates[0])
+                confirmed_target = exact_candidates[0]
+                chosen = _weekly_candidate_actual_value(confirmed_target)
             else:
                 action, chosen = _choose_parenthesized_weekly_candidate(
                     self, selected, candidates
                 )
+                if action == "use" and chosen:
+                    chosen_q = s13._k(chosen)
+                    matches = [
+                        x for x in candidates
+                        if s13._k(_weekly_candidate_actual_value(x)) == chosen_q
+                    ]
+                    if matches:
+                        # Candidate scanner already keeps the last occurrence
+                        # for duplicate labels; max is an extra safety guard.
+                        confirmed_target = max(
+                            matches,
+                            key=lambda x: (
+                                int(x.get("slide_index", -1)),
+                                int(x.get("row", -1)),
+                            ),
+                        )
 
             if action == "cancel":
                 try:
@@ -4103,9 +4128,10 @@ def _run_with_parenthesized_weekly_choice(self):
         except Exception:
             # Candidate suggestion must not block normal execution.
             confirmed_label = ""
+            confirmed_target = None
 
-    # Known-good behavior: inject only for THIS run through gui().
-    # No global/runtime carrier and no section-name rebinding.
+    # Inject the confirmation only for THIS run. In addition to the visible
+    # label, carry the exact source summary slide/row selected by the popup.
     original_gui = self.gui
     had_instance_gui = "gui" in getattr(self, "__dict__", {})
     previous_instance_gui = getattr(self, "__dict__", {}).get("gui")
@@ -4114,6 +4140,19 @@ def _run_with_parenthesized_weekly_choice(self):
         data = dict(original_gui())
         if confirmed_label:
             data["_weekly_summary_confirmed_label"] = confirmed_label
+        if confirmed_target is not None:
+            try:
+                data["_weekly_summary_confirmed_slide_index"] = str(
+                    int(confirmed_target.get("slide_index"))
+                )
+            except Exception:
+                pass
+            try:
+                data["_weekly_summary_confirmed_row"] = str(
+                    int(confirmed_target.get("row"))
+                )
+            except Exception:
+                pass
         return data
 
     if confirmed_label:
