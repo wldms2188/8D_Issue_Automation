@@ -3327,12 +3327,49 @@ def _find_current_detail_after_baseline(src, saved, d, request=None):
     return None
 
 
+def _weekly_g_with_existing_summary_label(src, d, g):
+    """Pre-confirm the exact existing summary project for BOTH new/existing modes.
+
+    The active weekly writer is the legacy weekly_fix5 path. It re-enters
+    s14._update_summary_by_task(), so relying only on earlier GUI wrappers can
+    lose the already-resolved project label. Resolve the actual summary deck
+    once here and inject only an exact/safe legacy match as the confirmed label.
+
+    This does NOT broaden matching: _find_existing_summary_project() uses the
+    known-good 048 exact/project/trailing-note matcher. Similar qualifier
+    variants such as (EU) vs (EU,US) still require the existing user-confirm flow.
+    """
+    data = dict(g or {})
+    if N(data.get("_weekly_summary_confirmed_label")):
+        return data
+
+    try:
+        from pptx import Presentation
+        prs = Presentation(src)
+        hit = _find_existing_summary_project(prs, d, data)
+    except Exception:
+        hit = None
+
+    if hit is None:
+        return data
+
+    _rank, _si, _tb, _hr, _hm, _rows, display = hit
+    display = N(display)
+    if display:
+        data["_weekly_summary_confirmed_label"] = display
+    return data
+
+
 def _weekly_baseline_detail_path(src, out, d, g, mode):
     """Restore the known-good detail creator; keep only our summary/section fixes."""
     global _pending_user_native_section
     from pptx import Presentation
 
     _pending_user_native_section = None
+
+    # Resolve the existing project BEFORE entering weekly_fix5 so 신규/기존
+    # modes share exactly the same summary identity.
+    g = _weekly_g_with_existing_summary_label(src, d, g)
 
     # Version exactly once, then call the original weekly_fix5 detail writer.
     versioned = final_polish._version_path(out)
