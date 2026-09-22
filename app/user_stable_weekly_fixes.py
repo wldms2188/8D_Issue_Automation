@@ -1854,6 +1854,38 @@ def _merge_inserted_summary_task_block(tb, hr, hm, rows, new_row, display):
 
 
 
+def _mark_current_summary_slide(prs, index):
+    """Mark the exact summary slide updated in this run.
+
+    The marker is stored only in the internal slide name. Reduced-output
+    generation uses it to keep the ENTIRE updated summary slide, including
+    all pre-existing rows, shapes, and formatting.
+    """
+    try:
+        sl = prs.slides[int(index)]
+    except Exception:
+        return None
+
+    try:
+        old = str(getattr(sl, "name", "") or "")
+    except Exception:
+        old = ""
+
+    marker = "AUTO_8D_SUMMARY_CURRENT"
+    if old.startswith(marker):
+        return marker
+
+    new_name = marker + ("__" + old if old else "")
+    try:
+        sl.name = new_name
+    except Exception:
+        try:
+            sl._element.cSld.set("name", new_name)
+        except Exception:
+            return None
+    return marker
+
+
 def _update_summary_exact_then_confirmed(prs, d, g, mode):
     pages = s14._summary_pages(prs)
     if not pages:
@@ -1891,6 +1923,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
             if best and best[0] >= 140:
                 _, si, tb, hr, row = best
                 s14._write_summary_row(tb, row, hr, d, g)
+                _mark_current_summary_slide(prs, si)
                 return si, row, "기존 행 업데이트"
 
         if task_hits:
@@ -1905,6 +1938,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
                 _merge_inserted_summary_task_block(
                     tb, hr, hm, rows, row, display
                 )
+                _mark_current_summary_slide(prs, si)
                 return (
                     si,
                     row,
@@ -1915,6 +1949,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
                 prs, pages, g, template_index=si
             )
             s14._write_summary_row(ntb, nrow, nhr, d, g)
+            _mark_current_summary_slide(prs, nsi)
             return (
                 nsi,
                 nrow,
@@ -1926,6 +1961,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
             s13._customer_task = lambda _d: selected
         si, tb, hr, row = s14._prepare_new_summary_page(prs, pages, g)
         s14._write_summary_row(tb, row, hr, d, g)
+        _mark_current_summary_slide(prs, si)
         return (
             si,
             row,
@@ -2928,6 +2964,7 @@ def _update_summary_old_style(prs, d, g, mode):
                         best = (sc, r)
                 if best and best[0] >= 140:
                     s14._write_summary_row(tb, best[1], hr, d, g)
+                    _mark_current_summary_slide(prs, si)
                     return si, best[1], f"기존 과제 [{display}] 행 업데이트"
 
             after = max(rows)
@@ -2937,12 +2974,14 @@ def _update_summary_old_style(prs, d, g, mode):
                 _merge_inserted_summary_task_block(
                     tb, hr, hm, rows, row, display
                 )
+                _mark_current_summary_slide(prs, si)
                 return si, row, f"기존 과제 [{display}] 마지막 행 아래 삽입"
 
             nsi, ntb, nhr, nrow = _clone_matched_summary_page(
                 prs, si, display, g
             )
             s14._write_summary_row(ntb, nrow, nhr, d, g)
+            _mark_current_summary_slide(prs, nsi)
             return nsi, nrow, f"기존 과제 [{display}] 마지막 페이지 복제 후 업데이트"
         finally:
             s13._customer_task = original_customer_task
@@ -2958,6 +2997,7 @@ def _update_summary_old_style(prs, d, g, mode):
         s13._customer_task = lambda _d: selected
         si, tb, hr, row = _prepare_new_summary_page_stable(prs, pages, g)
         s14._write_summary_row(tb, row, hr, d, g)
+        _mark_current_summary_slide(prs, si)
         return si, row, f"과제 신규 생성 [{selected}]"
     finally:
         s13._customer_task = original_customer_task
@@ -3433,9 +3473,14 @@ def _ppt_update_only_keep_current_detail(source, saved):
     for i, slide in enumerate(dst.slides):
         name = str(getattr(slide, "name", "") or "")
 
-        # Current generated detail and current AUTO attachments are always output
-        # artifacts, even when their content resembles an existing source page.
-        if name.startswith("AUTO_8D_DETAIL_") or name.startswith("AUTO_8D_ATTACH_"):
+        # Current updated summary, generated detail and AUTO attachments are
+        # always output artifacts. The SUMMARY slide is kept WHOLE; no rows or
+        # shapes are stripped from it for the reduced output.
+        if (
+            name.startswith("AUTO_8D_SUMMARY_CURRENT")
+            or name.startswith("AUTO_8D_DETAIL_")
+            or name.startswith("AUTO_8D_ATTACH_")
+        ):
             keep.append(i)
             continue
 
