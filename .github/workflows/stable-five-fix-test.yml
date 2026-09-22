@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - repair/user-stable-667623-five-fixes
-      - repair/summary-match-deterministic
   workflow_dispatch:
 
 permissions:
