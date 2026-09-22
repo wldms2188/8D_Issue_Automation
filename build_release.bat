@@ -4,8 +4,8 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo =====================================================
-echo   8D Issue Automation - Stable Installer Build
-echo   Application baseline: 4ea1958
+echo   8D Issue Automation Stable - Release Build
+echo   Verified application baseline: 3dc878a
 echo =====================================================
 
 py -3 -m pip install --upgrade pip
@@ -18,7 +18,7 @@ if exist dist rmdir /s /q dist
 if not exist installer\output mkdir installer\output
 
 echo.
-echo [1/2] Building current enterprise EXE...
+echo [1/2] Building Stable EXE...
 py -3 -m PyInstaller --noconfirm --clean 8D_Issue_Automation.spec
 if errorlevel 1 goto :fail
 
@@ -28,7 +28,7 @@ if not exist "dist\8D_Issue_Automation.exe" (
 )
 
 echo.
-echo [2/2] Building Inno Setup installer...
+echo [2/2] Building Stable installer...
 
 set "ISCC="
 where iscc >nul 2>nul
@@ -49,14 +49,14 @@ if not defined ISCC (
 "%ISCC%" "installer\8D_Issue_Automation.iss"
 if errorlevel 1 goto :fail
 
-if not exist "installer\output\8D_Issue_Automation_Stable_4ea1958_Setup.exe" (
+if not exist "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe" (
   echo Installer output was not created.
   goto :fail
 )
 
 echo.
-echo Installer complete:
-echo   installer\output\8D_Issue_Automation_Stable_4ea1958_Setup.exe
+echo Stable installer complete:
+echo   installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe
 goto :done
 
 :fail
@@ -67,5 +67,5 @@ exit /b 1
 
 :done
 echo.
-echo Release build finished.
+echo Stable release build finished.
 pause
