@@ -134,11 +134,45 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "task_name": "MBAG_EB-L(EU)",
             "issue_name": "EF_MO_Pack_EB-L_Endwall_Hook_Fracture",
         }
-        fix.s14._write_summary_row(tb, 1, 0, d, {})
+        g = {"task_name": "MBAG_EB-L(EU)"}
+        fix.s14._write_summary_row(tb, 1, 0, d, g)
         hm = s13._summary_map(tb, 0)
         self.assertEqual(
             tb.cell(1, hm["issue"]).text,
-            "EB-L_Endwall_Hook_Fracture",
+            "Endwall_Hook_Fracture",
+        )
+
+    def test_issue_project_cleanup_does_not_change_summary_matching(self):
+        prs = Presentation()
+        add_summary_slide(prs, "MBAG_EB-L(EU,US)", "old")
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "MBAG_EB-L(EU)_Pack_Endwall_Hook_Fracture",
+        }
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+        }
+
+        cleaned = fix._weekly_issue_data(d, g)
+        self.assertEqual(cleaned["issue_name"], "Endwall_Hook_Fracture")
+
+        _pages, hits = fix._summary_hits(prs, d, g)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 0)
+
+    def test_issue_project_cleanup_only_strips_leading_project(self):
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "Connector_EB565M_Label_Mismatch",
+        }
+        g = {"task_name": "MBAG_EB565M"}
+        cleaned = fix._weekly_issue_data(d, g)
+        self.assertEqual(
+            cleaned["issue_name"],
+            "Connector_EB565M_Label_Mismatch",
         )
 
     def test_detail_title_exact_user_format(self):
