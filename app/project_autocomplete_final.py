@@ -112,12 +112,55 @@ def filename_project_candidates(path,team=""):
     return [x[3] for x in overlap[:8]]
 
 def canonical_candidates(value,team=""):
-    q=project_key(value); qp=project_key(value,True)
+    """Return useful registered-project candidates for typed customer/project text.
+
+    Keep the old project-part matching, but also compare the FULL registered
+    name so a customer-only extraction such as "MBAG" can suggest
+    "MBAG_EB565M" instead of falling straight into the unregistered-name dialog.
+    """
+    raw=str(value or '').strip()
+    q=project_key(raw); qp=project_key(raw,True)
+    full_q=_norm(raw)
     pool=PROJECTS.get(team,()) or _all_projects()
-    exact_paren=[x for x in pool if qp and project_key(x,True)==qp and project_key(x)!=q]
-    if exact_paren:return exact_paren
-    if not q:return list(pool)
-    return [x for x in pool if q in project_key(x) or project_key(x) in q]
+
+    exact_paren=[
+        x for x in pool
+        if qp and project_key(x,True)==qp and project_key(x)!=q
+    ]
+    if exact_paren:
+        return exact_paren
+    if not q and not full_q:
+        return list(pool)
+
+    scored=[]
+    for idx,x in enumerate(pool):
+        full_x=_norm(x)
+        project_x=project_key(x)
+        customer_x=_norm(split_customer_task(x)[0])
+
+        score=0
+        # Full registered-name/customer-prefix matches are strongest.
+        if full_q and full_x==full_q:
+            score=1000
+        elif full_q and customer_x and full_q==customer_x:
+            score=900
+        elif full_q and len(full_q)>=3 and full_x.startswith(full_q):
+            score=850
+        elif full_q and len(full_q)>=3 and full_q in full_x:
+            score=800
+        # Preserve the previous project-part behavior.
+        elif q and project_x==q:
+            score=760
+        elif q and len(q)>=3 and q in project_x:
+            score=700
+        elif q and len(project_x)>=3 and project_x in q:
+            score=650
+
+        if score:
+            scored.append((score,-len(full_x),-idx,x))
+
+    scored.sort(reverse=True)
+    return [x[3] for x in scored[:8]]
 
 def _project_entry(self,parent,label,key,hint):
     if key!="task_name": return _original_entry(self,parent,label,key,hint)
@@ -220,11 +263,22 @@ def _confirm_project(self):
     team=self.vars["team"].get().strip()
     pool=PROJECTS.get(team,()) or _all_projects()
     if v in pool:return True
-    same=[x for x in pool if project_key(x,True)==project_key(v,True) and project_key(x)!=project_key(v)]
+    same=canonical_candidates(v,team)
+    # Exact typed value was already handled above. Here, any remaining catalog
+    # candidate is a useful "did you mean?" suggestion, including customer-only
+    # inputs such as MBAG -> MBAG_EB565M.
+    same=[x for x in same if x!=v]
     if same:
-        # Simple chooser dialog for parenthesized canonical variants.
         win=tk.Toplevel(self); win.title("유사한 과제가 있습니다."); win.transient(self); win.grab_set(); result={"v":None}
-        tk.Label(win,text="유사한 과제가 있습니다.\n아래 과제 중 하나를 선택해 주세요.",font=("Malgun Gothic",10,"bold"),justify="left").pack(anchor="w",padx=20,pady=(18,8))
+        tk.Label(
+            win,
+            text=(
+                f"입력한 과제명 '{v}'과 유사한 등록 과제가 있습니다.\n"
+                "아래 과제 중 업데이트할 과제를 선택해 주세요."
+            ),
+            font=("Malgun Gothic",10,"bold"),
+            justify="left"
+        ).pack(anchor="w",padx=20,pady=(18,8))
         lb=tk.Listbox(win,font=("Malgun Gothic",9),height=min(8,len(same)),width=58,exportselection=False); lb.pack(fill="x",padx=20,pady=6)
         for x in same:lb.insert("end",x)
         def ok():
