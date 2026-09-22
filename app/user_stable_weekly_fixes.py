@@ -3560,6 +3560,8 @@ def _summary_label_for_confirmed_section(weekly_path, section_name, selected="")
     if not weekly_path or not Path(weekly_path).exists():
         return ""
 
+    from pptx import Presentation
+
     section_q = s13._k(section_name)
     selected_q = s13._k(selected)
     selected_base = _parenless_identity(selected)
