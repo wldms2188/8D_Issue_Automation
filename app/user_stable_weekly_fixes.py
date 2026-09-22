@@ -1518,19 +1518,34 @@ def _summary_direct_keys(d, g=None):
 
 
 def _summary_hits(prs, d, g=None):
-    """Find existing weekly projects with the restored simple matching rule."""
+    """Find existing weekly project blocks.
+
+    Priority:
+      1) exact label explicitly confirmed by the user from the ACTUAL weekly PPT;
+      2) restored simple automatic matching.
+
+    A slide that contains a valid summary table is treated as a summary page
+    even if other text on that slide happens to resemble 2D~6D detail content.
+    """
+    g = g or {}
     pages = s14._summary_pages(prs)
+    confirmed = N(g.get("_weekly_summary_confirmed_label"))
+    confirmed_q = s13._k(confirmed)
     full_q, project_q = _legacy_summary_target_keys(d, g)
 
-    hits = []
+    confirmed_hits = []
+    normal_hits = []
+
     for si, sl in enumerate(prs.slides):
-        if _strict_detail_template_fingerprint(sl)["ok"]:
+        candidates = _simple_summary_table_candidates(sl)
+        if not candidates:
             continue
 
-        for tb, hr, hm in _simple_summary_table_candidates(sl):
+        for tb, hr, hm in candidates:
             if "task" not in hm:
                 continue
 
+            # Build visual project blocks including blank/spanned continuation rows.
             blocks = []
             current = None
             for r in range(hr + 1, len(tb.rows)):
@@ -1544,28 +1559,40 @@ def _summary_hits(prs, d, g=None):
             if current is not None:
                 blocks.append(current)
 
-            matched_rows = []
-            best_rank = 0
+            normal_rows = []
+            normal_best_rank = 0
+
             for block in blocks:
-                rank = _legacy_summary_match_rank(
-                    block["label"], full_q, project_q
-                )
+                raw = block["label"]
+                rows = block["rows"]
+                raw_q = s13._k(raw)
+
+                # A user-confirmed weekly label is authoritative.
+                if confirmed_q and raw_q == confirmed_q:
+                    confirmed_hits.append((si, tb, hr, hm, list(rows)))
+                    continue
+
+                rank = _legacy_summary_match_rank(raw, full_q, project_q)
                 if rank:
-                    matched_rows.extend(block["rows"])
-                    best_rank = max(best_rank, rank)
+                    normal_rows.extend(rows)
+                    normal_best_rank = max(normal_best_rank, rank)
 
-            if matched_rows:
-                hits.append((best_rank, si, tb, hr, hm, matched_rows))
+            if normal_rows:
+                normal_hits.append(
+                    (normal_best_rank, si, tb, hr, hm, normal_rows)
+                )
 
-    if not hits:
+    if confirmed_hits:
+        # Keep all exact occurrences; downstream chooses the LAST page.
+        return pages, confirmed_hits
+
+    if not normal_hits:
         return pages, []
 
-    # Exact/full matches first; among equivalent matches, the downstream caller
-    # intentionally chooses the LAST page where the project appears.
-    best_rank = max(x[0] for x in hits)
+    best_rank = max(x[0] for x in normal_hits)
     selected = [
         (si, tb, hr, hm, rows)
-        for rank, si, tb, hr, hm, rows in hits
+        for rank, si, tb, hr, hm, rows in normal_hits
         if rank == best_rank
     ]
     return pages, selected
@@ -1775,7 +1802,11 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
             "주간회의 PPT에서 과제명/Signal 요약 양식 페이지를 찾지 못했습니다."
         )
 
-    selected = N((g or {}).get("task_name")) or N(s13._customer_task(d))
+    selected = (
+        N((g or {}).get("_weekly_summary_confirmed_label"))
+        or N((g or {}).get("task_name"))
+        or N(s13._customer_task(d))
+    )
     issue = s13._issue_display(d)
 
     _, task_hits = _summary_hits(prs, d, g)
@@ -2613,7 +2644,11 @@ def _legacy_summary_target_keys(d, g=None):
     d = d or {}
     g = g or {}
 
-    selected = N(g.get("task_name")) or N(d.get("task_name"))
+    selected = (
+        N(g.get("_weekly_summary_confirmed_label"))
+        or N(g.get("task_name"))
+        or N(d.get("task_name"))
+    )
     customer = N(d.get("customer"))
 
     # Prefer the user's supplied catalog spelling only when it is an exact
@@ -3458,7 +3493,7 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
     found = []
     seen = set()
 
-    for sl in prs.slides:
+    for si, sl in enumerate(prs.slides):
         for tb, hr, hm in _simple_summary_table_candidates(sl):
             task_col = hm.get("task")
             if task_col is None:
@@ -3487,18 +3522,26 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
                     continue
 
                 key = s13._k(raw)
-                if key in seen:
-                    continue
-                seen.add(key)
-
                 canonical = _catalog_exact_name_for_summary_label(raw, team)
-                found.append(
-                    {
-                        "display": raw,
-                        "canonical": canonical or raw.replace("\n", " ").strip(),
-                        "exact": s13._k(raw) == s13._k(selected_catalog),
-                    }
-                )
+                item = {
+                    "display": raw,
+                    "canonical": canonical or raw.replace("\n", " ").strip(),
+                    "exact": s13._k(raw) == s13._k(selected_catalog),
+                    "slide_index": si,
+                    "row": r,
+                }
+
+                if key in seen:
+                    # Same project may appear on several summary pages. Keep the
+                    # LAST occurrence because updates must continue from there.
+                    for idx, old in enumerate(found):
+                        if s13._k(old.get("display")) == key:
+                            found[idx] = item
+                            break
+                    continue
+
+                seen.add(key)
+                found.append(item)
 
     # Exact same qualifier/spelling first; otherwise preserve weekly page order.
     found.sort(key=lambda x: (0 if x["exact"] else 1))
@@ -3687,8 +3730,9 @@ def _run_with_parenthesized_weekly_choice(self):
     g = self.gui()
     weekly = N(g.get("pptweekly"))
     selected = N(g.get("task_name"))
+    confirmed_label = ""
 
-    # Only the small catalog/input subset containing parentheses gets this popup.
+    # Only projects containing parentheses get the weekly-summary confirmation.
     if (
         weekly
         and Path(weekly).exists()
@@ -3700,15 +3744,14 @@ def _run_with_parenthesized_weekly_choice(self):
                 weekly,
                 selected,
                 N(g.get("team")),
-                "",
+                N(g.get("customer")),
             )
 
-            # Exact same normalized project already exists in the weekly
-            # summary: use it silently. The confirmation popup is only for
-            # same-base but different parenthetical variants.
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
-                action, chosen = "use", exact_candidates[0]["canonical"]
+                # Even when it is exact, keep the ACTUAL weekly-page spelling.
+                action = "use"
+                chosen = _weekly_candidate_actual_value(exact_candidates[0])
             else:
                 action, chosen = _choose_parenthesized_weekly_candidate(
                     self, selected, candidates
@@ -3722,17 +3765,44 @@ def _run_with_parenthesized_weekly_choice(self):
                 except Exception:
                     pass
                 return
-            if action == "use" and chosen and chosen != selected:
+
+            if action == "use" and chosen:
+                confirmed_label = N(chosen)
                 try:
-                    self.vars["task_name"].set(chosen)
+                    self.vars["task_name"].set(confirmed_label)
                 except Exception:
                     pass
         except Exception:
-            # Candidate suggestion is optional. Never block the old/simple
-            # normal execution merely because the preflight scanner failed.
-            pass
+            # Candidate suggestion must not block normal execution.
+            confirmed_label = ""
 
-    return _original_enterprise_run_parenthetical_weekly(self)
+    # IMPORTANT: self.vars alone was not enough because later wrappers rebuild
+    # g independently. Inject the user's confirmed weekly label into EVERY gui()
+    # snapshot made during this run so the summary writer receives it directly.
+    original_gui = self.gui
+    had_instance_gui = "gui" in getattr(self, "__dict__", {})
+    previous_instance_gui = getattr(self, "__dict__", {}).get("gui")
+
+    def gui_with_weekly_confirmation():
+        data = dict(original_gui())
+        if confirmed_label:
+            data["_weekly_summary_confirmed_label"] = confirmed_label
+        return data
+
+    if confirmed_label:
+        self.gui = gui_with_weekly_confirmation
+
+    try:
+        return _original_enterprise_run_parenthetical_weekly(self)
+    finally:
+        if confirmed_label:
+            if had_instance_gui:
+                self.gui = previous_instance_gui
+            else:
+                try:
+                    delattr(self, "gui")
+                except Exception:
+                    pass
 
 
 enterprise_main.EnterpriseApp.run = _run_with_parenthesized_weekly_choice
