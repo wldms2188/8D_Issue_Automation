@@ -745,17 +745,17 @@ class UserStableFiveFixesTest(unittest.TestCase):
                 "MBAG",
             )
 
+            reopened = Presentation(path)
+            d = {
+                "customer": "MBAG",
+                "task_name": "MBAG_EB565M",
+                "issue_name": "new",
+            }
+            g = {"task_name": "MBAG_EB565M"}
+            _pages, hits = fix._summary_hits(reopened, d, g)
+
         self.assertEqual(len(candidates), 1)
         self.assertFalse(candidates[0].get("exact"))
-
-        reopened = Presentation(path)
-        d = {
-            "customer": "MBAG",
-            "task_name": "MBAG_EB565M",
-            "issue_name": "new",
-        }
-        g = {"task_name": "MBAG_EB565M"}
-        _pages, hits = fix._summary_hits(reopened, d, g)
         self.assertEqual(hits, [])
 
     def test_exact_duplicate_summary_updates_last_page(self):
