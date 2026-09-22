@@ -42,17 +42,8 @@ _runtime_confirmed_weekly_target = None
 
 
 def _weekly_g_with_runtime_confirmation(g):
-    data = dict(g or {})
-    label = N(_runtime_confirmed_weekly_label)
-    target = _runtime_confirmed_weekly_target or {}
-    if label and not N(data.get("_weekly_summary_confirmed_label")):
-        data["_weekly_summary_confirmed_label"] = label
-    if target:
-        if target.get("slide_index") is not None:
-            data["_weekly_summary_confirmed_slide_index"] = str(target["slide_index"])
-        if target.get("row") is not None:
-            data["_weekly_summary_confirmed_row"] = str(target["row"])
-    return data
+    """Compatibility no-op matching the known-good 048fcd7 execution path."""
+    return dict(g or {})
 
 
 # ---------------------------------------------------------------------------
@@ -1671,10 +1662,8 @@ def _summary_hits(prs, d, g=None):
     g = g or {}
     pages = s14._summary_pages(prs)
 
-    located = _confirmed_summary_hit_by_locator(prs, g)
-    if located is not None:
-        return pages, [located]
-
+    # Known-good 048fcd7 behavior: scan the actual summary tables by label each
+    # run. Do not trust a cached slide/row locator from an earlier pass.
     confirmed = N(g.get("_weekly_summary_confirmed_label"))
     confirmed_q = s13._k(confirmed)
     full_q, project_q = _legacy_summary_target_keys(d, g)
