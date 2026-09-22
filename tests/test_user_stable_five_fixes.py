@@ -679,6 +679,47 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_confirmed_weekly_project_is_found_again_on_second_run_after_merge(self):
+        prs = Presentation()
+        _sl, tb = add_summary_slide(
+            prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4
+        )
+
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+        }
+        d1 = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "첫번째 신규 이슈",
+        }
+
+        si1, row1, action1 = fix._update_summary_exact_then_confirmed(
+            prs, d1, g, "new"
+        )
+        self.assertEqual(si1, 0)
+        self.assertIn("마지막 요약 행 바로 아래 삽입", action1)
+        self.assertTrue(tb.cell(1, 0).is_merge_origin)
+        self.assertTrue(tb.cell(row1, 0).is_spanned)
+
+        # SECOND RUN against the already-updated/merged result.
+        d2 = dict(d1)
+        d2["issue_name"] = "두번째 신규 이슈"
+        si2, row2, action2 = fix._update_summary_exact_then_confirmed(
+            prs, d2, g, "new"
+        )
+
+        self.assertEqual(si2, 0)
+        self.assertIn("마지막 요약 행 바로 아래 삽입", action2)
+        self.assertGreater(row2, row1)
+        self.assertTrue(tb.cell(1, 0).is_merge_origin)
+        self.assertTrue(tb.cell(row2, 0).is_spanned)
+        self.assertEqual(
+            fix.s13._k(tb.cell(1, 0).text),
+            fix.s13._k("MBAG_EB-L(EU,US)"),
+        )
+
     def test_confirmed_weekly_candidate_overrides_original_input_and_inserts_same_page(self):
         prs = Presentation()
 
