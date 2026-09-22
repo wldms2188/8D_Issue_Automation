@@ -38,13 +38,20 @@ N = v310.N
 # label here as a short-lived runtime carrier so later wrappers cannot lose it
 # by rebuilding the gui() dictionary. It is always cleared in finally.
 _runtime_confirmed_weekly_label = ""
+_runtime_confirmed_weekly_target = None
 
 
 def _weekly_g_with_runtime_confirmation(g):
     data = dict(g or {})
     label = N(_runtime_confirmed_weekly_label)
+    target = _runtime_confirmed_weekly_target or {}
     if label and not N(data.get("_weekly_summary_confirmed_label")):
         data["_weekly_summary_confirmed_label"] = label
+    if target:
+        if target.get("slide_index") is not None:
+            data["_weekly_summary_confirmed_slide_index"] = str(target["slide_index"])
+        if target.get("row") is not None:
+            data["_weekly_summary_confirmed_row"] = str(target["row"])
     return data
 
 
@@ -1589,6 +1596,48 @@ def _summary_direct_keys(d, g=None):
     return {s13._k(v) for v in values if s13._k(v)}
 
 
+def _confirmed_summary_hit_by_locator(prs, g):
+    """Return the exact summary block chosen by the user, if a locator exists."""
+    g = g or {}
+    label_q = s13._k(g.get("_weekly_summary_confirmed_label"))
+    try:
+        wanted_si = int(g.get("_weekly_summary_confirmed_slide_index"))
+    except Exception:
+        return None
+    try:
+        wanted_row = int(g.get("_weekly_summary_confirmed_row"))
+    except Exception:
+        wanted_row = None
+
+    if wanted_si < 0 or wanted_si >= len(prs.slides):
+        return None
+
+    sl = prs.slides[wanted_si]
+    for tb, hr, hm in _simple_summary_table_candidates(sl):
+        if "task" not in hm:
+            continue
+
+        blocks = []
+        current = None
+        for r in range(hr + 1, len(tb.rows)):
+            raw = N(s13._row_text(tb, r, hm["task"]))
+            if raw:
+                if current is not None:
+                    blocks.append(current)
+                current = {"label": raw, "rows": [r]}
+            elif current is not None and _summary_row_has_payload(tb, r, hm):
+                current["rows"].append(r)
+        if current is not None:
+            blocks.append(current)
+
+        for block in blocks:
+            same_label = bool(label_q and s13._k(block["label"]) == label_q)
+            same_row = wanted_row is not None and wanted_row in block["rows"]
+            if same_label or same_row:
+                return (wanted_si, tb, hr, hm, list(block["rows"]))
+    return None
+
+
 def _summary_hits(prs, d, g=None):
     """Find existing weekly project blocks.
 
@@ -1601,6 +1650,11 @@ def _summary_hits(prs, d, g=None):
     """
     g = g or {}
     pages = s14._summary_pages(prs)
+
+    located = _confirmed_summary_hit_by_locator(prs, g)
+    if located is not None:
+        return pages, [located]
+
     confirmed = N(g.get("_weekly_summary_confirmed_label"))
     confirmed_q = s13._k(confirmed)
     full_q, project_q = _legacy_summary_target_keys(d, g)
@@ -3617,6 +3671,28 @@ def _summary_label_for_confirmed_section(weekly_path, section_name, selected="")
     return N(candidates[-1][3])
 
 
+def _summary_locator_for_label(weekly_path, label):
+    if not weekly_path or not Path(weekly_path).exists() or not N(label):
+        return None
+    from pptx import Presentation
+    try:
+        prs = Presentation(weekly_path)
+    except Exception:
+        return None
+    q = s13._k(label)
+    found = None
+    for si, sl in enumerate(prs.slides):
+        for tb, hr, hm in _simple_summary_table_candidates(sl):
+            task_col = hm.get("task")
+            if task_col is None:
+                continue
+            for r in range(hr + 1, len(tb.rows)):
+                raw = N(s13._row_text(tb, r, task_col))
+                if raw and s13._k(raw) == q:
+                    found = {"label": raw, "slide_index": si, "row": r}
+    return found
+
+
 _original_confirm_weekly_section_user = enterprise_main.EnterpriseApp._confirm_weekly_section
 
 
@@ -3642,6 +3718,10 @@ def _confirm_weekly_section_bind_summary(self, weekly, d, g):
     )
     if actual:
         g["_weekly_summary_confirmed_label"] = actual
+        loc = _summary_locator_for_label(weekly, actual)
+        if loc:
+            g["_weekly_summary_confirmed_slide_index"] = str(loc["slide_index"])
+            g["_weekly_summary_confirmed_row"] = str(loc["row"])
     return ok
 
 
@@ -3798,6 +3878,26 @@ def _weekly_candidate_display_one_line(item):
     return merged[0]
 
 
+def _weekly_candidate_target(candidates, chosen):
+    chosen_q = s13._k(chosen)
+    if not chosen_q:
+        return None
+    matches = [
+        item for item in (candidates or [])
+        if s13._k(_weekly_candidate_actual_value(item)) == chosen_q
+        or s13._k(item.get("display")) == chosen_q
+    ]
+    if not matches:
+        return None
+    # Candidate scanner already keeps the last occurrence per visible label.
+    item = matches[-1]
+    return {
+        "label": _weekly_candidate_actual_value(item),
+        "slide_index": item.get("slide_index"),
+        "row": item.get("row"),
+    }
+
+
 def _weekly_candidate_actual_value(item):
     """Value to use after user confirmation: preserve the weekly-page label."""
     return _weekly_candidate_display_one_line(item)
@@ -3945,13 +4045,15 @@ _original_enterprise_run_parenthetical_weekly = enterprise_main.EnterpriseApp.ru
 
 
 def _run_with_parenthesized_weekly_choice(self):
-    global _runtime_confirmed_weekly_label
+    global _runtime_confirmed_weekly_label, _runtime_confirmed_weekly_target
 
     g = self.gui()
     weekly = N(g.get("pptweekly"))
     selected = N(g.get("task_name"))
     confirmed_label = ""
+    confirmed_target = None
     _runtime_confirmed_weekly_label = ""
+    _runtime_confirmed_weekly_target = None
 
     if (
         weekly
@@ -3969,12 +4071,14 @@ def _run_with_parenthesized_weekly_choice(self):
 
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
+                chosen_item = exact_candidates[0]
                 action = "use"
-                chosen = _weekly_candidate_actual_value(exact_candidates[0])
+                chosen = _weekly_candidate_actual_value(chosen_item)
             else:
                 action, chosen = _choose_parenthesized_weekly_candidate(
                     self, selected, candidates
                 )
+                chosen_item = None
 
             if action == "cancel":
                 try:
@@ -3987,13 +4091,27 @@ def _run_with_parenthesized_weekly_choice(self):
 
             if action == "use" and chosen:
                 confirmed_label = N(chosen)
+                confirmed_target = (
+                    {
+                        "label": confirmed_label,
+                        "slide_index": chosen_item.get("slide_index"),
+                        "row": chosen_item.get("row"),
+                    }
+                    if chosen_item is not None
+                    else _weekly_candidate_target(candidates, confirmed_label)
+                )
                 _runtime_confirmed_weekly_label = confirmed_label
-                try:
-                    self.vars["task_name"].set(confirmed_label)
-                except Exception:
-                    pass
+                _runtime_confirmed_weekly_target = confirmed_target
+
+                # IMPORTANT: do NOT overwrite the user's/catalog task_name.
+                # Mutating self.vars caused the next execution to start from the
+                # weekly-page alias (e.g. EU,US) rather than the original catalog
+                # selection (e.g. EU), which broke repeat runs.
         except Exception:
             confirmed_label = ""
+            confirmed_target = None
+            _runtime_confirmed_weekly_label = ""
+            _runtime_confirmed_weekly_target = None
 
     original_gui = self.gui
     had_instance_gui = "gui" in getattr(self, "__dict__", {})
@@ -4002,8 +4120,13 @@ def _run_with_parenthesized_weekly_choice(self):
     def gui_with_weekly_confirmation():
         data = dict(original_gui())
         label = N(confirmed_label or _runtime_confirmed_weekly_label)
+        target = confirmed_target or _runtime_confirmed_weekly_target or {}
         if label:
             data["_weekly_summary_confirmed_label"] = label
+        if target.get("slide_index") is not None:
+            data["_weekly_summary_confirmed_slide_index"] = str(target["slide_index"])
+        if target.get("row") is not None:
+            data["_weekly_summary_confirmed_row"] = str(target["row"])
         return data
 
     if confirmed_label:
@@ -4013,6 +4136,7 @@ def _run_with_parenthesized_weekly_choice(self):
         return _original_enterprise_run_parenthetical_weekly(self)
     finally:
         _runtime_confirmed_weekly_label = ""
+        _runtime_confirmed_weekly_target = None
         if confirmed_label:
             if had_instance_gui:
                 self.gui = previous_instance_gui
