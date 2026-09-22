@@ -679,6 +679,53 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_confirmed_weekly_project_is_found_after_save_and_reopen(self):
+        with tempfile.TemporaryDirectory() as td:
+            first_path = Path(td) / "first.pptx"
+
+            prs = Presentation()
+            _sl, tb = add_summary_slide(
+                prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4
+            )
+            g = {
+                "task_name": "MBAG_EB-L(EU)",
+                "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+            }
+            d1 = {
+                "customer": "MBAG",
+                "task_name": "MBAG_EB-L(EU)",
+                "issue_name": "첫번째 신규 이슈",
+            }
+
+            si1, row1, action1 = fix._update_summary_exact_then_confirmed(
+                prs, d1, g, "new"
+            )
+            self.assertEqual(si1, 0)
+            self.assertIn("마지막 요약 행 바로 아래 삽입", action1)
+            prs.save(first_path)
+
+            # Real second execution: reopen the PowerPoint from disk.
+            reopened = Presentation(first_path)
+            d2 = dict(d1)
+            d2["issue_name"] = "두번째 신규 이슈"
+
+            si2, row2, action2 = fix._update_summary_exact_then_confirmed(
+                reopened, d2, g, "new"
+            )
+            self.assertEqual(si2, 0)
+            self.assertIn("마지막 요약 행 바로 아래 삽입", action2)
+
+            out_tb = next(
+                sh.table for sh in reopened.slides[0].shapes
+                if getattr(sh, "has_table", False)
+            )
+            self.assertTrue(out_tb.cell(1, 0).is_merge_origin)
+            self.assertTrue(out_tb.cell(row2, 0).is_spanned)
+            self.assertEqual(
+                fix.s13._k(out_tb.cell(1, 0).text),
+                fix.s13._k("MBAG_EB-L(EU,US)"),
+            )
+
     def test_confirmed_weekly_project_is_found_again_on_second_run_after_merge(self):
         prs = Presentation()
         _sl, tb = add_summary_slide(
