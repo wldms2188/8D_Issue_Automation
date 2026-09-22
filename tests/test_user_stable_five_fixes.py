@@ -708,6 +708,75 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_non_parenthesized_exact_candidate_uses_last_duplicate_silently(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG_EB565M", "old-1")
+            add_summary_slide(prs, "MBAG\nEB565M", "old-2")
+            prs.save(path)
+
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB565M",
+                "파우치형Pack개발품질1팀",
+                "MBAG",
+            )
+
+        exact = [x for x in candidates if x.get("exact")]
+        self.assertEqual(len(exact), 1)
+        self.assertEqual(exact[0]["slide_index"], 1)
+        self.assertEqual(
+            fix.s13._k(fix._weekly_candidate_actual_value(exact[0])),
+            fix.s13._k("MBAG_EB565M"),
+        )
+
+    def test_similar_summary_label_is_candidate_but_not_automatic_exact(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG_EB565M (2차)", "old")
+            prs.save(path)
+
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB565M",
+                "파우치형Pack개발품질1팀",
+                "MBAG",
+            )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertFalse(candidates[0].get("exact"))
+
+        reopened = Presentation(path)
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB565M"}
+        _pages, hits = fix._summary_hits(reopened, d, g)
+        self.assertEqual(hits, [])
+
+    def test_exact_duplicate_summary_updates_last_page(self):
+        prs = Presentation()
+        add_summary_slide(prs, "MBAG_EB565M", "old-1")
+        _sl, tb = add_summary_slide(prs, "MBAG\nEB565M", "old-2", rows=4)
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "new",
+        }
+        g = {"task_name": "MBAG_EB565M"}
+
+        si, row, action = fix._update_summary_exact_then_confirmed(
+            prs, d, g, "new"
+        )
+
+        self.assertEqual(si, 1)
+        self.assertIn("마지막 요약 행 바로 아래 삽입", action)
+        self.assertTrue(tb.cell(row, 0).is_spanned)
+
     def test_confirmed_candidate_target_keeps_exact_weekly_location(self):
         candidates = [
             {
