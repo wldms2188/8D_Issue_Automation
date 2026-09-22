@@ -1350,20 +1350,40 @@ def _strict_detail_template_fingerprint(sl):
         for token in ("cv", "dv", "pd", "pv", "sop", "gate", "target", "now")
     )
 
-    # A true detail page normally carries most D stages.  This deliberately
-    # accepts legacy/grouped layouts that do not expose separate marker shapes.
+    # Real company detail pages are not consistent about exposing every
+    # "2D/3D/..." marker as editable text. Some templates keep the D marker in
+    # a grouped graphic while the section title and the top metadata remain
+    # editable. Requiring 4 literal D markers therefore rejects valid pages.
+    #
+    # Accept either:
+    #   - the classic layout with most D markers, OR
+    #   - a grouped/legacy layout with several D markers plus strong metadata
+    #     and section-title evidence, OR
+    #   - a title-rich detail layout where marker text itself is mostly graphic.
     strong_detail = (
-        len(d_hits) >= 4
-        and legacy_structure >= 5
-        and (title_hits >= 2 or metadata_hits >= 1 or len(d_hits) == 5)
+        legacy_structure >= 5
+        and (
+            len(d_hits) >= 4
+            or (
+                len(d_hits) >= 2
+                and metadata_hits >= 2
+                and title_hits >= 3
+            )
+            or (
+                metadata_hits >= 2
+                and title_hits >= 5
+            )
+        )
     )
 
-    # A schedule/timeline may mention one or two D items, but if schedule terms
-    # dominate and the detail titles/meta are weak it must never be a template.
+    # Roadmap/gate pages can contain CV/DV/PV/SOP and an occasional "4D" token,
+    # but they do not carry the combination of detail titles + metadata above.
     schedule_dominant = (
         schedule_hits >= 5
-        and title_hits < 3
-        and metadata_hits < 2
+        and (
+            title_hits < 4
+            or metadata_hits < 2
+        )
     )
 
     return {
