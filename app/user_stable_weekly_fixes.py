@@ -36,6 +36,65 @@ N = v310.N
 
 
 # ---------------------------------------------------------------------------
+# Weekly-only issue-name cleanup.
+# Remove routing/product-prefix tokens from SUMMARY/DETAIL display names only.
+# Issue DB / extracted 8D source data remain untouched.
+# ---------------------------------------------------------------------------
+_WEEKLY_ISSUE_DROP_TOKENS = {
+    "if", "ef", "module", "pack", "es", "mo", "aa",
+}
+
+
+def _clean_weekly_issue_name(value):
+    s = N(value)
+    if not s:
+        return ""
+
+    # Split into words and separators so only complete tokens are removed.
+    # Hyphen remains a separator for token detection, but non-target names such
+    # as EB-L are reconstructed unchanged apart from redundant delimiters left
+    # by removed prefix tokens.
+    parts = re.split(r"([\s_/|:：-]+)", s)
+    kept = []
+    for part in parts:
+        if not part:
+            continue
+        if re.fullmatch(r"[\s_/|:：-]+", part):
+            kept.append(part)
+            continue
+        if part.casefold() in _WEEKLY_ISSUE_DROP_TOKENS:
+            # Remove an adjacent separator later during cleanup.
+            continue
+        kept.append(part)
+
+    out = "".join(kept)
+
+    # Collapse separators that became doubled after token deletion while
+    # preserving a normal issue-name convention.
+    out = re.sub(r"[ _/|:：-]{2,}", "_", out)
+    out = re.sub(r"\s+", " ", out)
+    return out.strip(" _/|:：-")
+
+
+def _weekly_issue_data(d):
+    dd = dict(d or {})
+    dd["issue_name"] = _clean_weekly_issue_name(dd.get("issue_name"))
+    return dd
+
+
+_original_summary_write_user = s14._write_summary_row
+
+
+def _write_summary_row_clean_issue(tb, row, hr, d, g):
+    return _original_summary_write_user(
+        tb, row, hr, _weekly_issue_data(d), g
+    )
+
+
+s14._write_summary_row = _write_summary_row_clean_issue
+
+
+# ---------------------------------------------------------------------------
 # 1) Detail title:
 #    고객사_과제명_발생샘플 샘플_개발단계_발생처 이슈 발생
 # ---------------------------------------------------------------------------
@@ -1807,7 +1866,7 @@ def _update_summary_exact_then_confirmed(prs, d, g, mode):
         or N((g or {}).get("task_name"))
         or N(s13._customer_task(d))
     )
-    issue = s13._issue_display(d)
+    issue = s13._issue_display(_weekly_issue_data(d))
 
     _, task_hits = _summary_hits(prs, d, g)
     if not task_hits:
@@ -2852,7 +2911,7 @@ def _clone_matched_summary_page(prs, source_index, display, g):
 
 def _update_summary_old_style(prs, d, g, mode):
     hit = _find_existing_summary_project(prs, d, g)
-    issue = s13._issue_display(d)
+    issue = s13._issue_display(_weekly_issue_data(d))
     original_customer_task = s13._customer_task
 
     if hit is not None:
@@ -3063,7 +3122,8 @@ def _detail_auto_snapshot(sl):
 
 def _update_detail_slide_force_new_text_blue(sl, d, g, mode):
     before = _detail_auto_snapshot(sl)
-    _detail_update_before_blue_fix(sl, d, g, mode)
+    clean_d = _weekly_issue_data(d)
+    _detail_update_before_blue_fix(sl, clean_d, g, mode)
     after = _detail_auto_snapshot(sl)
 
     for sh in v310.walk(sl):
