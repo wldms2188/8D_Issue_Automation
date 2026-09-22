@@ -34,6 +34,19 @@ import weekly_style_final as weekly_style
 
 N = v310.N
 
+# One GUI execution at a time. Keep the user's confirmed ACTUAL weekly-summary
+# label here as a short-lived runtime carrier so later wrappers cannot lose it
+# by rebuilding the gui() dictionary. It is always cleared in finally.
+_runtime_confirmed_weekly_label = ""
+
+
+def _weekly_g_with_runtime_confirmation(g):
+    data = dict(g or {})
+    label = N(_runtime_confirmed_weekly_label)
+    if label and not N(data.get("_weekly_summary_confirmed_label")):
+        data["_weekly_summary_confirmed_label"] = label
+    return data
+
 
 # ---------------------------------------------------------------------------
 # Weekly-only issue-name cleanup.
@@ -3250,6 +3263,7 @@ def _weekly_baseline_detail_path(src, out, d, g, mode):
     from pptx import Presentation
 
     _pending_user_native_section = None
+    g = _weekly_g_with_runtime_confirmation(g)
 
     # Version exactly once, then call the original weekly_fix5 detail writer.
     versioned = final_polish._version_path(out)
@@ -3535,6 +3549,103 @@ output_variant._ppt_update_only = _ppt_update_only_keep_current_detail
 # - projects containing (...): before execution, inspect the weekly summary,
 #   show same-base candidates, and let the user choose the actual summary label.
 # ---------------------------------------------------------------------------
+def _summary_label_for_confirmed_section(weekly_path, section_name, selected=""):
+    """Resolve a user-confirmed native section to an ACTUAL weekly summary label.
+
+    This is used after the user chooses '해당 구역 업데이트'. It scans summary
+    tables directly and returns the best visible task label, preferring exact
+    section-name identity, then exact selected task, then safe normalized base
+    identity. Ties use the LAST summary-page occurrence.
+    """
+    if not weekly_path or not Path(weekly_path).exists():
+        return ""
+
+    section_q = s13._k(section_name)
+    selected_q = s13._k(selected)
+    selected_base = _parenless_identity(selected)
+    section_base = _parenless_identity(section_name)
+
+    try:
+        prs = Presentation(weekly_path)
+    except Exception:
+        return ""
+
+    candidates = []
+    for si, sl in enumerate(prs.slides):
+        for tb, hr, hm in _simple_summary_table_candidates(sl):
+            task_col = hm.get("task")
+            if task_col is None:
+                continue
+            for r in range(hr + 1, len(tb.rows)):
+                raw = N(s13._row_text(tb, r, task_col))
+                if not raw:
+                    continue
+                q = s13._k(raw)
+                base_q = _parenless_identity(raw)
+                score = 0
+                if section_q and q == section_q:
+                    score = 1000
+                elif selected_q and q == selected_q:
+                    score = 950
+                elif section_base and base_q == section_base:
+                    score = 900
+                elif selected_base and base_q == selected_base:
+                    score = 880
+                elif (
+                    section_q and q
+                    and min(len(section_q), len(q)) >= 4
+                    and (section_q in q or q in section_q)
+                ):
+                    score = 700
+                elif (
+                    selected_q and q
+                    and min(len(selected_q), len(q)) >= 4
+                    and (selected_q in q or q in selected_q)
+                ):
+                    score = 650
+
+                if score:
+                    candidates.append((score, si, r, raw))
+
+    if not candidates:
+        return ""
+
+    # Highest confidence first; for duplicates/same confidence, last page/row.
+    candidates.sort(key=lambda x: (x[0], x[1], x[2]))
+    return N(candidates[-1][3])
+
+
+_original_confirm_weekly_section_user = enterprise_main.EnterpriseApp._confirm_weekly_section
+
+
+def _confirm_weekly_section_bind_summary(self, weekly, d, g):
+    ok = _original_confirm_weekly_section_user(self, weekly, d, g)
+    if not ok:
+        return ok
+
+    # If another confirmation flow already supplied the actual summary label,
+    # never replace it.
+    if N((g or {}).get("_weekly_summary_confirmed_label")):
+        return ok
+
+    # '해당 구역 업데이트' stores this name. Exact section resolution can also
+    # store it; in both cases it is a useful authoritative seed.
+    section_name = N((g or {}).get("_weekly_section_override_name"))
+    if not section_name:
+        return ok
+
+    selected = N((g or {}).get("task_name")) or N((d or {}).get("task_name"))
+    actual = _summary_label_for_confirmed_section(
+        weekly, section_name, selected
+    )
+    if actual:
+        g["_weekly_summary_confirmed_label"] = actual
+    return ok
+
+
+enterprise_main.EnterpriseApp._confirm_weekly_section = _confirm_weekly_section_bind_summary
+
+
 def _parenless_identity(value):
     return s13._k(re.sub(r"\([^()]*\)", "", N(value)))
 
@@ -3832,12 +3943,14 @@ _original_enterprise_run_parenthetical_weekly = enterprise_main.EnterpriseApp.ru
 
 
 def _run_with_parenthesized_weekly_choice(self):
+    global _runtime_confirmed_weekly_label
+
     g = self.gui()
     weekly = N(g.get("pptweekly"))
     selected = N(g.get("task_name"))
     confirmed_label = ""
+    _runtime_confirmed_weekly_label = ""
 
-    # Only projects containing parentheses get the weekly-summary confirmation.
     if (
         weekly
         and Path(weekly).exists()
@@ -3854,7 +3967,6 @@ def _run_with_parenthesized_weekly_choice(self):
 
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
-                # Even when it is exact, keep the ACTUAL weekly-page spelling.
                 action = "use"
                 chosen = _weekly_candidate_actual_value(exact_candidates[0])
             else:
@@ -3873,25 +3985,23 @@ def _run_with_parenthesized_weekly_choice(self):
 
             if action == "use" and chosen:
                 confirmed_label = N(chosen)
+                _runtime_confirmed_weekly_label = confirmed_label
                 try:
                     self.vars["task_name"].set(confirmed_label)
                 except Exception:
                     pass
         except Exception:
-            # Candidate suggestion must not block normal execution.
             confirmed_label = ""
 
-    # IMPORTANT: self.vars alone was not enough because later wrappers rebuild
-    # g independently. Inject the user's confirmed weekly label into EVERY gui()
-    # snapshot made during this run so the summary writer receives it directly.
     original_gui = self.gui
     had_instance_gui = "gui" in getattr(self, "__dict__", {})
     previous_instance_gui = getattr(self, "__dict__", {}).get("gui")
 
     def gui_with_weekly_confirmation():
         data = dict(original_gui())
-        if confirmed_label:
-            data["_weekly_summary_confirmed_label"] = confirmed_label
+        label = N(confirmed_label or _runtime_confirmed_weekly_label)
+        if label:
+            data["_weekly_summary_confirmed_label"] = label
         return data
 
     if confirmed_label:
@@ -3900,6 +4010,7 @@ def _run_with_parenthesized_weekly_choice(self):
     try:
         return _original_enterprise_run_parenthetical_weekly(self)
     finally:
+        _runtime_confirmed_weekly_label = ""
         if confirmed_label:
             if had_instance_gui:
                 self.gui = previous_instance_gui
