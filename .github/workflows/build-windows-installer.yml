@@ -1,9 +1,9 @@
-name: Build Windows Installer
+name: Build Advanced Windows Installer
 
 on:
   push:
     branches:
-      - repair/user-stable-667623-five-fixes
+      - release/advanced-3dc878a
     paths:
       - "app/**"
       - "requirements.txt"
@@ -22,7 +22,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout stable branch
+      - name: Checkout Advanced release
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -37,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Compile-check stable runtime
+      - name: Compile-check verified runtime
         shell: pwsh
         run: |
           python -m py_compile app\main_enterprise_final.py app\user_stable_weekly_fixes.py
@@ -61,7 +61,7 @@ jobs:
             throw "Inno Setup 6 ISCC.exe was not found"
           }
 
-      - name: Build installer
+      - name: Build Advanced installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
@@ -69,7 +69,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
           }
-          $setup = "installer\output\8D_Issue_Automation_Stable_4ea1958_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Advanced_3dc878a_Setup.exe"
           if (!(Test-Path $setup)) {
             throw "Installer was not created: $setup"
           }
@@ -77,25 +77,27 @@ jobs:
       - name: Write build information
         shell: pwsh
         run: |
-          $setup = "installer\output\8D_Issue_Automation_Stable_4ea1958_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Advanced_3dc878a_Setup.exe"
           $exe = "dist\8D_Issue_Automation.exe"
           @(
-            "Application behavior baseline: 4ea1958"
-            "Repository commit used for packaging: $env:GITHUB_SHA"
+            "Product: 8D Issue Automation Advanced"
+            "Verified application baseline: 3dc878a"
+            "Packaging commit: $env:GITHUB_SHA"
+            "Release branch: release/advanced-3dc878a"
             "Built on GitHub Windows runner"
             ""
             "EXE SHA256: $((Get-FileHash $exe -Algorithm SHA256).Hash)"
             "SETUP SHA256: $((Get-FileHash $setup -Algorithm SHA256).Hash)"
           ) | Set-Content -Encoding UTF8 "installer\output\BUILD_INFO.txt"
 
-      - name: Upload installer package
+      - name: Upload Advanced distribution package
         uses: actions/upload-artifact@v4
         with:
-          name: 8D_Issue_Automation_Stable_4ea1958_Windows
+          name: 8D_Issue_Automation_Advanced_3dc878a_Windows
           if-no-files-found: error
           retention-days: 30
           path: |
-            installer/output/8D_Issue_Automation_Stable_4ea1958_Setup.exe
+            installer/output/8D_Issue_Automation_Advanced_3dc878a_Setup.exe
             installer/output/BUILD_INFO.txt
             dist/8D_Issue_Automation.exe
             installer/8D_Issue_Automation.iss
