@@ -74,6 +74,11 @@ jobs:
             throw "Installer was not created: $setup"
           }
 
+      - name: Create ZIP distribution copy
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe" -DestinationPath "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip" -Force
+
       - name: Write build information
         shell: pwsh
         run: |
@@ -98,6 +103,7 @@ jobs:
           retention-days: 30
           path: |
             installer/output/8D_Issue_Automation_Stable_3dc878a_Setup.exe
+            installer/output/8D_Issue_Automation_Stable_3dc878a_Setup.zip
             installer/output/BUILD_INFO.txt
             dist/8D_Issue_Automation.exe
             installer/8D_Issue_Automation.iss
