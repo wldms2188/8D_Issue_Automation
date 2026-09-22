@@ -1798,9 +1798,15 @@ def _summary_hits(prs, d, g=None):
                     continue
 
                 rank = _legacy_summary_match_rank(raw, full_q, project_q)
-                # Automatic routing is EXACT-only. Lower ranks are merely
-                # similar spellings and must be confirmed by the user first.
-                if rank >= 380:
+                # _legacy_summary_match_rank is intentionally NOT arbitrary
+                # fuzzy matching. Non-zero means one of:
+                #   - exact customer+project
+                #   - exact project (with/without customer prefix)
+                #   - the same exact identity plus an unrelated trailing note
+                #     such as "(2차)".
+                # Real qualifier changes such as (EU) vs (EU,US) return 0 and
+                # remain user-confirmable candidates only.
+                if rank:
                     normal_rows.extend(rows)
                     normal_best_rank = max(normal_best_rank, rank)
 
@@ -3934,26 +3940,25 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
                 selected_q = s13._k(selected_catalog)
                 selected_project_q = s13._k(selected_project)
                 customer_q = s13._k(selected_customer or customer)
-                raw_project_q = key
-                if customer_q and key.startswith(customer_q) and len(key) > len(customer_q):
-                    raw_project_q = key[len(customer_q):]
+                selected_full_q = selected_q
+                if (
+                    customer_q
+                    and selected_project_q
+                    and not selected_q.startswith(customer_q)
+                ):
+                    selected_full_q = customer_q + selected_project_q
+
+                # Use the SAME safe identity matcher as the actual summary
+                # writer. This prevents the popup and update phases from
+                # disagreeing about whether an existing project was found.
+                safe_rank = _legacy_summary_match_rank(
+                    raw, selected_full_q, selected_project_q
+                )
 
                 item = {
                     "display": raw,
                     "canonical": canonical or raw.replace("\n", " ").strip(),
-                    # Treat customer+project and project-only visible labels as
-                    # the same exact identity after separator normalization.
-                    "exact": bool(
-                        key == selected_q
-                        or (
-                            selected_project_q
-                            and raw_project_q == selected_project_q
-                        )
-                        or (
-                            len(selected_project_q) >= 4
-                            and key.endswith(selected_project_q)
-                        )
-                    ),
+                    "exact": bool(safe_rank),
                     "slide_index": si,
                     "row": r,
                 }
