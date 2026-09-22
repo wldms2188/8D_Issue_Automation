@@ -728,7 +728,7 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix.s13._k("MBAG_EB-L(EU,US)"),
         )
 
-    def test_confirmed_summary_locator_beats_name_reinference(self):
+    def test_stale_locator_is_ignored_and_actual_confirmed_label_is_rescanned(self):
         prs = Presentation()
         add_summary_slide(prs, "OTHER_TASK", "other")
         add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4)
@@ -739,8 +739,10 @@ class UserStableFiveFixesTest(unittest.TestCase):
         }
         g = {
             "task_name": "MBAG_EB-L(EU)",
-            "_weekly_summary_confirmed_label": "NOT_THE_VISIBLE_LABEL",
-            "_weekly_summary_confirmed_slide_index": "1",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+            # Deliberately wrong/stale locator. Known-good behavior must ignore
+            # these cached positions and rescan the actual table label.
+            "_weekly_summary_confirmed_slide_index": "0",
             "_weekly_summary_confirmed_row": "1",
         }
 
@@ -749,19 +751,16 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(hits[0][0], 1)
         self.assertEqual(hits[0][-1], [1])
 
-    def test_runtime_confirmed_label_is_injected_into_weekly_writer_data(self):
+    def test_runtime_helper_cannot_inject_a_stale_confirmed_label(self):
         old = fix._runtime_confirmed_weekly_label
         try:
-            fix._runtime_confirmed_weekly_label = "MBAG_EB-L(EU,US)"
+            fix._runtime_confirmed_weekly_label = "STALE_OLD_LABEL"
             g = fix._weekly_g_with_runtime_confirmation(
                 {"task_name": "MBAG_EB-L(EU)"}
             )
-            self.assertEqual(
-                g["_weekly_summary_confirmed_label"],
-                "MBAG_EB-L(EU,US)",
-            )
+            self.assertNotIn("_weekly_summary_confirmed_label", g)
 
-            # An explicit per-run value remains authoritative.
+            # An explicit per-run value remains untouched.
             g2 = fix._weekly_g_with_runtime_confirmation(
                 {
                     "task_name": "MBAG_EB-L(EU)",
