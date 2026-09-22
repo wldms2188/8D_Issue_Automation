@@ -13,6 +13,7 @@ import main_recovery_step12 as s12
 import main_recovery_step13 as s13
 import main_recovery_step14 as s14
 import user_stable_weekly_fixes as fix
+import project_autocomplete_final as project_catalog
 import main_recovery_step14_fix2 as core
 
 
@@ -517,6 +518,21 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix._legacy_summary_match_rank("EB565M", full_q, project_q),
             0,
         )
+
+    def test_customer_only_input_suggests_registered_team_projects(self):
+        vals = project_catalog.canonical_candidates(
+            "MBAG", "파우치형Pack개발품질1팀"
+        )
+        self.assertIn("MBAG_EB565M", vals)
+        self.assertEqual(vals[0], "MBAG_EB565M")
+
+    def test_customer_only_input_respects_selected_team_first(self):
+        vals = project_catalog.canonical_candidates(
+            "MBAG", "원통형Pack개발품질팀"
+        )
+        self.assertIn("MBAG_VAN EV VarC", vals)
+        self.assertIn("MBAG_EB-L(EU)", vals)
+        self.assertIn("MBAG_EB-L(US)", vals)
 
     def test_weekly_candidate_popup_preserves_actual_parenthesis_content(self):
         item = {
