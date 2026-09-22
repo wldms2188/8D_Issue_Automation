@@ -141,6 +141,35 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "EB-L_Endwall_Hook_Fracture",
         )
 
+    def test_grouped_real_detail_template_with_partial_d_markers_is_accepted(self):
+        prs = Presentation()
+        sl = add_real_detail_slide(prs)
+
+        # Simulate the real company template where 2D/3D marker text is inside
+        # graphics and not exposed as editable text, while titles/meta remain.
+        for sh in sl.shapes:
+            txt = getattr(sh, "text", "")
+            if txt in ("2D", "3D"):
+                sh.text = ""
+
+        fp = fix._strict_detail_template_fingerprint(sl)
+        self.assertTrue(fp["ok"])
+        self.assertGreaterEqual(fp["metadata_hits"], 2)
+        self.assertGreaterEqual(fp["title_hits"], 5)
+
+    def test_schedule_roadmap_is_still_rejected_as_detail_template(self):
+        prs = Presentation()
+        sl = prs.slides.add_slide(prs.slide_layouts[6])
+        sl.shapes.add_textbox(
+            Inches(0.5), Inches(0.5), Inches(11), Inches(2)
+        ).text = (
+            "CV DV PD PV SOP GATE TARGET NOW 4D\n"
+            "Project timeline / schedule / gate review"
+        )
+
+        fp = fix._strict_detail_template_fingerprint(sl)
+        self.assertFalse(fp["ok"])
+
     def test_detail_title_exact_user_format(self):
         d = {"customer": "GM", "task_name": "GM_MBAG"}
         g = {
