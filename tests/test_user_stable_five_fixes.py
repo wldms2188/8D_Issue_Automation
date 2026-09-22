@@ -708,6 +708,47 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_confirmed_candidate_target_keeps_exact_weekly_location(self):
+        candidates = [
+            {
+                "display": "MBAG\nEB-L\n(EU,US)",
+                "canonical": "MBAG_EB-L(EU)",
+                "exact": False,
+                "slide_index": 7,
+                "row": 4,
+            }
+        ]
+        target = fix._weekly_candidate_target(
+            candidates, "MBAG_EB-L(EU,US)"
+        )
+        self.assertEqual(target["slide_index"], 7)
+        self.assertEqual(target["row"], 4)
+        self.assertEqual(
+            fix.s13._k(target["label"]),
+            fix.s13._k("MBAG_EB-L(EU,US)"),
+        )
+
+    def test_confirmed_summary_locator_beats_name_reinference(self):
+        prs = Presentation()
+        add_summary_slide(prs, "OTHER_TASK", "other")
+        add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4)
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new",
+        }
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "_weekly_summary_confirmed_label": "NOT_THE_VISIBLE_LABEL",
+            "_weekly_summary_confirmed_slide_index": "1",
+            "_weekly_summary_confirmed_row": "1",
+        }
+
+        _pages, hits = fix._summary_hits(prs, d, g)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 1)
+        self.assertEqual(hits[0][-1], [1])
+
     def test_runtime_confirmed_label_is_injected_into_weekly_writer_data(self):
         old = fix._runtime_confirmed_weekly_label
         try:
