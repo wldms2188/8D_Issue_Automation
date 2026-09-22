@@ -1,27 +1,26 @@
-; 8D Issue Automation - stable internal installer
-; Application behavior baseline: 4ea1958
+; 8D Issue Automation Stable - isolated distribution installer
+; Verified application baseline: 3dc878a
 ; EXE entry point: app\main_enterprise_final.py (via 8D_Issue_Automation.spec)
 ;
-; Manual build:
-;   1) Run build_release.bat
-;   2) Or compile this file with Inno Setup 6 after dist\8D_Issue_Automation.exe exists.
+; This installer uses its own AppId and install directory so it can coexist
+; with older/internal builds without upgrading or overwriting them.
 
-#define MyAppName "8D Issue Automation"
-#define MyAppVersion "1.0.0-stable-4ea1958"
+#define MyAppName "8D Issue Automation Stable"
+#define MyAppVersion "2.0.0-stable-3dc878a"
 #define MyAppPublisher "Pack 개발품질"
 #define MyAppExeName "8D_Issue_Automation.exe"
 
 [Setup]
-AppId={{8D5A8E9D-6E52-4F91-A77B-8D2026091501}
+AppId={{53DC878A-2026-4A8D-9C30-8D2026092202}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\Programs\8D Issue Automation
+DefaultDirName={localappdata}\Programs\8D Issue Automation Stable
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=8D_Issue_Automation_Stable_4ea1958_Setup
+OutputBaseFilename=8D_Issue_Automation_Stable_3dc878a_Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -33,10 +32,10 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=2.0.0.0
 VersionInfoTextVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
-VersionInfoDescription={#MyAppName} stable installer
+VersionInfoDescription={#MyAppName}
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
