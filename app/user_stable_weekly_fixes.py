@@ -2871,7 +2871,9 @@ def _legacy_summary_match_rank(raw, full_q, project_q):
     # Customer-independent fallback: an exact project at the END of a
     # customer-prefixed label is still the same project (e.g. GM MBAG).
     if project_q and len(project_q) >= 4 and q.endswith(project_q):
-        return 320
+        # Exact project identity with a different/extra customer prefix.
+        # This is still deterministic, not fuzzy.
+        return 385
 
     # Allow ONLY an unrelated trailing parenthetical note after an otherwise
     # exact project label, e.g. "MBAG EB-L(EU) (2차)". This must not broaden
@@ -3864,6 +3866,10 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
                         or (
                             selected_project_q
                             and raw_project_q == selected_project_q
+                        )
+                        or (
+                            len(selected_project_q) >= 4
+                            and key.endswith(selected_project_q)
                         )
                     ),
                     "slide_index": si,
