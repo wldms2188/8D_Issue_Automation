@@ -3337,7 +3337,6 @@ def _weekly_baseline_detail_path(src, out, d, g, mode):
     from pptx import Presentation
 
     _pending_user_native_section = None
-    g = _weekly_g_with_runtime_confirmation(g)
 
     # Version exactly once, then call the original weekly_fix5 detail writer.
     versioned = final_polish._version_path(out)
@@ -3745,7 +3744,9 @@ def _confirm_weekly_section_bind_summary(self, weekly, d, g):
     return ok
 
 
-enterprise_main.EnterpriseApp._confirm_weekly_section = _confirm_weekly_section_bind_summary
+# Restore the known-good section confirmation path from 048fcd7.
+# The later section->summary rebinding could overwrite a user-confirmed summary label.
+enterprise_main.EnterpriseApp._confirm_weekly_section = _original_confirm_weekly_section_user
 
 
 def _parenless_identity(value):
@@ -4065,16 +4066,12 @@ _original_enterprise_run_parenthetical_weekly = enterprise_main.EnterpriseApp.ru
 
 
 def _run_with_parenthesized_weekly_choice(self):
-    global _runtime_confirmed_weekly_label, _runtime_confirmed_weekly_target
-
     g = self.gui()
     weekly = N(g.get("pptweekly"))
     selected = N(g.get("task_name"))
     confirmed_label = ""
-    confirmed_target = None
-    _runtime_confirmed_weekly_label = ""
-    _runtime_confirmed_weekly_target = None
 
+    # Only projects containing parentheses get the weekly-summary confirmation.
     if (
         weekly
         and Path(weekly).exists()
@@ -4091,14 +4088,13 @@ def _run_with_parenthesized_weekly_choice(self):
 
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
-                chosen_item = exact_candidates[0]
+                # Keep the ACTUAL weekly-page spelling, not a catalog alias.
                 action = "use"
-                chosen = _weekly_candidate_actual_value(chosen_item)
+                chosen = _weekly_candidate_actual_value(exact_candidates[0])
             else:
                 action, chosen = _choose_parenthesized_weekly_candidate(
                     self, selected, candidates
                 )
-                chosen_item = None
 
             if action == "cancel":
                 try:
@@ -4111,42 +4107,24 @@ def _run_with_parenthesized_weekly_choice(self):
 
             if action == "use" and chosen:
                 confirmed_label = N(chosen)
-                confirmed_target = (
-                    {
-                        "label": confirmed_label,
-                        "slide_index": chosen_item.get("slide_index"),
-                        "row": chosen_item.get("row"),
-                    }
-                    if chosen_item is not None
-                    else _weekly_candidate_target(candidates, confirmed_label)
-                )
-                _runtime_confirmed_weekly_label = confirmed_label
-                _runtime_confirmed_weekly_target = confirmed_target
-
-                # IMPORTANT: do NOT overwrite the user's/catalog task_name.
-                # Mutating self.vars caused the next execution to start from the
-                # weekly-page alias (e.g. EU,US) rather than the original catalog
-                # selection (e.g. EU), which broke repeat runs.
+                try:
+                    self.vars["task_name"].set(confirmed_label)
+                except Exception:
+                    pass
         except Exception:
+            # Candidate suggestion must not block normal execution.
             confirmed_label = ""
-            confirmed_target = None
-            _runtime_confirmed_weekly_label = ""
-            _runtime_confirmed_weekly_target = None
 
+    # Known-good behavior: inject only for THIS run through gui().
+    # No global/runtime carrier and no section-name rebinding.
     original_gui = self.gui
     had_instance_gui = "gui" in getattr(self, "__dict__", {})
     previous_instance_gui = getattr(self, "__dict__", {}).get("gui")
 
     def gui_with_weekly_confirmation():
         data = dict(original_gui())
-        label = N(confirmed_label or _runtime_confirmed_weekly_label)
-        target = confirmed_target or _runtime_confirmed_weekly_target or {}
-        if label:
-            data["_weekly_summary_confirmed_label"] = label
-        if target.get("slide_index") is not None:
-            data["_weekly_summary_confirmed_slide_index"] = str(target["slide_index"])
-        if target.get("row") is not None:
-            data["_weekly_summary_confirmed_row"] = str(target["row"])
+        if confirmed_label:
+            data["_weekly_summary_confirmed_label"] = confirmed_label
         return data
 
     if confirmed_label:
@@ -4155,8 +4133,6 @@ def _run_with_parenthesized_weekly_choice(self):
     try:
         return _original_enterprise_run_parenthetical_weekly(self)
     finally:
-        _runtime_confirmed_weekly_label = ""
-        _runtime_confirmed_weekly_target = None
         if confirmed_label:
             if had_instance_gui:
                 self.gui = previous_instance_gui
