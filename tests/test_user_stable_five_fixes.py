@@ -134,11 +134,58 @@ class UserStableFiveFixesTest(unittest.TestCase):
             "task_name": "MBAG_EB-L(EU)",
             "issue_name": "EF_MO_Pack_EB-L_Endwall_Hook_Fracture",
         }
-        fix.s14._write_summary_row(tb, 1, 0, d, {})
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "team": "원통형Pack개발품질팀",
+        }
+        fix.s14._write_summary_row(tb, 1, 0, d, g)
         hm = s13._summary_map(tb, 0)
         self.assertEqual(
             tb.cell(1, hm["issue"]).text,
-            "EB-L_Endwall_Hook_Fracture",
+            "Endwall_Hook_Fracture",
+        )
+
+    def test_weekly_issue_name_removes_full_customer_project_prefix(self):
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "MBAG_EB565M_IF_Module_Cell_Voltage_Drop",
+        }
+        g = {
+            "task_name": "MBAG_EB565M",
+            "team": "파우치형Pack개발품질1팀",
+        }
+        cleaned = fix._weekly_issue_data(d, g)
+        self.assertEqual(cleaned["issue_name"], "Cell_Voltage_Drop")
+
+    def test_weekly_issue_name_removes_source_qualifier_after_user_confirms_broader_project(self):
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU,US)",
+            "issue_name": "MBAG_EB-L(EU)_Pack_Endwall_Hook_Fracture",
+        }
+        g = {
+            "task_name": "MBAG_EB-L(EU,US)",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+            "team": "원통형Pack개발품질팀",
+        }
+        cleaned = fix._weekly_issue_data(d, g)
+        self.assertEqual(cleaned["issue_name"], "Endwall_Hook_Fracture")
+
+    def test_weekly_issue_name_does_not_remove_project_word_from_middle_description(self):
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB565M",
+            "issue_name": "Connector_EB565M_Label_Mismatch",
+        }
+        g = {
+            "task_name": "MBAG_EB565M",
+            "team": "파우치형Pack개발품질1팀",
+        }
+        cleaned = fix._weekly_issue_data(d, g)
+        self.assertEqual(
+            cleaned["issue_name"],
+            "Connector_EB565M_Label_Mismatch",
         )
 
     def test_grouped_real_detail_template_with_partial_d_markers_is_accepted(self):
