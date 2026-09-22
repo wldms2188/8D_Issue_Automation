@@ -1669,15 +1669,9 @@ def _summary_hits(prs, d, g=None):
     g = g or {}
     pages = s14._summary_pages(prs)
 
-    # If the user just chose a candidate from the ACTUAL weekly summary, use
-    # that exact slide/row first. This locator is created fresh for this run,
-    # before the weekly PPT is mutated, so it is more reliable than re-searching
-    # the same label through multiple wrappers.
-    located = _confirmed_summary_hit_by_locator(prs, g)
-    if located is not None:
-        return pages, [located]
-
-    # Fallback: search actual summary tables by the confirmed visible label.
+    # Always rescan the ACTUAL summary tables on every execution.
+    # A slide/row locator captured before a previous mutation can become stale;
+    # the confirmed visible project label is the stable identity.
     confirmed = N(g.get("_weekly_summary_confirmed_label"))
     confirmed_q = s13._k(confirmed)
     full_q, project_q = _legacy_summary_target_keys(d, g)
@@ -1722,7 +1716,9 @@ def _summary_hits(prs, d, g=None):
                     continue
 
                 rank = _legacy_summary_match_rank(raw, full_q, project_q)
-                if rank:
+                # Automatic routing is EXACT-only. Lower ranks are merely
+                # similar spellings and must be confirmed by the user first.
+                if rank >= 380:
                     normal_rows.extend(rows)
                     normal_best_rank = max(normal_best_rank, rank)
 
@@ -3793,8 +3789,13 @@ def _catalog_exact_name_for_summary_label(label, team=""):
 
 
 def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""):
-    """Return visible task labels whose BASE project matches when () is ignored."""
-    if not selected or not re.search(r"\([^()]+\)", N(selected)):
+    """Return exact or safely-similar visible summary labels from the ACTUAL PPT.
+
+    Despite the legacy function name, this now works for every project.
+    Exact matches are silent. Similar same-base matches are only candidates for
+    user confirmation; they are never auto-routed.
+    """
+    if not selected:
         return []
 
     from pptx import Presentation
@@ -3845,10 +3846,26 @@ def _parenthesized_weekly_candidates(weekly_path, selected, team="", customer=""
 
                 key = s13._k(raw)
                 canonical = _catalog_exact_name_for_summary_label(raw, team)
+
+                selected_q = s13._k(selected_catalog)
+                selected_project_q = s13._k(selected_project)
+                customer_q = s13._k(selected_customer or customer)
+                raw_project_q = key
+                if customer_q and key.startswith(customer_q) and len(key) > len(customer_q):
+                    raw_project_q = key[len(customer_q):]
+
                 item = {
                     "display": raw,
                     "canonical": canonical or raw.replace("\n", " ").strip(),
-                    "exact": s13._k(raw) == s13._k(selected_catalog),
+                    # Treat customer+project and project-only visible labels as
+                    # the same exact identity after separator normalization.
+                    "exact": bool(
+                        key == selected_q
+                        or (
+                            selected_project_q
+                            and raw_project_q == selected_project_q
+                        )
+                    ),
                     "slide_index": si,
                     "row": r,
                 }
@@ -4075,13 +4092,9 @@ def _run_with_parenthesized_weekly_choice(self):
     confirmed_label = ""
     confirmed_target = None
 
-    # Only projects containing parentheses get the weekly-summary confirmation.
-    if (
-        weekly
-        and Path(weekly).exists()
-        and selected
-        and re.search(r"\([^()]+\)", selected)
-    ):
+    # Resolve the project against the ACTUAL weekly summary for every project.
+    # Exact duplicates are automatic; only genuinely similar candidates prompt.
+    if weekly and Path(weekly).exists() and selected:
         try:
             candidates = _parenthesized_weekly_candidates(
                 weekly,
@@ -4092,16 +4105,26 @@ def _run_with_parenthesized_weekly_choice(self):
 
             exact_candidates = [x for x in candidates if x.get("exact")]
             if exact_candidates:
-                # Keep the ACTUAL weekly-page spelling and exact source locator.
+                # Same exact project on several summary pages is not ambiguous.
+                # Use its visible spelling automatically; the writer rescans all
+                # exact occurrences and continues from the LAST page.
                 action = "use"
-                chosen = _weekly_candidate_actual_value(exact_candidates[0])
+                exact_target = max(
+                    exact_candidates,
+                    key=lambda x: (
+                        int(x.get("slide_index", -1)),
+                        int(x.get("row", -1)),
+                    ),
+                )
+                chosen = _weekly_candidate_actual_value(exact_target)
             else:
                 action, chosen = _choose_parenthesized_weekly_candidate(
                     self, selected, candidates
                 )
 
-            if action == "use" and chosen:
-                confirmed_target = _weekly_candidate_target(candidates, chosen)
+            # Do not bind the run to a cached slide/row. The chosen visible
+            # label is enough; the writer will rescan the current PPT.
+            confirmed_target = None
 
             if action == "cancel":
                 try:
@@ -4133,24 +4156,8 @@ def _run_with_parenthesized_weekly_choice(self):
         data = dict(original_gui())
         if confirmed_label:
             data["_weekly_summary_confirmed_label"] = confirmed_label
-        if confirmed_target is not None:
-            # Target label comes from the ACTUAL weekly page. Keep it aligned
-            # with the visible confirmed label even if catalog aliases differ.
-            target_label = N(confirmed_target.get("label"))
-            if target_label:
-                data["_weekly_summary_confirmed_label"] = target_label
-            try:
-                data["_weekly_summary_confirmed_slide_index"] = str(
-                    int(confirmed_target.get("slide_index"))
-                )
-            except Exception:
-                pass
-            try:
-                data["_weekly_summary_confirmed_row"] = str(
-                    int(confirmed_target.get("row"))
-                )
-            except Exception:
-                pass
+        # Intentionally do not carry a slide/row locator. Only the confirmed
+        # visible project label survives this execution.
         return data
 
     if confirmed_label:
