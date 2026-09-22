@@ -553,6 +553,69 @@ class UserStableFiveFixesTest(unittest.TestCase):
             0,
         )
 
+    def test_reduced_weekly_keeps_entire_updated_summary_slide(self):
+        with tempfile.TemporaryDirectory() as td:
+            src_path = Path(td) / "weekly_src.pptx"
+            saved_path = Path(td) / "weekly_saved.pptx"
+
+            src = Presentation()
+            sl, tb = add_summary_slide(
+                src, "MBAG_EB565M", "기존 이슈 1", rows=5
+            )
+            tb.cell(2, 0).text = ""
+            tb.cell(2, 1).text = "기존 이슈 2"
+            tb.cell(2, 2).text = "기존 현상 2"
+            tb.cell(3, 0).text = "OTHER_TASK"
+            tb.cell(3, 1).text = "다른 과제 이슈"
+            src.save(src_path)
+
+            dst = Presentation(src_path)
+            summary_sl = dst.slides[0]
+            summary_tb = next(
+                sh.table for sh in summary_sl.shapes
+                if getattr(sh, "has_table", False)
+            )
+            # Simulate this run updating the existing summary slide.
+            summary_tb.cell(4, 0).text = "MBAG_EB565M"
+            summary_tb.cell(4, 1).text = "이번 추가 이슈"
+            fix._mark_current_summary_slide(dst, 0)
+            dst.save(saved_path)
+
+            reduced, count = fix._ppt_update_only_keep_current_detail(
+                str(src_path), str(saved_path)
+            )
+
+            self.assertIsNotNone(reduced)
+            self.assertEqual(count, 1)
+
+            check = Presentation(reduced)
+            self.assertEqual(len(check.slides), 1)
+            out_tb = next(
+                sh.table for sh in check.slides[0].shapes
+                if getattr(sh, "has_table", False)
+            )
+
+            # The whole updated slide survives, not only the newly updated row.
+            values = [
+                out_tb.cell(r, 1).text
+                for r in range(1, len(out_tb.rows))
+            ]
+            self.assertIn("기존 이슈 1", values)
+            self.assertIn("기존 이슈 2", values)
+            self.assertIn("다른 과제 이슈", values)
+            self.assertIn("이번 추가 이슈", values)
+
+    def test_updated_summary_marker_is_internal_and_persists(self):
+        prs = Presentation()
+        add_summary_slide(prs, "MBAG_EB565M", "old")
+        marker = fix._mark_current_summary_slide(prs, 0)
+        self.assertEqual(marker, "AUTO_8D_SUMMARY_CURRENT")
+        self.assertTrue(
+            str(getattr(prs.slides[0], "name", "") or "").startswith(
+                "AUTO_8D_SUMMARY_CURRENT"
+            )
+        )
+
     def test_customer_only_input_suggests_registered_team_projects(self):
         vals = project_catalog.canonical_candidates(
             "MBAG", "파우치형Pack개발품질1팀"
