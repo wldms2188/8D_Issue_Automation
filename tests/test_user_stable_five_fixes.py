@@ -582,6 +582,92 @@ class UserStableFiveFixesTest(unittest.TestCase):
         self.assertEqual(len(exact), 1)
         self.assertEqual(exact[0]["canonical"], "MBAG_EB-L(EU)")
 
+    def test_confirmed_weekly_candidate_overrides_original_input_and_inserts_same_page(self):
+        prs = Presentation()
+
+        # A generic summary page exists elsewhere in the deck.
+        add_summary_slide(prs, "OTHER_TASK", "other")
+
+        # This is the actual page the user confirmed from the weekly PPT.
+        sl, tb = add_summary_slide(
+            prs, "MBAG\nEB-L\n(EU,US)", "old", rows=4
+        )
+        before_slides = len(prs.slides)
+        before_rows = len(tb.rows)
+
+        d = {
+            "customer": "MBAG",
+            "task_name": "MBAG_EB-L(EU)",
+            "issue_name": "new issue",
+        }
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+        }
+
+        si, row, action = fix._update_summary_exact_then_confirmed(
+            prs, d, g, "new"
+        )
+
+        self.assertEqual(si, 1)
+        self.assertIn("마지막 요약 행 바로 아래 삽입", action)
+        self.assertEqual(len(prs.slides), before_slides)
+        self.assertEqual(len(tb.rows), before_rows + 1)
+
+        # The task block must be one vertically merged, centered cell.
+        origin = tb.cell(1, 0)
+        self.assertTrue(origin.is_merge_origin)
+        self.assertTrue(tb.cell(row, 0).is_spanned)
+        self.assertEqual(
+            fix.s13._k(origin.text),
+            fix.s13._k("MBAG_EB-L(EU,US)"),
+        )
+
+    def test_confirmed_weekly_summary_label_is_authoritative_even_if_detail_classifier_would_disagree(self):
+        prs = Presentation()
+        sl, tb = add_summary_slide(prs, "MBAG EB-L(EU,US)", "old")
+        d = {"customer": "MBAG", "task_name": "MBAG_EB-L(EU)"}
+        g = {
+            "task_name": "MBAG_EB-L(EU)",
+            "_weekly_summary_confirmed_label": "MBAG_EB-L(EU,US)",
+        }
+
+        # Summary-table recognition itself is authoritative. The hit scan must
+        # not depend on the detail-template classifier at all.
+        original = fix._strict_detail_template_fingerprint
+        try:
+            def forbidden(_sl):
+                raise AssertionError("detail classifier must not gate summary tables")
+            fix._strict_detail_template_fingerprint = forbidden
+            _pages, hits = fix._summary_hits(prs, d, g)
+        finally:
+            fix._strict_detail_template_fingerprint = original
+
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 0)
+        self.assertEqual(hits[0][-1], [1])
+
+    def test_weekly_candidate_scanner_keeps_last_occurrence_location(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weekly.pptx"
+            prs = Presentation()
+            add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old-1")
+            add_summary_slide(prs, "MBAG\nEB-L\n(EU,US)", "old-2")
+            prs.save(path)
+
+            candidates = fix._parenthesized_weekly_candidates(
+                str(path),
+                "MBAG_EB-L(EU)",
+                "원통형Pack개발품질팀",
+                "MBAG",
+            )
+
+        target = next(
+            x for x in candidates
+            if fix.s13._k(x["display"]) == fix.s13._k("MBAG_EB-L(EU,US)")
+        )
+        self.assertEqual(target["slide_index"], 1)
+
     def test_parenthesized_weekly_candidate_scanner_returns_eu_and_us_choices(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "weekly.pptx"
