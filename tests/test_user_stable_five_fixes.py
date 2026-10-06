@@ -695,6 +695,75 @@ class UserStableFiveFixesTest(unittest.TestCase):
             fix._weekly_candidate_display_one_line("MBAG\nEB-L\n(EU,US)"),
         )
 
+    def test_weekly_combined_choice_keeps_original_gui_task_for_issue_db(self):
+        class FakeVar:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        class FakeApp:
+            def __init__(self, weekly_path):
+                self.vars = {
+                    "task_name": FakeVar("MBAG_EB-L(EU)"),
+                }
+                self.status_var = FakeVar()
+                self.weekly_path = weekly_path
+
+            def gui(self):
+                return {
+                    "pptweekly": self.weekly_path,
+                    "task_name": self.vars["task_name"].get(),
+                    "team": "원통형Pack개발품질팀",
+                    "customer": "MBAG",
+                }
+
+        with tempfile.TemporaryDirectory() as td:
+            weekly = Path(td) / "weekly.pptx"
+            Presentation().save(weekly)
+            app = FakeApp(str(weekly))
+            captured = {}
+
+            old_candidates = fix._parenthesized_weekly_candidates
+            old_choose = fix._choose_parenthesized_weekly_candidate
+            old_run = fix._original_enterprise_run_parenthetical_weekly
+            try:
+                fix._parenthesized_weekly_candidates = lambda *args, **kwargs: [
+                    {
+                        "display": "MBAG_EB-L(EU,US)",
+                        "canonical": "MBAG_EB-L(EU)",
+                        "exact": False,
+                    }
+                ]
+                fix._choose_parenthesized_weekly_candidate = (
+                    lambda *args, **kwargs: ("use", "MBAG_EB-L(EU,US)")
+                )
+
+                def downstream(obj):
+                    captured.update(obj.gui())
+                    return "OK"
+
+                fix._original_enterprise_run_parenthetical_weekly = downstream
+                result = fix._run_with_parenthesized_weekly_choice(app)
+            finally:
+                fix._parenthesized_weekly_candidates = old_candidates
+                fix._choose_parenthesized_weekly_candidate = old_choose
+                fix._original_enterprise_run_parenthetical_weekly = old_run
+
+        self.assertEqual(result, "OK")
+        # Visible/original selection remains the Issue DB source of truth.
+        self.assertEqual(app.vars["task_name"].get(), "MBAG_EB-L(EU)")
+        self.assertEqual(captured["task_name"], "MBAG_EB-L(EU)")
+        # Weekly routing still receives exactly what the user chose in the popup.
+        self.assertEqual(
+            captured["_weekly_summary_confirmed_label"],
+            "MBAG_EB-L(EU,US)",
+        )
+
     def test_parenthesized_exact_candidate_is_identified_for_silent_use(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "weekly.pptx"
