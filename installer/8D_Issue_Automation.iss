@@ -1,26 +1,27 @@
-; 8D Issue Automation Stable - installer
+; 8D Issue Automation Advanced - installer
 ; Verified application baseline: 1909d3a
 ; EXE entry point: app\main_enterprise_final.py (via 8D_Issue_Automation.spec)
 ;
-; This keeps the Stable AppId used by the previous Stable installer so an
-; existing Stable installation can be upgraded in place.
+; Advanced uses its own AppId/install directory, separate from Stable builds.
+; Shortcut text intentionally stops at "8D Issue Automation".
 
-#define MyAppName "8D Issue Automation Stable"
-#define MyAppVersion "2.1.0-stable-1909d3a"
+#define MyAppName "8D Issue Automation Advanced"
+#define MyShortcutName "8D Issue Automation"
+#define MyAppVersion "2.1.0-advanced-1909d3a"
 #define MyAppPublisher "Pack 개발품질"
 #define MyAppExeName "8D_Issue_Automation.exe"
 
 [Setup]
-AppId={{53DC878A-2026-4A8D-9C30-8D2026092202}
+AppId={{A83DC878-2026-4A8D-9C30-8D2026092201}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\Programs\8D Issue Automation Stable
+DefaultDirName={localappdata}\Programs\8D Issue Automation Advanced
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=8D_Issue_Automation_Stable_1909d3a_Setup
+OutputBaseFilename=8D_Issue_Automation_Advanced_1909d3a_Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -47,8 +48,8 @@ Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Name: "desktopicon"; Description: "바탕화면 바로가기 만들기"; GroupDescription: "추가 바로가기:"; Flags: unchecked
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyShortcutName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyShortcutName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} 실행"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{#MyShortcutName} 실행"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
