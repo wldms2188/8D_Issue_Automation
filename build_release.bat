@@ -4,7 +4,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo =====================================================
-echo   8D Issue Automation Stable - Release Build
+echo   8D Issue Automation Advanced - Release Build
 echo   Verified application baseline: 1909d3a
 echo =====================================================
 
@@ -18,7 +18,7 @@ if exist dist rmdir /s /q dist
 if not exist installer\output mkdir installer\output
 
 echo.
-echo [1/2] Building Stable EXE...
+echo [1/2] Building Advanced EXE...
 py -3 -m PyInstaller --noconfirm --clean 8D_Issue_Automation.spec
 if errorlevel 1 goto :fail
 
@@ -28,7 +28,7 @@ if not exist "dist\8D_Issue_Automation.exe" (
 )
 
 echo.
-echo [2/2] Building Stable installer...
+echo [2/2] Building Advanced installer...
 
 set "ISCC="
 where iscc >nul 2>nul
@@ -49,20 +49,20 @@ if not defined ISCC (
 "%ISCC%" "installer\8D_Issue_Automation.iss"
 if errorlevel 1 goto :fail
 
-if not exist "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe" (
+if not exist "installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe" (
   echo Installer output was not created.
   goto :fail
 )
 
 echo.
 echo Creating ZIP distribution copy...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe' -DestinationPath 'installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe' -DestinationPath 'installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.zip' -Force"
 if errorlevel 1 goto :fail
 
 echo.
-echo Stable installer complete:
-echo   installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe
-echo   installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip
+echo Advanced installer complete:
+echo   installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe
+echo   installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.zip
 goto :done
 
 :fail
@@ -73,5 +73,5 @@ exit /b 1
 
 :done
 echo.
-echo Stable release build finished.
+echo Advanced release build finished.
 pause
