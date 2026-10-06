@@ -31,3 +31,7 @@ jobs:
         env:
           PYTHONPATH: app
         run: python tests/test_problem_summary_blocks.py
+      - name: Run Issue DB cause-label regression
+        env:
+          PYTHONPATH: app
+        run: python tests/test_issue_db_cause_labels.py
