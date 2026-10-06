@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 echo =====================================================
 echo   8D Issue Automation Stable - Release Build
-echo   Verified application baseline: 3dc878a
+echo   Verified application baseline: 1909d3a
 echo =====================================================
 
 py -3 -m pip install --upgrade pip
@@ -49,20 +49,20 @@ if not defined ISCC (
 "%ISCC%" "installer\8D_Issue_Automation.iss"
 if errorlevel 1 goto :fail
 
-if not exist "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe" (
+if not exist "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe" (
   echo Installer output was not created.
   goto :fail
 )
 
 echo.
 echo Creating ZIP distribution copy...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe' -DestinationPath 'installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe' -DestinationPath 'installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip' -Force"
 if errorlevel 1 goto :fail
 
 echo.
 echo Stable installer complete:
-echo   installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe
-echo   installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip
+echo   installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe
+echo   installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip
 goto :done
 
 :fail
