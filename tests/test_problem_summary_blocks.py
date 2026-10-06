@@ -127,6 +127,19 @@ class SummaryBlockBoundaryTests(unittest.TestCase):
         )
         self.assertIn("• 시험명 : seq1 진동시험", out)
 
+    def test_filename_same_field_stops_test_name_before_in_progress_text(self):
+        path = r"C:\work\MBAG_EB-L(EU)_seq1 진동시험 중 이상소음 발생_8D Report.pptx"
+        self.assertEqual(
+            problem_summary._filename_test_name(path, "진동시험"),
+            "seq1 진동시험",
+        )
+        out = problem_summary._compact_problem(
+            {"problem": "진동시험 진행 중 이상소음 발생"},
+            path,
+        )
+        self.assertIn("• 시험명 : seq1 진동시험", out)
+        self.assertNotIn("시험명 : seq1 진동시험 중", out)
+
     def test_filename_underscore_between_sequence_and_test_keeps_only_test_field(self):
         path = r"C:\work\MBAG_EB-L(EU)_seq1_진동시험_8D Report.pptx"
         self.assertEqual(
