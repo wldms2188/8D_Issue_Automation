@@ -29,9 +29,32 @@ def _numbered_lines(text):
     return out
 
 
+def _occurrence_cause_lines(text):
+    """Return actual occurrence-cause content without duplicated heading labels."""
+    out=[]
+    for s in _numbered_lines(text):
+        # 8D 4D often contains a structural row/heading such as "Root cause".
+        # It is equivalent to the DB's own "발생원인" heading, not cause content.
+        if re.fullmatch(r'(?:root\s*cause|발생\s*원인)',s,re.I):
+            continue
+
+        # If the heading and content were extracted on one line, keep the
+        # content after the heading instead of dropping the whole line.
+        stripped=re.sub(
+            r'^(?:root\s*cause|발생\s*원인)\s*[:：\-–—]?\s*',
+            '',
+            s,
+            count=1,
+            flags=re.I,
+        ).strip()
+        if stripped:
+            out.append(stripped)
+    return out
+
+
 def _cause_db_text(d):
     parts=[]
-    cause=_numbered_lines(d.get('cause_4d'))
+    cause=_occurrence_cause_lines(d.get('cause_4d'))
     leak=_numbered_lines(d.get('leak_cause'))
     system=_numbered_lines(d.get('system_cause'))
 
