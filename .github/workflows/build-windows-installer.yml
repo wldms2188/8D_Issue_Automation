@@ -3,7 +3,7 @@ name: Build Advanced Windows Installer
 on:
   push:
     branches:
-      - repair/user-advanced-667623-five-fixes
+      - repair/user-stable-667623-five-fixes
     paths:
       - "app/**"
       - "requirements.txt"
@@ -22,7 +22,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout advanced branch
+      - name: Checkout source branch
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -40,7 +40,7 @@ jobs:
       - name: Compile-check verified runtime
         shell: pwsh
         run: |
-          python -m py_compile app\main_enterprise_final.py app\user_advanced_weekly_fixes.py
+          python -m py_compile app\main_enterprise_final.py app\user_stable_weekly_fixes.py
 
       - name: Build Windows EXE
         shell: pwsh
@@ -88,7 +88,7 @@ jobs:
             "Product: 8D Issue Automation Advanced"
             "Verified application baseline: 1909d3a"
             "Packaging commit: $env:GITHUB_SHA"
-            "Branch: repair/user-advanced-667623-five-fixes"
+            "Branch: repair/user-stable-667623-five-fixes"
             "Built on GitHub Windows runner"
             ""
             "EXE SHA256: $((Get-FileHash $exe -Algorithm SHA256).Hash)"
