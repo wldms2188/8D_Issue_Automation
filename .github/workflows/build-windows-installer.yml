@@ -69,7 +69,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
           }
-          $setup = "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe"
           if (!(Test-Path $setup)) {
             throw "Installer was not created: $setup"
           }
@@ -77,16 +77,16 @@ jobs:
       - name: Create ZIP distribution copy
         shell: pwsh
         run: |
-          Compress-Archive -Path "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe" -DestinationPath "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.zip" -Force
+          Compress-Archive -Path "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe" -DestinationPath "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip" -Force
 
       - name: Write build information
         shell: pwsh
         run: |
-          $setup = "installer\output\8D_Issue_Automation_Stable_3dc878a_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe"
           $exe = "dist\8D_Issue_Automation.exe"
           @(
             "Product: 8D Issue Automation Stable"
-            "Verified application baseline: 3dc878a"
+            "Verified application baseline: 1909d3a"
             "Packaging commit: $env:GITHUB_SHA"
             "Branch: repair/user-stable-667623-five-fixes"
             "Built on GitHub Windows runner"
@@ -98,12 +98,12 @@ jobs:
       - name: Upload Stable distribution package
         uses: actions/upload-artifact@v4
         with:
-          name: 8D_Issue_Automation_Stable_3dc878a_Windows
+          name: 8D_Issue_Automation_Stable_1909d3a_Windows
           if-no-files-found: error
           retention-days: 30
           path: |
-            installer/output/8D_Issue_Automation_Stable_3dc878a_Setup.exe
-            installer/output/8D_Issue_Automation_Stable_3dc878a_Setup.zip
+            installer/output/8D_Issue_Automation_Stable_1909d3a_Setup.exe
+            installer/output/8D_Issue_Automation_Stable_1909d3a_Setup.zip
             installer/output/BUILD_INFO.txt
             dist/8D_Issue_Automation.exe
             installer/8D_Issue_Automation.iss
