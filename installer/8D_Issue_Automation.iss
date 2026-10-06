@@ -1,12 +1,12 @@
-; 8D Issue Automation Stable - isolated distribution installer
-; Verified application baseline: 3dc878a
+; 8D Issue Automation Stable - installer
+; Verified application baseline: 1909d3a
 ; EXE entry point: app\main_enterprise_final.py (via 8D_Issue_Automation.spec)
 ;
-; This installer uses its own AppId and install directory so it can coexist
-; with older/internal builds without upgrading or overwriting them.
+; This keeps the Stable AppId used by the previous Stable installer so an
+; existing Stable installation can be upgraded in place.
 
 #define MyAppName "8D Issue Automation Stable"
-#define MyAppVersion "2.0.0-stable-3dc878a"
+#define MyAppVersion "2.1.0-stable-1909d3a"
 #define MyAppPublisher "Pack 개발품질"
 #define MyAppExeName "8D_Issue_Automation.exe"
 
@@ -20,7 +20,7 @@ DefaultDirName={localappdata}\Programs\8D Issue Automation Stable
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=8D_Issue_Automation_Stable_3dc878a_Setup
+OutputBaseFilename=8D_Issue_Automation_Stable_1909d3a_Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -32,7 +32,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=2.0.0.0
+VersionInfoVersion=2.1.0.0
 VersionInfoTextVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName}
