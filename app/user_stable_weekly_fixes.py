@@ -3955,18 +3955,18 @@ def _run_with_parenthesized_weekly_choice(self):
                 return
 
             if action == "use" and chosen:
+                # Keep the user's original customer/project selection intact.
+                # The chosen weekly label is a routing override for the weekly
+                # PPT only; it must not rewrite the GUI task field because the
+                # same field is also the source of truth for Issue DB matching.
                 confirmed_label = N(chosen)
-                try:
-                    self.vars["task_name"].set(confirmed_label)
-                except Exception:
-                    pass
         except Exception:
             # Candidate suggestion must not block normal execution.
             confirmed_label = ""
 
-    # IMPORTANT: self.vars alone was not enough because later wrappers rebuild
-    # g independently. Inject the user's confirmed weekly label into EVERY gui()
-    # snapshot made during this run so the summary writer receives it directly.
+    # Keep the visible/input task_name untouched. Inject the confirmed weekly
+    # label only as a separate internal key so weekly summary routing can use the
+    # user's popup choice while Issue DB continues to see the original task_name.
     original_gui = self.gui
     had_instance_gui = "gui" in getattr(self, "__dict__", {})
     previous_instance_gui = getattr(self, "__dict__", {}).get("gui")
