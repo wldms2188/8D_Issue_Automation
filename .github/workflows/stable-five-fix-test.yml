@@ -22,8 +22,12 @@ jobs:
       - name: Compile patched runtime
         env:
           PYTHONPATH: app
-        run: python -m py_compile app/user_stable_weekly_fixes.py app/main_enterprise_final.py
+        run: python -m py_compile app/user_stable_weekly_fixes.py app/problem_summary_final.py app/main_enterprise_final.py
       - name: Run stable five-fix regression
         env:
           PYTHONPATH: app
         run: python tests/test_user_stable_five_fixes.py
+      - name: Run Issue DB problem-summary regression
+        env:
+          PYTHONPATH: app
+        run: python tests/test_problem_summary_blocks.py
