@@ -1,9 +1,9 @@
-name: Build Stable Windows Installer
+name: Build Advanced Windows Installer
 
 on:
   push:
     branches:
-      - repair/user-stable-667623-five-fixes
+      - repair/user-advanced-667623-five-fixes
     paths:
       - "app/**"
       - "requirements.txt"
@@ -22,7 +22,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout stable branch
+      - name: Checkout advanced branch
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -40,7 +40,7 @@ jobs:
       - name: Compile-check verified runtime
         shell: pwsh
         run: |
-          python -m py_compile app\main_enterprise_final.py app\user_stable_weekly_fixes.py
+          python -m py_compile app\main_enterprise_final.py app\user_advanced_weekly_fixes.py
 
       - name: Build Windows EXE
         shell: pwsh
@@ -61,7 +61,7 @@ jobs:
             throw "Inno Setup 6 ISCC.exe was not found"
           }
 
-      - name: Build Stable installer
+      - name: Build Advanced installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
@@ -69,7 +69,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
           }
-          $setup = "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe"
           if (!(Test-Path $setup)) {
             throw "Installer was not created: $setup"
           }
@@ -77,33 +77,33 @@ jobs:
       - name: Create ZIP distribution copy
         shell: pwsh
         run: |
-          Compress-Archive -Path "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe" -DestinationPath "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.zip" -Force
+          Compress-Archive -Path "installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe" -DestinationPath "installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.zip" -Force
 
       - name: Write build information
         shell: pwsh
         run: |
-          $setup = "installer\output\8D_Issue_Automation_Stable_1909d3a_Setup.exe"
+          $setup = "installer\output\8D_Issue_Automation_Advanced_1909d3a_Setup.exe"
           $exe = "dist\8D_Issue_Automation.exe"
           @(
-            "Product: 8D Issue Automation Stable"
+            "Product: 8D Issue Automation Advanced"
             "Verified application baseline: 1909d3a"
             "Packaging commit: $env:GITHUB_SHA"
-            "Branch: repair/user-stable-667623-five-fixes"
+            "Branch: repair/user-advanced-667623-five-fixes"
             "Built on GitHub Windows runner"
             ""
             "EXE SHA256: $((Get-FileHash $exe -Algorithm SHA256).Hash)"
             "SETUP SHA256: $((Get-FileHash $setup -Algorithm SHA256).Hash)"
           ) | Set-Content -Encoding UTF8 "installer\output\BUILD_INFO.txt"
 
-      - name: Upload Stable distribution package
+      - name: Upload Advanced distribution package
         uses: actions/upload-artifact@v4
         with:
-          name: 8D_Issue_Automation_Stable_1909d3a_Windows
+          name: 8D_Issue_Automation_Advanced_1909d3a_Windows
           if-no-files-found: error
           retention-days: 30
           path: |
-            installer/output/8D_Issue_Automation_Stable_1909d3a_Setup.exe
-            installer/output/8D_Issue_Automation_Stable_1909d3a_Setup.zip
+            installer/output/8D_Issue_Automation_Advanced_1909d3a_Setup.exe
+            installer/output/8D_Issue_Automation_Advanced_1909d3a_Setup.zip
             installer/output/BUILD_INFO.txt
             dist/8D_Issue_Automation.exe
             installer/8D_Issue_Automation.iss
