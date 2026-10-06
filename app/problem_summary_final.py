@@ -1,5 +1,6 @@
 """Editable Issue DB / weekly problem-summary workflow."""
 import re
+from pathlib import Path
 import tkinter as tk
 import main_enterprise_v3 as v3
 import main_enterprise as ent
@@ -19,7 +20,57 @@ def _db_clean(s):
     s=re.sub(r"(?im)^\s*현상\s*[:：]\s*","",s)
     return s.strip()
 
-def _context_header(src):
+def _filename_test_name(ppt8d, extracted_name=""):
+    """Refine a test/evaluation name from one underscore-delimited filename field.
+
+    Underscore is treated as a hard field boundary. Therefore:
+      ..._seq1 진동시험_... -> "seq1 진동시험"
+      ..._seq1_진동시험_... -> "진동시험"
+
+    This is only used to enrich an already-detected 시험/평가/검사 header.
+    """
+    if not ppt8d:
+        return ""
+    try:
+        stem=Path(ppt8d).stem
+    except Exception:
+        stem=N(ppt8d)
+    if not stem:
+        return ""
+
+    # Keep everything within the same underscore field up to 시험/평가/검사.
+    candidates=[]
+    for raw in str(stem).split("_"):
+        seg=_norm(raw)
+        if not seg:
+            continue
+        m=re.search(r"^(.{0,60}?(?:시험|평가|검사))(?=\s|$|[-.()\[\]])",seg,re.I)
+        if not m:
+            # Also accept the keyword at the very end without a separator.
+            m=re.search(r"^(.{0,60}?(?:시험|평가|검사))$",seg,re.I)
+        if m:
+            value=_norm(m.group(1)).strip(" -./")
+            if value:
+                candidates.append(value)
+
+    if not candidates:
+        return ""
+
+    wanted=re.sub(r"\s+","",_norm(extracted_name)).casefold()
+    if wanted:
+        matches=[
+            x for x in candidates
+            if wanted in re.sub(r"\s+","",x).casefold()
+        ]
+        if matches:
+            # Prefer the shortest matching field to avoid swallowing unrelated text.
+            return sorted(matches,key=len)[0]
+
+    # Do not guess among multiple unrelated test fields.
+    return candidates[0] if len(candidates)==1 else ""
+
+
+def _context_header(src,ppt8d=""):
     flat=_norm(src)
     rules=[
         ("시험명",r"([A-Za-z0-9#._/+\-가-힣 ]{1,45}?(?:시험|평가|검사))(?=\s*(?:진행\s*)?중|에서|시|,|\.|$)"),
@@ -31,6 +82,10 @@ def _context_header(src):
         m=re.search(pat,flat,re.I)
         if m:
             name=_norm(m.group(1)); name=re.sub(r"^(?:1[.)]?\s*)?현상\s*[:：]?\s*","",name)
+            if label=="시험명":
+                filename_name=_filename_test_name(ppt8d,name)
+                if filename_name:
+                    name=filename_name
             if name:return f"• {label} : {name}"
     return ""
 
@@ -88,10 +143,10 @@ def _clean_block(raw):
     s=re.sub(r"(?:재)?확인(?:되었|됐)(?:습니다|음|다)?\.?$","",s)
     return re.sub(r"\s+"," ",s).strip(" ,.;·")
 
-def _compact_problem(d):
+def _compact_problem(d,ppt8d=""):
     src=_db_clean(d.get("problem"))
     if not src:return ""
-    header=_context_header(src)
+    header=_context_header(src,ppt8d)
     candidates=[]; seen=set()
     for raw in _summary_atomic_groups(src):
         # An atomic group may contain multiple related bullet lines. Clean each
@@ -215,7 +270,7 @@ def _run_with_problem_summary(self):
     g=self.gui(); ppt8d=g.get("ppt8d","")
     if ppt8d:
         try:
-            d=ent.base.extract(ppt8d); self._problem_full_text=N(d.get("problem")); self._problem_summary_suggested=_compact_problem(d); _active_summary=self._problem_summary_suggested
+            d=ent.base.extract(ppt8d); self._problem_full_text=N(d.get("problem")); self._problem_summary_suggested=_compact_problem(d,ppt8d); _active_summary=self._problem_summary_suggested
         except Exception:self._problem_full_text=""; self._problem_summary_suggested=""
     weekly=bool(g.get("pptweekly","").strip()); excel=bool(g.get("xlsx","").strip()); self._problem_weekly_enabled=weekly
     if weekly and not excel and ppt8d:
