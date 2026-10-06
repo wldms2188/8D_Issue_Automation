@@ -5,6 +5,8 @@ Run from repository root:
 import re
 import unittest
 
+import problem_summary_final as problem_summary
+
 MAX_LEN = 150
 
 
@@ -112,6 +114,31 @@ class SummaryBlockBoundaryTests(unittest.TestCase):
         groups = atomic_groups(src)
         self.assertEqual(groups[0], "- A : 1\n- B : 2\n- C : 3")
         self.assertEqual(groups[1], "4. ordinary")
+
+    def test_filename_same_underscore_field_keeps_sequence_with_test_name(self):
+        path = r"C:\work\MBAG_EB-L(EU)_seq1 진동시험_8D Report.pptx"
+        self.assertEqual(
+            problem_summary._filename_test_name(path, "진동시험"),
+            "seq1 진동시험",
+        )
+        out = problem_summary._compact_problem(
+            {"problem": "진동시험 진행 중 커넥터 이탈 발생"},
+            path,
+        )
+        self.assertIn("• 시험명 : seq1 진동시험", out)
+
+    def test_filename_underscore_between_sequence_and_test_keeps_only_test_field(self):
+        path = r"C:\work\MBAG_EB-L(EU)_seq1_진동시험_8D Report.pptx"
+        self.assertEqual(
+            problem_summary._filename_test_name(path, "진동시험"),
+            "진동시험",
+        )
+        out = problem_summary._compact_problem(
+            {"problem": "진동시험 진행 중 커넥터 이탈 발생"},
+            path,
+        )
+        self.assertIn("• 시험명 : 진동시험", out)
+        self.assertNotIn("시험명 : seq1 진동시험", out)
 
     def test_continuation_lines_belong_to_same_block(self):
         src = "1. 현상\n첫째 설명\n둘째 설명\n2. 시험조건\n조건 설명"
