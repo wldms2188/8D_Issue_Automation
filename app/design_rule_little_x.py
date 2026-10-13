@@ -575,6 +575,167 @@ ENGLISH_RULE_ALIASES = {
 }
 
 
+LITTLE_Y_RULES = (
+    {
+        "code": "1.1", "name": "파우치/캔 크랙",
+        "x_codes": ("1.1.1","1.1.2","1.1.3"),
+        "phrases": ("파우치 크랙","캔 크랙","파우치/캔 크랙","pouch crack","can crack","cell can crack"),
+        "groups": (("파우치","크랙"),("캔","크랙"),("pouch","crack"),("can","crack")),
+    },
+    {
+        "code": "1.2", "name": "파우치/캔 부식",
+        "x_codes": ("1.2.1","1.2.2"),
+        "phrases": ("파우치 부식","캔 부식","파우치/캔 부식","pouch corrosion","can corrosion"),
+        "groups": (("파우치","부식"),("캔","부식"),("pouch","corrosion"),("can","corrosion")),
+    },
+    {
+        "code": "1.3", "name": "파우치/캔 벤트",
+        "x_codes": ("1.3.1","1.3.2","1.3.3"),
+        "phrases": ("파우치 벤트","캔 벤트","벤트 발생","venting","cell vent","can vent","pouch vent"),
+        "groups": (("가스","벤트"),("cell","vent")),
+    },
+    {
+        "code": "2.1", "name": "탭 손상(단선/크랙)",
+        "x_codes": ("2.1.1",),
+        "phrases": ("탭 손상","탭 단선","탭 크랙","tab damage","tab open","tab break","tab crack"),
+        "groups": (("탭","손상"),("탭","단선"),("탭","크랙"),("tab","damage"),("tab","crack")),
+    },
+    {
+        "code": "2.2", "name": "전극 손상(석출/크랙)",
+        "x_codes": ("2.2.1","2.2.2"),
+        "phrases": ("전극 손상","전극 석출","리튬 석출","전극 크랙","electrode damage","lithium plating","electrode crack"),
+        "groups": (("전극","손상"),("전극","석출"),("electrode","damage"),("lithium","plating")),
+    },
+    {
+        "code": "3.1", "name": "팩 부품 누수",
+        "x_codes": ("3.1.1","3.1.2"),
+        "phrases": ("팩 부품 누수","냉각수 누수","외함 누수","누수 발생","coolant leak","coolant leakage","housing leak","enclosure leak"),
+        "groups": (("냉각수","누수"),("외함","누수"),("coolant","leak")),
+    },
+    {
+        "code": "3.2", "name": "팩 부품 손상/과변형",
+        "x_codes": ("3.2.1","3.2.2"),
+        "phrases": ("팩 부품 손상","팩 부품 파손","팩 부품 과변형","부품 파손","부품 변형","component damage","component deformation","part damage"),
+        "groups": (("부품","파손"),("부품","변형"),("component","damage"),("component","deformation")),
+    },
+    {
+        "code": "3.3", "name": "팩 부품 이탈/연결불량",
+        "x_codes": ("3.3.1","3.3.2"),
+        "phrases": ("팩 부품 이탈","연결불량","연결 불량","부품 이탈","접촉 불량","connection failure","poor connection","component disengagement","contact failure"),
+        "groups": (("부품","이탈"),("접촉","불량"),("connection","failure"),("contact","failure")),
+    },
+    {
+        "code": "3.4", "name": "팩 부품 부식",
+        "x_codes": ("3.4.1","3.4.2","3.4.3"),
+        "phrases": ("팩 부품 부식","부품 부식","전장부품 부식","component corrosion","part corrosion","electrical component corrosion"),
+        "groups": (("부품","부식"),("component","corrosion")),
+    },
+    {
+        "code": "3.5", "name": "팩 부품 오작동/미작동",
+        "x_codes": ("3.5.1","3.5.2"),
+        "phrases": ("팩 부품 오작동","팩 부품 미작동","오작동","미작동","malfunction","no operation","not operating","operation failure"),
+        "groups": (("부품","오작동"),("부품","미작동"),("component","malfunction")),
+    },
+    {
+        "code": "3.6", "name": "팩 부품 미검출/미반영",
+        "x_codes": ("3.6.1","3.6.2"),
+        "phrases": ("팩 부품 미검출","팩 부품 미반영","미검출","사양 미반영","not detected","undetected","specification not reflected"),
+        "groups": (("부품","미검출"),("사양","미반영"),("not","detected")),
+    },
+    {
+        "code": "4.1", "name": "열 폭주 전이 불만족",
+        "x_codes": ("4.1.1",),
+        "phrases": ("열 폭주 전이","열폭주 전이","thermal runaway propagation","thermal propagation"),
+        "groups": (("열폭주","전이"),("thermal","propagation")),
+    },
+    {
+        "code": "4.2", "name": "팩 화염 유출",
+        "x_codes": ("4.2.1",),
+        "phrases": ("팩 화염 유출","화염 유출","flame leakage","flame escape","fire leakage"),
+        "groups": (("화염","유출"),("flame","leak")),
+    },
+    {
+        "code": "5.1", "name": "파우치/캔 누전",
+        "x_codes": ("5.1.1",),
+        "phrases": ("파우치 누전","캔 누전","절연 불량","pouch leakage current","can leakage current","pouch insulation failure","can insulation failure"),
+        "groups": (("파우치","누전"),("캔","누전"),("pouch","insulation"),("can","insulation")),
+    },
+    {
+        "code": "5.2", "name": "팩 부품 활선부 누전",
+        "x_codes": ("5.2.1",),
+        "phrases": ("활선부 누전","고전압 절연 불량","버스바 절연 불량","live part leakage current","high voltage insulation failure","busbar insulation failure"),
+        "groups": (("활선부","누전"),("고전압","절연"),("live part","insulation")),
+    },
+    {
+        "code": "5.3", "name": "팩 부품 접지 불량",
+        "x_codes": ("5.3.1",),
+        "phrases": ("접지 불량","접지 저항 과다","접지 누락","ground failure","grounding failure","high ground resistance","grounding missing"),
+        "groups": (("접지","불량"),("접지","저항"),("ground","resistance")),
+    },
+    {
+        "code": "6.1", "name": "팩 수율/직행율 불만족",
+        "x_codes": ("6.1.1","6.1.2","6.1.3","6.1.4"),
+        "phrases": ("수율 불만족","직행율 불만족","양품 출하 전 불량","생산 불량","yield issue","low yield","production defect","pre-shipment defect"),
+        "groups": (("수율","불만족"),("yield","issue"),("production","defect")),
+    },
+    {
+        "code": "6.2", "name": "상위 시스템 공정 불량 발생",
+        "x_codes": ("6.2.1","6.2.2"),
+        "phrases": ("상위 시스템 공정 불량","차량 공정 불량","입고단 불량","상위 시스템 조립 불량","upper system defect","vehicle assembly defect","incoming defect","upper system assembly defect"),
+        "groups": (("상위 시스템","불량"),("차량","공정","불량"),("upper system","defect")),
+    },
+    {
+        "code": "6.3", "name": "필드 서비스 불만족",
+        "x_codes": ("6.3.1",),
+        "phrases": ("필드 서비스 불만족","서비스 재조립 불가","field service issue","service reassembly failure","reassembly impossible"),
+        "groups": (("필드","서비스"),("field","service")),
+    },
+)
+
+
+def _little_y_score(rule, symptom_q):
+    score = 0
+    for phrase in rule.get("phrases", ()):
+        p = _key(phrase)
+        if p and p in symptom_q:
+            score = max(score, 120 + min(len(p), 40))
+    for group in rule.get("groups", ()):
+        parts = [_key(x) for x in group if _key(x)]
+        if parts and all(x in symptom_q for x in parts):
+            score = max(score, 100 + 10 * len(parts))
+    return score
+
+
+def classify_little_y(problem_text):
+    """Return likely Little y categories from 2D symptom text.
+
+    Output is ordered by confidence. Multiple entries are preserved when the
+    symptom itself is ambiguous, so the next-stage Y.y.x recommendation can
+    evaluate causes within the union of those categories.
+    """
+    q = _key(problem_text)
+    if not q:
+        return []
+    scored = []
+    for rule in LITTLE_Y_RULES:
+        score = _little_y_score(rule, q)
+        if score:
+            scored.append((score, rule))
+    scored.sort(key=lambda x: (-x[0], x[1]["code"]))
+    if not scored:
+        return []
+    best = scored[0][0]
+    # Keep close alternatives only; weak unrelated categories are discarded.
+    return [r for s, r in scored if s >= best - 15]
+
+
+def little_y_label(code):
+    for rule in LITTLE_Y_RULES:
+        if rule["code"] == code:
+            return f'{rule["code"]}  {rule["name"]}'
+    return str(code or "")
+
+
 RULES = (
     _rule("1.1.1", "간섭 및 외력 작용 과다",
           ("간섭 및 외력 작용 과다", "가스켓 간섭에 의한 크랙", "가스켓 간섭에 의한 벤트"),
@@ -737,12 +898,20 @@ def _matches(rule, q):
     return False
 
 
-def classify_little_x(cause_text):
-    """Return matching Y.y.x codes in design-rule order."""
+def classify_little_x(cause_text, allowed_codes=None):
+    """Return matching Y.y.x codes in design-rule order.
+
+    When allowed_codes is supplied, cause matching is restricted to the
+    Little y categories selected from the 2D symptom.
+    """
     q = _key(cause_text)
     if not q:
         return []
-    return [rule["code"] for rule in RULES if _matches(rule, q)]
+    allowed = set(allowed_codes or ())
+    return [
+        rule["code"] for rule in RULES
+        if (not allowed or rule["code"] in allowed) and _matches(rule, q)
+    ]
 
 
 def _column_header_text(ws, col, header_rows=7):
@@ -829,29 +998,81 @@ def rule_label(code):
     return f'{rule["code"]}  {rule["name"]}' if rule else str(code or "")
 
 
-def recommendation(cause_text):
-    """Return recommendation payload for the confirmation dialog."""
-    codes = classify_little_x(cause_text)
+def recommendation(problem_text, cause_text=None):
+    """Two-stage recommendation: 2D symptom -> Little y -> cause -> Y.y.x.
+
+    Backward compatibility: recommendation(cause_text) still works when only
+    one positional argument is supplied.
+    """
+    if cause_text is None:
+        cause_text = problem_text
+        problem_text = ""
+
+    little_y = classify_little_y(problem_text)
+    allowed_codes = []
+    for y in little_y:
+        for code in y["x_codes"]:
+            if code not in allowed_codes:
+                allowed_codes.append(code)
+
+    # Stage 2: cause matching is constrained by 2D-derived Little y whenever
+    # the symptom gives a meaningful category. If 2D is too vague, fall back
+    # to cause-only matching across all 36 rules.
+    codes = classify_little_x(cause_text, allowed_codes=allowed_codes or None)
+
+    # If 2D clearly narrows to a Little y but the cause wording does not match
+    # an x phrase, preserve the narrowed x choices as candidates rather than
+    # inventing an automatic final answer.
+    inferred_from_y_only = False
+    if not codes and allowed_codes:
+        codes = list(allowed_codes)
+        inferred_from_y_only = True
+
+    y_labels = [little_y_label(y["code"]) for y in little_y]
+    y_reason = (
+        "2D 현상 기준 Little y 후보: " + " / ".join(y_labels)
+        if y_labels else
+        "2D 현상에서 Little y를 명확히 좁히지 못해 전체 Y.y.x에서 원인을 비교했습니다."
+    )
+
     if not codes:
         return {
             "recommended": NONE_CODE,
             "candidates": [],
             "ambiguous": False,
-            "reason": "원인 내용에서 설계규칙 Y.y.x와 명확히 일치하는 표현을 찾지 못했습니다.",
+            "little_y": [y["code"] for y in little_y],
+            "little_y_labels": y_labels,
+            "reason": y_reason + "\n원인 내용에서도 명확히 일치하는 Y.y.x를 찾지 못했습니다.",
         }
+
+    if inferred_from_y_only:
+        return {
+            "recommended": codes[0] if len(codes) == 1 else codes[0],
+            "candidates": codes,
+            "ambiguous": len(codes) > 1,
+            "little_y": [y["code"] for y in little_y],
+            "little_y_labels": y_labels,
+            "reason": y_reason + "\n원인 문구만으로 세부 Y.y.x가 확정되지 않아 해당 Little y 내부 후보를 표시합니다.",
+        }
+
     if len(codes) == 1:
         code = codes[0]
         return {
             "recommended": code,
             "candidates": codes,
             "ambiguous": False,
-            "reason": f'원인 내용이 {rule_label(code)} 규칙과 일치하여 추천합니다.',
+            "little_y": [y["code"] for y in little_y],
+            "little_y_labels": y_labels,
+            "reason": y_reason + f'\n원인 내용까지 종합하면 {rule_label(code)}가 가장 일치합니다.',
         }
+
     return {
         "recommended": codes[0],
         "candidates": codes,
         "ambiguous": True,
-        "reason": "원인 내용이 여러 Y.y.x 규칙과 동시에 유사합니다. 후보 중 실제 원인에 해당하는 하나를 선택해 주세요.",
+        "little_y": [y["code"] for y in little_y],
+        "little_y_labels": y_labels,
+        "reason": y_reason + "\n원인 내용상 여러 Y.y.x가 가능하므로 실제 원인에 해당하는 하나를 선택해 주세요.",
     }
 
 
