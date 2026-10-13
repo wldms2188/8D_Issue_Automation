@@ -575,6 +575,16 @@ ENGLISH_RULE_ALIASES = {
 }
 
 
+BIG_Y_RULES = {
+    "1": "사용 중, 셀 실링 손상(누액) 없을 것 (잠재적 발화 포함)",
+    "2": "사용 중, 셀 발화(내부단락) 없을 것 (최초 발화)",
+    "3": "사용 중, 팩 부품 불량 없을 것 (잠재적 발화 포함)",
+    "4": "사용 중, 팩 발화(TP불만족) 없을 것",
+    "5": "사용 중, 절연 불량 없을 것",
+    "6": "조립성 부족 없을 것",
+}
+
+
 LITTLE_Y_RULES = (
     {
         "code": "1.1", "name": "파우치/캔 크랙",
@@ -1119,3 +1129,35 @@ def write_confirmed_rule_classification(ws, row, selected_code, confirmed=True):
         "violation_col": violation_col,
         "little_x_col": little_x_col,
     }
+
+
+def full_design_rule_reference_text():
+    """Readable full 6 Big Y / 19 Little y / 36 Y.y.x reference for the UI."""
+    lines = [
+        "[ 팩/모듈 설계 규칙 전체 내용 ]",
+        "Big Y → Little y(하위 요소/셀 불량 유형) → Y.y.x(팩 기인 원인 유형)",
+        "※ 아래 36개 Y.y.x 전체를 확인한 뒤 최종 항목을 선택할 수 있습니다.",
+        "",
+    ]
+    for big_code in ("1","2","3","4","5","6"):
+        lines.append("═" * 72)
+        lines.append(f"BIG Y {big_code}  {BIG_Y_RULES[big_code]}")
+        lines.append("═" * 72)
+        ys=[y for y in LITTLE_Y_RULES if y["code"].split(".")[0]==big_code]
+        for y in ys:
+            lines.append("")
+            lines.append(f"▶ Little y {y['code']}  {y['name']}")
+            for xcode in y["x_codes"]:
+                rule=rule_by_code(xcode)
+                if not rule:
+                    continue
+                lines.append(f"   ■ Y.y.x {xcode}  {rule['name']}")
+                examples=[]
+                for p in rule.get("phrases",()):
+                    p=_text(p)
+                    if p and _key(p)!=_key(rule["name"]) and p not in examples:
+                        examples.append(p)
+                if examples:
+                    lines.append("      예/판단 참고: " + " / ".join(examples[:8]))
+            lines.append("")
+    return "\n".join(lines).strip()
