@@ -248,3 +248,91 @@ def write_rule_classification(ws, row, cause_text):
         "violation_col": violation_col,
         "little_x_col": little_x_col,
     }
+
+
+NONE_CODE = "__NONE__"
+
+
+def rule_by_code(code):
+    for rule in RULES:
+        if rule["code"] == code:
+            return rule
+    return None
+
+
+def rule_label(code):
+    if code == NONE_CODE:
+        return "해당 없음 (N)"
+    rule = rule_by_code(code)
+    return f'{rule["code"]}  {rule["name"]}' if rule else str(code or "")
+
+
+def recommendation(cause_text):
+    """Return recommendation payload for the confirmation dialog."""
+    codes = classify_little_x(cause_text)
+    if not codes:
+        return {
+            "recommended": NONE_CODE,
+            "candidates": [],
+            "ambiguous": False,
+            "reason": "원인 내용에서 설계규칙 Little x와 명확히 일치하는 표현을 찾지 못했습니다.",
+        }
+    if len(codes) == 1:
+        code = codes[0]
+        return {
+            "recommended": code,
+            "candidates": codes,
+            "ambiguous": False,
+            "reason": f'원인 내용이 {rule_label(code)} 규칙과 일치하여 추천합니다.',
+        }
+    return {
+        "recommended": codes[0],
+        "candidates": codes,
+        "ambiguous": True,
+        "reason": "원인 내용이 여러 Little x 규칙과 동시에 유사합니다. 후보 중 실제 원인에 해당하는 하나를 선택해 주세요.",
+    }
+
+
+def write_confirmed_rule_classification(ws, row, selected_code, confirmed=True):
+    """Write only a user-confirmed design-rule decision.
+
+    selected_code == NONE_CODE writes N and clears Little x.
+    A concrete Little x writes Y and that ONE code only.
+    If confirmed is False, nothing is changed.
+    """
+    violation_col, little_x_col = find_rule_columns(ws)
+    if not confirmed:
+        return {
+            "violation": None,
+            "codes": [],
+            "violation_col": violation_col,
+            "little_x_col": little_x_col,
+        }
+
+    code = _text(selected_code)
+    if code == NONE_CODE or not code:
+        violation = "N"
+        code_text = ""
+        codes = []
+    else:
+        rule = rule_by_code(code)
+        if rule is None:
+            violation = "N"
+            code_text = ""
+            codes = []
+        else:
+            violation = "Y"
+            code_text = code
+            codes = [code]
+
+    if violation_col is not None:
+        ws.cell(row, violation_col).value = violation
+    if little_x_col is not None:
+        ws.cell(row, little_x_col).value = code_text
+
+    return {
+        "violation": violation,
+        "codes": codes,
+        "violation_col": violation_col,
+        "little_x_col": little_x_col,
+    }
