@@ -575,7 +575,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
             for k in ('cause_4d','leak_cause','system_cause')
             if N(d.get(k))
         )
-        rec=design_rule.recommendation(cause)
+        rec=design_rule.recommendation(N(d.get('problem')),cause)
         candidates=list(rec.get('candidates') or [])
         recommended=rec.get('recommended') or design_rule.NONE_CODE
 
