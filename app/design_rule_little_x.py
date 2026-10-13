@@ -1,10 +1,10 @@
-"""Automatic Issue DB design-rule violation / Little x classification.
+"""Automatic Issue DB design-rule violation / Y.y.x classification.
 
 The rule catalog below is transcribed from the Pack/Module Design Rule sheet
-provided by the user (Big Y 1~6, Little x 36 items).
+provided by the user (Big Y 1~6, Y.y.x 36 items).
 
 Matching is intentionally conservative:
-- explicit Little x title/strong phrase wins;
+- explicit Y.y.x title/strong phrase wins;
 - example-style matches require all terms in a group;
 - only cause text is evaluated, not the symptom/action text.
 """
@@ -178,7 +178,7 @@ def _matches(rule, q):
 
 
 def classify_little_x(cause_text):
-    """Return matching Little x codes in design-rule order."""
+    """Return matching Y.y.x codes in design-rule order."""
     q = _key(cause_text)
     if not q:
         return []
@@ -190,7 +190,7 @@ def _column_header_text(ws, col, header_rows=7):
 
 
 def find_rule_columns(ws, header_rows=7):
-    """Locate rule-violation Y/N and Little x columns by header text."""
+    """Locate rule-violation Y/N and Y.y.x columns by header text."""
     violation = None
     little_x = None
     best_v = -1
@@ -201,7 +201,7 @@ def find_rule_columns(ws, header_rows=7):
         q = _key(raw)
 
         vscore = 0
-        if "규칙위반여부" in q or "설계규칙위반여부" in q:
+        if "규칙위반" in q or "설계규칙위반" in q:
             vscore = 100
         elif "위반여부" in q and ("규칙" in q or "설계" in q):
             vscore = 90
@@ -209,7 +209,9 @@ def find_rule_columns(ws, header_rows=7):
             vscore = 70
 
         xscore = 0
-        if "littlex" in q or "리틀x" in q:
+        if q == "yyx" or "yyx" in q:
+            xscore = 110
+        elif "littlex" in q or "리틀x" in q:
             xscore = 100
         elif "little" in q and q.endswith("x"):
             xscore = 90
@@ -233,7 +235,7 @@ def find_rule_columns(ws, header_rows=7):
 
 
 def write_rule_classification(ws, row, cause_text):
-    """Write Y/N and matching Little x code(s). Returns diagnostic result."""
+    """Write Y/N and matching Y.y.x code(s). Returns diagnostic result."""
     codes = classify_little_x(cause_text)
     violation_col, little_x_col = find_rule_columns(ws)
 
@@ -275,7 +277,7 @@ def recommendation(cause_text):
             "recommended": NONE_CODE,
             "candidates": [],
             "ambiguous": False,
-            "reason": "원인 내용에서 설계규칙 Little x와 명확히 일치하는 표현을 찾지 못했습니다.",
+            "reason": "원인 내용에서 설계규칙 Y.y.x와 명확히 일치하는 표현을 찾지 못했습니다.",
         }
     if len(codes) == 1:
         code = codes[0]
@@ -289,15 +291,15 @@ def recommendation(cause_text):
         "recommended": codes[0],
         "candidates": codes,
         "ambiguous": True,
-        "reason": "원인 내용이 여러 Little x 규칙과 동시에 유사합니다. 후보 중 실제 원인에 해당하는 하나를 선택해 주세요.",
+        "reason": "원인 내용이 여러 Y.y.x 규칙과 동시에 유사합니다. 후보 중 실제 원인에 해당하는 하나를 선택해 주세요.",
     }
 
 
 def write_confirmed_rule_classification(ws, row, selected_code, confirmed=True):
     """Write only a user-confirmed design-rule decision.
 
-    selected_code == NONE_CODE writes N and clears Little x.
-    A concrete Little x writes Y and that ONE code only.
+    selected_code == NONE_CODE writes N and clears Y.y.x.
+    A concrete Y.y.x writes Y and that ONE code only.
     If confirmed is False, nothing is changed.
     """
     violation_col, little_x_col = find_rule_columns(ws)
