@@ -28,6 +28,553 @@ def _rule(code, name, phrases=(), groups=()):
     }
 
 
+ENGLISH_RULE_ALIASES = {
+    "1.1.1": {
+        "phrases": (
+            "excessive interference or external force",
+            "gasket interference crack",
+            "mechanical interference crack",
+            "external force induced crack",
+        ),
+        "groups": (
+            ("interference", "crack"),
+            ("external force", "crack"),
+            ("mechanical test", "crack"),
+            ("gasket", "interference", "crack"),
+        ),
+    },
+    "1.1.2": {
+        "phrases": (
+            "excessive internal electrode movement",
+            "electrode movement",
+            "electrode protrusion",
+            "electrode displacement",
+        ),
+        "groups": (
+            ("electrode", "protrusion"),
+            ("electrode", "displacement"),
+        ),
+    },
+    "1.1.3": {
+        "phrases": (
+            "laser welding damage",
+            "laser misalignment",
+            "laser mis-shot",
+            "laser over penetration",
+            "excessive laser penetration",
+        ),
+        "groups": (
+            ("laser", "penetration"),
+            ("laser", "seal", "damage"),
+            ("laser", "overheat"),
+            ("laser", "burn through"),
+        ),
+    },
+    "1.2.1": {
+        "phrases": (
+            "anode connection",
+            "lead mis-insertion",
+            "lead displacement",
+            "cell to cell contact",
+            "cell contact failure",
+        ),
+        "groups": (
+            ("anode", "connection"),
+            ("lead", "misinsert"),
+        ),
+    },
+    "1.2.2": {
+        "phrases": (
+            "weld joint corrosion",
+            "joint corrosion",
+            "busbar corrosion",
+            "lead corrosion",
+            "wire corrosion",
+            "immersion coolant corrosion",
+            "insulating oil corrosion",
+            "potting resin corrosion",
+        ),
+        "groups": (
+            ("weld", "corrosion"),
+            ("joint", "corrosion"),
+            ("busbar", "corrosion"),
+        ),
+    },
+    "1.3.1": {
+        "phrases": (
+            "excessive gas generation due to external heat",
+            "external heat induced gas generation",
+            "external heat ingress",
+        ),
+        "groups": (
+            ("external heat", "gas"),
+            ("terminal", "heating", "gas"),
+            ("busbar", "heating", "gas"),
+        ),
+    },
+    "1.3.2": {
+        "phrases": (
+            "excessive gas generation due to internal heat",
+            "internal heat induced gas generation",
+            "internal overheating",
+        ),
+        "groups": (
+            ("internal heat", "gas"),
+            ("short circuit", "overheat"),
+        ),
+    },
+    "1.3.3": {
+        "phrases": (
+            "insufficient cooling performance",
+            "gas generation due to insufficient cooling",
+            "cooling performance shortage",
+            "poor cooling performance",
+        ),
+        "groups": (
+            ("cooling", "insufficient"),
+            ("cooling", "overheat"),
+            ("lifetime test", "overheat"),
+        ),
+    },
+
+    "2.1.1": {
+        "phrases": (
+            "excessive tab tensile force",
+            "tab tensile load",
+            "tab tension excessive",
+            "tab crack due to tensile force",
+        ),
+        "groups": (
+            ("tab", "tensile"),
+            ("tab", "tension"),
+        ),
+    },
+    "2.2.1": {
+        "phrases": (
+            "improper compression force",
+            "inadequate compression force",
+            "insufficient cell compression",
+            "improper spacing",
+            "lithium plating at electrode interface",
+        ),
+        "groups": (
+            ("compression", "improper"),
+            ("compression", "insufficient"),
+            ("lithium plating", "interface"),
+        ),
+    },
+    "2.2.2": {
+        "phrases": (
+            "improper voltage sensing",
+            "improper temperature sensing",
+            "voltage sensing error",
+            "temperature sensing error",
+            "lithium plating at low temperature",
+        ),
+        "groups": (
+            ("voltage", "sensing", "improper"),
+            ("temperature", "sensing", "improper"),
+            ("low temperature", "lithium plating"),
+        ),
+    },
+
+    "3.1.1": {
+        "phrases": (
+            "coolant leakage",
+            "coolant leak",
+            "coolant gasket sealing failure",
+            "coolant weld sealing failure",
+            "o-ring leak",
+            "hose leak",
+            "clamp leak",
+            "fitting leak",
+            "cooling plate brazing leak",
+        ),
+        "groups": (
+            ("coolant", "gasket", "leak"),
+            ("coolant", "weld", "leak"),
+            ("coolant", "seal", "failure"),
+        ),
+    },
+    "3.1.2": {
+        "phrases": (
+            "enclosure gasket sealing failure",
+            "housing sealing failure",
+            "frame weld leakage",
+            "pack cover gasket leak",
+            "connector gasket leak",
+        ),
+        "groups": (
+            ("enclosure", "gasket", "leak"),
+            ("housing", "seal", "failure"),
+            ("frame", "weld", "leak"),
+        ),
+    },
+    "3.2.1": {
+        "phrases": (
+            "insufficient component clearance",
+            "component interference",
+            "insufficient structural stiffness",
+            "component stiffness failure",
+            "harness damage by interference",
+        ),
+        "groups": (
+            ("component", "clearance", "insufficient"),
+            ("component", "interference", "damage"),
+            ("harness", "interference", "damage"),
+            ("bracket", "position", "interference"),
+        ),
+    },
+    "3.2.2": {
+        "phrases": (
+            "component overheating",
+            "insufficient heat resistance",
+            "over current rating",
+            "current rating exceeded",
+            "insulation covering deterioration",
+            "plastic thermal degradation",
+        ),
+        "groups": (
+            ("component", "overheat"),
+            ("heat resistance", "insufficient"),
+            ("current rating", "exceed"),
+        ),
+    },
+    "3.3.1": {
+        "phrases": (
+            "insufficient fastening force",
+            "insufficient retention force",
+            "bolt loosening",
+            "loose bolt",
+            "terminal rotation",
+            "crimp failure",
+            "weld joint loosening",
+            "solder joint loosening",
+            "connector disengagement",
+            "clip disengagement",
+        ),
+        "groups": (
+            ("bolt", "loose"),
+            ("fastening", "insufficient"),
+            ("retention", "insufficient"),
+            ("connector", "disengage"),
+            ("clip", "disengage"),
+        ),
+    },
+    "3.3.2": {
+        "phrases": (
+            "poor component contact",
+            "insufficient contact area",
+            "contact surface contamination",
+            "contact surface foreign material",
+            "contact air gap",
+            "high contact thermal resistance",
+            "high electrical contact resistance",
+            "solder contact failure",
+        ),
+        "groups": (
+            ("contact", "air gap"),
+            ("contact", "resistance", "high"),
+            ("contact", "area", "insufficient"),
+            ("contact", "foreign material"),
+        ),
+    },
+    "3.4.1": {
+        "phrases": (
+            "plating defect",
+            "coating defect",
+            "protective coating failure",
+            "insufficient corrosion protection",
+        ),
+        "groups": (
+            ("plating", "corrosion"),
+            ("coating", "corrosion"),
+        ),
+    },
+    "3.4.2": {
+        "phrases": (
+            "moisture ingress",
+            "electrolyte ingress",
+            "water ingress",
+            "liquid accumulation",
+            "moisture accumulation",
+            "electrolyte accumulation",
+        ),
+        "groups": (
+            ("moisture", "corrosion"),
+            ("water", "corrosion"),
+            ("electrolyte", "corrosion"),
+        ),
+    },
+    "3.4.3": {
+        "phrases": (
+            "material reaction prevention failure",
+            "brazing flux corrosion",
+            "silicone volatilization",
+            "silicone outgassing",
+            "coolant corrosion by brazing flux",
+        ),
+        "groups": (
+            ("brazing flux", "corrosion"),
+            ("silicone", "circuit", "damage"),
+            ("silicone", "electronic", "damage"),
+        ),
+    },
+    "3.5.1": {
+        "phrases": (
+            "insufficient operating performance",
+            "relay no contact",
+            "relay contact failure",
+            "relay stuck",
+            "relay sticking",
+            "fuse malfunction",
+            "fuse no operation",
+            "sensing error exceeded",
+            "relay noise excessive",
+            "fan noise excessive",
+        ),
+        "groups": (
+            ("relay", "stuck"),
+            ("relay", "contact", "failure"),
+            ("fuse", "malfunction"),
+            ("sensing", "error", "exceed"),
+        ),
+    },
+    "3.5.2": {
+        "phrases": (
+            "insufficient operating life",
+            "insufficient durability",
+            "relay life failure",
+            "relay lifetime not satisfied",
+            "sensing error increase over life",
+        ),
+        "groups": (
+            ("lifetime", "not satisfied"),
+            ("durability", "insufficient"),
+            ("relay", "life", "failure"),
+        ),
+    },
+    "3.6.1": {
+        "phrases": (
+            "component defect not detected",
+            "misassembly not detected",
+            "missing part not detected",
+            "part omission not detected",
+            "pad missing",
+            "coolant passage blockage",
+            "cooling passage blockage",
+        ),
+        "groups": (
+            ("misassembly", "not detected"),
+            ("missing", "not detected"),
+            ("field", "misassembly"),
+        ),
+    },
+    "3.6.2": {
+        "phrases": (
+            "component specification not reflected",
+            "component specification missing",
+            "specification list omission",
+            "warning label missing",
+            "grounding design omission",
+            "ground design missing",
+        ),
+        "groups": (
+            ("specification", "missing"),
+            ("warning label", "missing"),
+            ("grounding design", "missing"),
+        ),
+    },
+
+    "4.1.1": {
+        "phrases": (
+            "insufficient thermal propagation prevention",
+            "insufficient thermal propagation delay",
+            "thermal runaway propagation",
+            "insufficient external heat exhaust",
+            "insufficient adjacent cell insulation",
+            "insufficient fire suppression cooling",
+        ),
+        "groups": (
+            ("thermal runaway", "propagation"),
+            ("thermal propagation", "insufficient"),
+            ("adjacent cell", "insulation", "insufficient"),
+        ),
+    },
+    "4.2.1": {
+        "phrases": (
+            "insufficient pack enclosure fire resistance",
+            "insufficient pack enclosure pressure resistance",
+            "insufficient fire resistance",
+            "insufficient pressure resistance",
+            "flame leakage through gasket",
+        ),
+        "groups": (
+            ("pack enclosure", "fire resistance", "insufficient"),
+            ("pack enclosure", "pressure", "insufficient"),
+            ("gasket", "flame", "leak"),
+        ),
+    },
+
+    "5.1.1": {
+        "phrases": (
+            "insufficient pouch high voltage insulation",
+            "insufficient can high voltage insulation",
+            "pouch insulation distance insufficient",
+            "can insulation distance insufficient",
+            "pouch dielectric strength insufficient",
+            "can dielectric strength insufficient",
+        ),
+        "groups": (
+            ("pouch", "insulation", "insufficient"),
+            ("can", "insulation", "insufficient"),
+            ("pouch", "leakage current"),
+            ("can", "leakage current"),
+        ),
+    },
+    "5.2.1": {
+        "phrases": (
+            "insufficient high voltage insulation of live parts",
+            "live part insulation distance insufficient",
+            "live part dielectric strength insufficient",
+            "busbar insulation distance insufficient",
+            "busbar dielectric strength insufficient",
+        ),
+        "groups": (
+            ("live part", "insulation", "insufficient"),
+            ("busbar", "insulation", "insufficient"),
+            ("high voltage", "insulation", "insufficient"),
+        ),
+    },
+    "5.3.1": {
+        "phrases": (
+            "excessive ground resistance",
+            "ground resistance too high",
+            "grounding missing",
+            "ground missing",
+            "ground continuity failure",
+            "ground continuity not satisfied",
+        ),
+        "groups": (
+            ("ground", "resistance", "high"),
+            ("ground", "continuity", "failure"),
+            ("grounding", "missing"),
+        ),
+    },
+
+    "6.1.1": {
+        "phrases": (
+            "frequent component management defect",
+            "frequent iqc defect",
+            "incoming quality defect",
+            "defective part incoming",
+            "poor incoming quality control",
+            "specification alignment insufficient",
+        ),
+        "groups": (
+            ("iqc", "defect"),
+            ("incoming", "defective part"),
+            ("incoming quality", "defect"),
+        ),
+    },
+    "6.1.2": {
+        "phrases": (
+            "frequent lqc defect",
+            "lqc defect",
+            "lqc misassembly",
+            "lqc missing part",
+            "lqc damage",
+        ),
+        "groups": (
+            ("lqc", "defect"),
+            ("lqc", "misassembly"),
+            ("lqc", "missing"),
+        ),
+    },
+    "6.1.3": {
+        "phrases": (
+            "frequent eol defect",
+            "eol defect",
+            "eol voltage measurement failure",
+            "eol current measurement failure",
+            "eol resistance measurement failure",
+            "eol temperature measurement failure",
+            "eol weight measurement failure",
+        ),
+        "groups": (
+            ("eol", "defect"),
+            ("eol", "voltage", "failure"),
+            ("eol", "measurement", "failure"),
+        ),
+    },
+    "6.1.4": {
+        "phrases": (
+            "frequent cmm defect",
+            "frequent oqc defect",
+            "cmm measurement defect",
+            "oqc defect",
+            "terminal position defect",
+            "mounting position defect",
+            "cooling surface position defect",
+            "overall dimension defect",
+        ),
+        "groups": (
+            ("cmm", "defect"),
+            ("oqc", "defect"),
+            ("position", "defect"),
+        ),
+    },
+    "6.2.1": {
+        "phrases": (
+            "defect after product shipment",
+            "defect at upper system incoming inspection",
+            "damage during transport or storage",
+            "contamination after shipment",
+            "foreign material after shipment",
+            "missing part after shipment",
+        ),
+        "groups": (
+            ("after shipment", "damage"),
+            ("after shipment", "contamination"),
+            ("upper system", "incoming", "defect"),
+            ("transport", "damage"),
+        ),
+    },
+    "6.2.2": {
+        "phrases": (
+            "defect during upper system assembly",
+            "upper system assembly defect",
+            "upper system fastening failure",
+            "upper system insulation failure",
+            "upper system leak test failure",
+            "upper system operation failure",
+            "upper system recognition failure",
+        ),
+        "groups": (
+            ("upper system", "assembly", "defect"),
+            ("upper system", "fastening", "failure"),
+            ("upper system", "insulation", "failure"),
+        ),
+    },
+    "6.3.1": {
+        "phrases": (
+            "surrounding normal component damage",
+            "unable to reassemble",
+            "reassembly impossible",
+            "hook damage during service",
+            "clip damage during service",
+            "connector damage during service",
+        ),
+        "groups": (
+            ("reassembly", "impossible"),
+            ("service", "component", "damage"),
+            ("hook", "damage"),
+            ("connector", "damage"),
+        ),
+    },
+}
+
+
 RULES = (
     _rule("1.1.1", "간섭 및 외력 작용 과다",
           ("간섭 및 외력 작용 과다", "가스켓 간섭에 의한 크랙", "가스켓 간섭에 의한 벤트"),
@@ -171,6 +718,19 @@ def _matches(rule, q):
         if p and p in q:
             return True
     for group in rule["groups"]:
+        parts = [_key(x) for x in group if _key(x)]
+        if parts and all(x in q for x in parts):
+            return True
+
+    # English 8D reports use the same Y.y.x design-rule taxonomy.
+    # Keep the English vocabulary separate so Korean rule maintenance remains
+    # readable while bilingual/mixed-language cause text is matched identically.
+    english = ENGLISH_RULE_ALIASES.get(rule["code"], {})
+    for phrase in english.get("phrases", ()):
+        p = _key(phrase)
+        if p and p in q:
+            return True
+    for group in english.get("groups", ()):
         parts = [_key(x) for x in group if _key(x)]
         if parts and all(x in q for x in parts):
             return True
