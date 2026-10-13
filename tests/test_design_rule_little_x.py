@@ -51,8 +51,8 @@ class DesignRuleLittleXTests(unittest.TestCase):
 
         wb = Workbook()
         ws = wb.active
-        ws.cell(6, 19).value = "규칙 위반 여부"
-        ws.cell(6, 20).value = "Little x"
+        ws.cell(6, 19).value = "규칙 위반"
+        ws.cell(6, 20).value = "Y.y.x"
         result = dr.write_confirmed_rule_classification(
             ws, 8, "3.3.2", confirmed=True
         )
@@ -69,8 +69,8 @@ class DesignRuleLittleXTests(unittest.TestCase):
 
         wb = Workbook()
         ws = wb.active
-        ws.cell(6, 19).value = "규칙 위반 여부"
-        ws.cell(6, 20).value = "Little x"
+        ws.cell(6, 19).value = "규칙 위반"
+        ws.cell(6, 20).value = "Y.y.x"
         ws.cell(8, 19).value = "기존값"
         ws.cell(8, 20).value = "기존규칙"
         result = dr.write_confirmed_rule_classification(
@@ -83,8 +83,8 @@ class DesignRuleLittleXTests(unittest.TestCase):
     def test_user_can_confirm_no_violation(self):
         wb = Workbook()
         ws = wb.active
-        ws.cell(6, 19).value = "설계 규칙 위반 여부"
-        ws.cell(6, 20).value = "Little x"
+        ws.cell(6, 19).value = "규칙 위반"
+        ws.cell(6, 20).value = "Y.y.x"
         result = dr.write_confirmed_rule_classification(
             ws, 8, dr.NONE_CODE, confirmed=True
         )
@@ -93,11 +93,18 @@ class DesignRuleLittleXTests(unittest.TestCase):
         self.assertEqual(ws.cell(8, 19).value, "N")
         self.assertEqual(ws.cell(8, 20).value, "")
 
+    def test_exact_issue_db_headers_are_detected(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.cell(4, 21).value = "규칙 위반"
+        ws.cell(4, 22).value = "Y.y.x"
+        self.assertEqual(dr.find_rule_columns(ws), (21, 22))
+
     def test_header_detection_and_y_code_write(self):
         wb = Workbook()
         ws = wb.active
-        ws.cell(6, 19).value = "설계 규칙 위반 여부"
-        ws.cell(6, 20).value = "Little x"
+        ws.cell(6, 19).value = "규칙 위반"
+        ws.cell(6, 20).value = "Y.y.x"
         result = dr.write_rule_classification(
             ws, 8, "볼트 풀림으로 체결력 불량 발생"
         )
@@ -108,8 +115,8 @@ class DesignRuleLittleXTests(unittest.TestCase):
     def test_no_match_writes_n_and_blank_little_x(self):
         wb = Workbook()
         ws = wb.active
-        ws.cell(5, 22).value = "규칙 위반 여부 Y/N"
-        ws.cell(5, 23).value = "위반 규칙 (Little X)"
+        ws.cell(5, 22).value = "규칙 위반"
+        ws.cell(5, 23).value = "Y.y.x"
         dr.write_rule_classification(ws, 8, "원인 미확인")
         self.assertEqual(ws.cell(8, 22).value, "N")
         self.assertEqual(ws.cell(8, 23).value, "")
