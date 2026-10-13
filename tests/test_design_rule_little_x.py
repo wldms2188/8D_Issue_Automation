@@ -7,6 +7,25 @@ import design_rule_little_x as dr
 
 
 class DesignRuleLittleXTests(unittest.TestCase):
+    def test_full_photo_reference_contains_all_36_yyx_and_examples(self):
+        text = dr.full_design_rule_reference_text()
+        for rule in dr.RULES:
+            with self.subTest(code=rule["code"]):
+                self.assertIn(f"Y.y.x {rule['code']}", text)
+
+        # Big Y / Little y / photo example text must be visible, not just rule names.
+        self.assertIn("팩/모듈 제품 불량 유형 및 규칙", text)
+        self.assertIn("Little y 하위 요소/셀 불량 유형", text)
+        self.assertIn("Little x 팩 기인 원인 유형", text)
+        self.assertIn("사용 중, 셀 실링 손상(누액) 없을 것", text)
+        self.assertIn("고온저장 중 구조물 가스켓 간섭에 의한 크랙/벤트", text)
+        self.assertIn("접촉면 Air Gap", text)
+        self.assertIn("패드 누락, 냉각 유로 막힘", text)
+        self.assertIn("TP시험 중 셀 외부 단락 발생", text)
+        self.assertIn("접지 연속성 불만족", text)
+        self.assertIn("부품/셀 사양 사전 정합화 미흡", text)
+        self.assertIn("부품 열화로 인한 고정 후크/클립 파손", text)
+
     def test_all_36_rule_titles_map_to_their_own_code(self):
         self.assertEqual(len(dr.RULES), 36)
         for rule in dr.RULES:
