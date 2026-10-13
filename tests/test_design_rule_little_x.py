@@ -13,6 +13,34 @@ class DesignRuleLittleXTests(unittest.TestCase):
             with self.subTest(code=rule["code"], name=rule["name"]):
                 self.assertIn(rule["code"], dr.classify_little_x(rule["name"]))
 
+    def test_all_36_rules_have_english_alias_and_match(self):
+        self.assertEqual(set(dr.ENGLISH_RULE_ALIASES), {r["code"] for r in dr.RULES})
+        for rule in dr.RULES:
+            aliases = dr.ENGLISH_RULE_ALIASES[rule["code"]]
+            examples = list(aliases.get("phrases") or ())
+            self.assertTrue(examples, msg=f'No English phrase for {rule["code"]}')
+            with self.subTest(code=rule["code"], phrase=examples[0]):
+                self.assertIn(rule["code"], dr.classify_little_x(examples[0]))
+
+    def test_representative_english_8d_causes(self):
+        cases = {
+            "Bolt loosening caused insufficient fastening force at the busbar joint.": "3.3.1",
+            "High contact resistance was caused by an air gap on the contact surface.": "3.3.2",
+            "Coolant leakage occurred due to O-ring sealing failure.": "3.1.1",
+            "Ground continuity failure due to missing grounding connection.": "5.3.1",
+            "Thermal runaway propagation occurred because adjacent cell insulation was insufficient.": "4.1.1",
+            "EOL voltage measurement failure was repeatedly detected.": "6.1.3",
+            "The warning label was missing because the component specification was not reflected.": "3.6.2",
+            "Moisture ingress caused corrosion inside the pack.": "3.4.2",
+        }
+        for cause, code in cases.items():
+            with self.subTest(cause=cause):
+                self.assertIn(code, dr.classify_little_x(cause))
+
+    def test_korean_english_mixed_cause_is_supported(self):
+        cause = "Busbar 체결부 bolt loosening으로 fastening force 부족 발생"
+        self.assertIn("3.3.1", dr.classify_little_x(cause))
+
     def test_representative_pack_cause_examples(self):
         cases = {
             "가스켓 간섭에 의한 캔 크랙 발생": "1.1.1",
