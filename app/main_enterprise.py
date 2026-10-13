@@ -578,6 +578,8 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         rec=design_rule.recommendation(N(d.get('problem')),cause)
         candidates=list(rec.get('candidates') or [])
         recommended=rec.get('recommended') or design_rule.NONE_CODE
+        self._d=dict(d)
+        self._rec=dict(rec)
 
         head=tk.Frame(self,bg=ui.NAVY,height=58)
         head.pack(fill='x')
@@ -591,7 +593,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         body.pack(fill='both',expand=True,padx=24,pady=16)
         tk.Label(
             body,
-            text='8D 원인 내용을 기준으로 규칙 위반와 Y.y.x를 추천합니다. 최종값은 직접 선택해 주세요.',
+            text='2D 현상으로 Little y를 먼저 좁히고 4D 원인까지 종합해 규칙 위반과 Y.y.x를 추천합니다. 최종값은 직접 선택해 주세요.',
             bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold'),
             wraplength=760,justify='left'
         ).pack(anchor='w')
@@ -674,6 +676,27 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
             wraplength=760,justify='left'
         ).pack(anchor='w',pady=(8,0))
 
+        preview_row=tk.Frame(body,bg='white')
+        preview_row.pack(fill='x',pady=(10,0))
+        tk.Button(
+            preview_row,
+            text='설계 규칙 전체 내용 확인',
+            command=self._show_full_design_rule_reference,
+            bd=0,bg='#E5EBF0',fg=ui.TEXT,
+            activebackground='#DDE5EB',
+            font=('Malgun Gothic',9,'bold'),
+            padx=14,pady=7,cursor='hand2'
+        ).pack(side='left',padx=(0,8))
+        tk.Button(
+            preview_row,
+            text='이슈 내용 확인하기',
+            command=self._show_issue_preview,
+            bd=0,bg='#E5EBF0',fg=ui.TEXT,
+            activebackground='#DDE5EB',
+            font=('Malgun Gothic',9,'bold'),
+            padx=14,pady=7,cursor='hand2'
+        ).pack(side='left')
+
         foot=tk.Frame(self,bg='#F6F8FA',height=62)
         foot.pack(fill='x')
         foot.pack_propagate(False)
@@ -683,11 +706,105 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         self._button(buttons,'확인',self.ok,True).pack(side='left',padx=4)
 
         self.protocol('WM_DELETE_WINDOW',self.cancel)
-        ui.center_window(self,parent,820,650)
+        ui.center_window(self,parent,860,700)
         self.deiconify()
         self.grab_set()
         self.focus_force()
         parent.wait_window(self)
+
+    def _open_reference_window(self,title,heading,text,width=900,height=700):
+        win=tk.Toplevel(self)
+        win.withdraw()
+        win.title(title)
+        win.configure(bg='white')
+        win.resizable(True,True)
+        win.transient(self)
+
+        head=tk.Frame(win,bg=ui.NAVY,height=60)
+        head.pack(fill='x')
+        head.pack_propagate(False)
+        tk.Label(
+            head,text=heading,bg=ui.NAVY,fg='white',
+            font=('Malgun Gothic',12,'bold')
+        ).pack(side='left',padx=22)
+
+        body=tk.Frame(win,bg='white')
+        body.pack(fill='both',expand=True,padx=22,pady=18)
+        wrap=tk.Frame(body,bg='white')
+        wrap.pack(fill='both',expand=True)
+        box=tk.Text(
+            wrap,wrap='word',bg='#F7F9FB',fg=ui.TEXT,
+            relief='flat',highlightthickness=1,
+            highlightbackground=ui.BORDER,
+            font=('Malgun Gothic',9),padx=12,pady=10
+        )
+        sb=tk.Scrollbar(wrap,command=box.yview)
+        box.configure(yscrollcommand=sb.set)
+        sb.pack(side='right',fill='y')
+        box.pack(side='left',fill='both',expand=True)
+        box.insert('1.0',text)
+        box.configure(state='disabled')
+
+        def close():
+            try: win.grab_release()
+            except Exception: pass
+            win.destroy()
+            try:
+                self.grab_set()
+                self.focus_force()
+            except Exception:
+                pass
+
+        foot=tk.Frame(win,bg='#F6F8FA',height=62)
+        foot.pack(fill='x')
+        foot.pack_propagate(False)
+        tk.Button(
+            foot,text='닫기',command=close,
+            width=12,bd=0,font=('Malgun Gothic',9,'bold'),
+            bg=ui.BLUE,fg='white',pady=7,cursor='hand2'
+        ).pack(side='right',padx=20,pady=13)
+
+        win.protocol('WM_DELETE_WINDOW',close)
+        ui.center_window(win,self,width,height)
+        win.deiconify()
+        win.grab_set()
+        win.focus_force()
+
+    def _show_full_design_rule_reference(self):
+        self._open_reference_window(
+            '설계 규칙 전체 내용',
+            '설계 규칙 전체 내용',
+            design_rule.full_design_rule_reference_text(),
+            980,740
+        )
+
+    def _show_issue_preview(self):
+        d=self._d or {}
+        labels=[
+            ('이슈명','issue_name'),
+            ('고객사','customer'),
+            ('고객사/과제명','task_name'),
+            ('발생일자','occurrence_date'),
+            ('2D 현상','problem'),
+            ('3D 임시조치','temporary_action'),
+            ('4D 발생원인','cause_4d'),
+            ('4D 유출원인','leak_cause'),
+            ('4D 시스템원인','system_cause'),
+            ('5D 개선대책','action_5d'),
+            ('6D 효과검증','verification_6d'),
+            ('7D 수평전개','spread_7d'),
+        ]
+        lines=['[ 8D 추출 전체 이슈 내용 ]','─'*70]
+        for label,key in labels:
+            lines.append('')
+            lines.append(f'■ {label}')
+            lines.append(N(d.get(key)) or '-')
+        self._open_reference_window(
+            '이슈 내용 확인',
+            '이슈 내용 확인',
+            '\n'.join(lines),
+            860,660
+        )
 
     def _manual_select(self,_event=None):
         code=self._label_to_code.get(self.combo.get())
