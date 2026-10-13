@@ -559,13 +559,13 @@ class EnterpriseOriginDialog(tk.Toplevel):
 
 
 class EnterpriseDesignRuleDialog(tk.Toplevel):
-    """User confirmation for Issue DB design-rule violation / Little x."""
+    """User confirmation for Issue DB design-rule violation / Y.y.x."""
 
     def __init__(self,parent,d):
         super().__init__(parent)
         self.withdraw()
         self.result=None
-        self.title('설계규칙 Little x 확인')
+        self.title('설계규칙 Y.y.x 확인')
         self.configure(bg=ui.WHITE)
         self.resizable(False,False)
         self.transient(parent)
@@ -583,7 +583,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         head.pack(fill='x')
         head.pack_propagate(False)
         tk.Label(
-            head,text='설계규칙 Little x 확인',
+            head,text='설계규칙 Y.y.x 확인',
             bg=ui.NAVY,fg='white',font=('Malgun Gothic',12,'bold')
         ).pack(side='left',padx=22)
 
@@ -591,7 +591,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         body.pack(fill='both',expand=True,padx=24,pady=16)
         tk.Label(
             body,
-            text='8D 원인 내용을 기준으로 설계규칙 위반 여부와 Little x를 추천합니다. 최종값은 직접 선택해 주세요.',
+            text='8D 원인 내용을 기준으로 규칙 위반와 Y.y.x를 추천합니다. 최종값은 직접 선택해 주세요.',
             bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold'),
             wraplength=760,justify='left'
         ).pack(anchor='w')
@@ -654,7 +654,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
         manual=tk.Frame(body,bg='white')
         manual.pack(fill='x',pady=(12,2))
         tk.Label(
-            manual,text='다른 Little x 직접 선택',
+            manual,text='다른 Y.y.x 직접 선택',
             bg='white',fg=ui.TEXT,font=('Malgun Gothic',9,'bold'),
             width=20,anchor='w'
         ).pack(side='left')
@@ -669,7 +669,7 @@ class EnterpriseDesignRuleDialog(tk.Toplevel):
 
         tk.Label(
             body,
-            text='※ 해당 설계규칙이 아니면 “해당 없음 (N)”을 선택하세요. 한 건에는 최종 선택한 Little x 하나만 입력됩니다.',
+            text='※ 해당 설계규칙이 아니면 “해당 없음 (N)”을 선택하세요. 한 건에는 최종 선택한 Y.y.x 하나만 입력됩니다.',
             bg='white',fg=ui.MUTED,font=('Malgun Gothic',8),
             wraplength=760,justify='left'
         ).pack(anchor='w',pady=(8,0))
@@ -1280,7 +1280,7 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 g['_issue_origin_selected']=od.result
             # Design-rule confirmation is always USER-driven for Issue DB.
             # Automatic matching only recommends candidates; it never writes Excel
-            # until the user confirms one Little x or explicit N.
+            # until the user confirms one Y.y.x or explicit N.
             if do_excel:
                 violation_col,little_x_col=design_rule.find_rule_columns(ws)
                 if violation_col is None or little_x_col is None:
@@ -1288,10 +1288,10 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                     return ui.warning(
                         self,
                         '설계규칙 열 확인',
-                        'Issue DB에서 규칙 위반 여부 또는 Little x 열을 찾지 못했습니다.\n\n'
-                        '상단 헤더에 “규칙 위반 여부”와 “Little x” 항목이 있는지 확인해 주세요.'
+                        'Issue DB에서 규칙 위반 또는 Y.y.x 열을 찾지 못했습니다.\n\n'
+                        '상단 헤더에 “규칙 위반”와 “Y.y.x” 항목이 있는지 확인해 주세요.'
                     )
-                self.status_var.set('WAITING  ·  설계규칙 Little x 확인 필요')
+                self.status_var.set('WAITING  ·  설계규칙 Y.y.x 확인 필요')
                 self.update_idletasks()
                 rd=EnterpriseDesignRuleDialog(self,d)
                 if rd.result is None:
