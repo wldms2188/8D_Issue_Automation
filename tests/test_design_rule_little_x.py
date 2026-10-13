@@ -41,6 +41,58 @@ class DesignRuleLittleXTests(unittest.TestCase):
             [],
         )
 
+    def test_ambiguous_match_is_recommendation_not_final_multi_write(self):
+        rec = dr.recommendation(
+            "볼트 풀림으로 체결력 불량 발생, 접촉면 Air Gap으로 접촉 불량 동시 확인"
+        )
+        self.assertTrue(rec["ambiguous"])
+        self.assertIn("3.3.1", rec["candidates"])
+        self.assertIn("3.3.2", rec["candidates"])
+
+        wb = Workbook()
+        ws = wb.active
+        ws.cell(6, 19).value = "규칙 위반 여부"
+        ws.cell(6, 20).value = "Little x"
+        result = dr.write_confirmed_rule_classification(
+            ws, 8, "3.3.2", confirmed=True
+        )
+        self.assertEqual(result["violation"], "Y")
+        self.assertEqual(result["codes"], ["3.3.2"])
+        self.assertEqual(ws.cell(8, 19).value, "Y")
+        self.assertEqual(ws.cell(8, 20).value, "3.3.2")
+        self.assertNotIn("3.3.1", ws.cell(8, 20).value)
+
+    def test_single_match_is_still_only_a_recommendation_until_user_confirms(self):
+        rec = dr.recommendation("볼트 풀림으로 체결력 불량 발생")
+        self.assertFalse(rec["ambiguous"])
+        self.assertEqual(rec["recommended"], "3.3.1")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.cell(6, 19).value = "규칙 위반 여부"
+        ws.cell(6, 20).value = "Little x"
+        ws.cell(8, 19).value = "기존값"
+        ws.cell(8, 20).value = "기존규칙"
+        result = dr.write_confirmed_rule_classification(
+            ws, 8, rec["recommended"], confirmed=False
+        )
+        self.assertIsNone(result["violation"])
+        self.assertEqual(ws.cell(8, 19).value, "기존값")
+        self.assertEqual(ws.cell(8, 20).value, "기존규칙")
+
+    def test_user_can_confirm_no_violation(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.cell(6, 19).value = "설계 규칙 위반 여부"
+        ws.cell(6, 20).value = "Little x"
+        result = dr.write_confirmed_rule_classification(
+            ws, 8, dr.NONE_CODE, confirmed=True
+        )
+        self.assertEqual(result["violation"], "N")
+        self.assertEqual(result["codes"], [])
+        self.assertEqual(ws.cell(8, 19).value, "N")
+        self.assertEqual(ws.cell(8, 20).value, "")
+
     def test_header_detection_and_y_code_write(self):
         wb = Workbook()
         ws = wb.active
