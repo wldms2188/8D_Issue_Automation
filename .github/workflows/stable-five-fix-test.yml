@@ -22,7 +22,7 @@ jobs:
       - name: Compile patched runtime
         env:
           PYTHONPATH: app
-        run: python -m py_compile app/user_stable_weekly_fixes.py app/problem_summary_final.py app/main_enterprise_final.py
+        run: python -m py_compile app/user_stable_weekly_fixes.py app/problem_summary_final.py app/design_rule_little_x.py app/main_enterprise_final.py
       - name: Run stable five-fix regression
         env:
           PYTHONPATH: app
@@ -35,3 +35,7 @@ jobs:
         env:
           PYTHONPATH: app
         run: python tests/test_issue_db_cause_labels.py
+      - name: Run Issue DB Little x design-rule regression
+        env:
+          PYTHONPATH: app
+        run: python tests/test_design_rule_little_x.py
