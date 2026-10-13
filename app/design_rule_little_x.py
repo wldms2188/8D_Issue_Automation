@@ -1132,7 +1132,6 @@ def write_confirmed_rule_classification(ws, row, selected_code, confirmed=True):
 
 
 DESIGN_RULE_PHOTO_REFERENCE = r"""[ 팩/모듈 설계 규칙 전체 내용 ]
-사진 원본 열 구성:
 Big Y | 팩/모듈 제품 불량 유형 및 규칙 | Little y 하위 요소/셀 불량 유형 | Little x 팩 기인 원인 유형
 
 ════════════════════════════════════════════════════════════════════════
