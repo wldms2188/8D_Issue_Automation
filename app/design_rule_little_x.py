@@ -719,21 +719,54 @@ def _little_y_score(rule, symptom_q):
 def classify_little_y(problem_text):
     """Return likely Little y categories from 2D symptom text.
 
-    Output is ordered by confidence. Multiple entries are preserved when the
-    symptom itself is ambiguous, so the next-stage Y.y.x recommendation can
-    evaluate causes within the union of those categories.
+    Stage-1 evidence is combined from BOTH:
+    1) direct Little y symptom/category wording, and
+    2) Y.y.x pack-cause wording that already appears inside the 2D text.
+
+    Example:
+      "볼트 풀림 발생" -> Y.y.x 3.3.1 wording -> parent Little y 3.3
+      "Grounding missing" -> Y.y.x 5.3.1 wording -> parent Little y 5.3
+
+    Output is ordered by confidence. Multiple close categories are preserved
+    so the 4D cause stage can make the final Y.y.x recommendation.
     """
     q = _key(problem_text)
     if not q:
         return []
-    scored = []
+
+    scores = {}
+
+    # A. Direct Little y symptom/category match.
     for rule in LITTLE_Y_RULES:
         score = _little_y_score(rule, q)
         if score:
-            scored.append((score, rule))
+            scores[rule["code"]] = max(scores.get(rule["code"], 0), score)
+
+    # B. Reverse-map any Y.y.x cause-type wording found in 2D to its parent
+    # Little y. This covers 2D descriptions that already contain causal detail.
+    # _matches/RULES are defined later in the module but are available when
+    # this function is called after import completes.
+    for xrule in RULES:
+        if not _matches(xrule, q):
+            continue
+        parent = ".".join(xrule["code"].split(".")[:2])
+        # Strong enough to be a real Little y candidate, while still allowing
+        # an explicit Little y phrase in the same 2D text to remain alongside it.
+        scores[parent] = max(scores.get(parent, 0), 135)
+
+    if not scores:
+        return []
+
+    lookup = {rule["code"]: rule for rule in LITTLE_Y_RULES}
+    scored = [
+        (score, lookup[code])
+        for code, score in scores.items()
+        if code in lookup
+    ]
     scored.sort(key=lambda x: (-x[0], x[1]["code"]))
     if not scored:
         return []
+
     best = scored[0][0]
     # Keep close alternatives only; weak unrelated categories are discarded.
     return [r for s, r in scored if s >= best - 15]
