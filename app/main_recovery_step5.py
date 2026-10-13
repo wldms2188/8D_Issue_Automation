@@ -3,6 +3,7 @@
 
 import main_recovery_step4 as step4
 import main_v310 as v310
+import design_rule_little_x as design_rule
 import re
 
 base = step4.base
@@ -86,9 +87,20 @@ def write_row_step5(ws,r,d,g):
     # Let the known-good STEP4/legacy writer fill the row first.
     result=_old_write_row(ws,r,d,g)
 
-    # Then change only the two requested Issue DB fields.
+    # Then change only the requested Issue DB fields.
     ws.cell(r,7).value=_month_label_from_date(d)   # 발생월: 9월, not 09
-    ws.cell(r,16).value=_cause_db_text(d)          # 원인 numbered format
+    cause_text=_cause_db_text(d)
+    ws.cell(r,16).value=cause_text                 # 원인 numbered format
+
+    # Design-rule classification uses ONLY the 4D cause family. It does not
+    # inspect symptom/action text, so a symptom mentioning a rule keyword
+    # cannot accidentally mark a design-rule violation.
+    rule_source='\n'.join(
+        N(d.get(k))
+        for k in ('cause_4d','leak_cause','system_cause')
+        if N(d.get(k))
+    )
+    design_rule.write_rule_classification(ws,r,rule_source)
     return result
 
 
