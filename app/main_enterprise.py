@@ -11,6 +11,7 @@ from pptx import Presentation
 
 import main_final as legacy
 import ui_enterprise as ui
+import design_rule_little_x as design_rule
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -553,6 +554,162 @@ class EnterpriseOriginDialog(tk.Toplevel):
     def _button(self,p,text,cmd,primary): return tk.Button(p,text=text,command=cmd,width=12,bd=0,font=('Malgun Gothic',9,'bold'),bg=ui.BLUE if primary else '#E5EBF0',fg='white' if primary else ui.TEXT,pady=7,cursor='hand2')
     def ok(self): self.result=self.var.get(); self.destroy()
     def cancel(self): self.result=None; self.destroy()
+
+
+
+
+class EnterpriseDesignRuleDialog(tk.Toplevel):
+    """User confirmation for Issue DB design-rule violation / Little x."""
+
+    def __init__(self,parent,d):
+        super().__init__(parent)
+        self.withdraw()
+        self.result=None
+        self.title('설계규칙 Little x 확인')
+        self.configure(bg=ui.WHITE)
+        self.resizable(False,False)
+        self.transient(parent)
+
+        cause='\n'.join(
+            N(d.get(k))
+            for k in ('cause_4d','leak_cause','system_cause')
+            if N(d.get(k))
+        )
+        rec=design_rule.recommendation(cause)
+        candidates=list(rec.get('candidates') or [])
+        recommended=rec.get('recommended') or design_rule.NONE_CODE
+
+        head=tk.Frame(self,bg=ui.NAVY,height=58)
+        head.pack(fill='x')
+        head.pack_propagate(False)
+        tk.Label(
+            head,text='설계규칙 Little x 확인',
+            bg=ui.NAVY,fg='white',font=('Malgun Gothic',12,'bold')
+        ).pack(side='left',padx=22)
+
+        body=tk.Frame(self,bg='white')
+        body.pack(fill='both',expand=True,padx=24,pady=16)
+        tk.Label(
+            body,
+            text='8D 원인 내용을 기준으로 설계규칙 위반 여부와 Little x를 추천합니다. 최종값은 직접 선택해 주세요.',
+            bg='white',fg=ui.TEXT,font=('Malgun Gothic',10,'bold'),
+            wraplength=760,justify='left'
+        ).pack(anchor='w')
+
+        tk.Label(
+            body,text='8D 원인 내용',bg='white',fg=ui.MUTED,
+            font=('Malgun Gothic',8,'bold')
+        ).pack(anchor='w',pady=(12,5))
+        box=tk.Text(
+            body,height=7,wrap='word',bg='#F7F9FB',fg=ui.TEXT,
+            relief='flat',highlightthickness=1,highlightbackground=ui.BORDER,
+            font=('Malgun Gothic',9),padx=10,pady=8
+        )
+        box.pack(fill='x')
+        box.insert('1.0',cause or '(4D 원인 내용 없음)')
+        box.configure(state='disabled')
+
+        card=tk.Frame(
+            body,bg='#EEF5FA',
+            highlightbackground='#D5E3EE',highlightthickness=1
+        )
+        card.pack(fill='x',pady=12)
+        if rec.get('ambiguous'):
+            rec_title='추천 후보  ' + ' / '.join(candidates)
+        else:
+            rec_title='추천  ' + design_rule.rule_label(recommended)
+        tk.Label(
+            card,text=rec_title,bg='#EEF5FA',fg=ui.NAVY,
+            font=('Malgun Gothic',10,'bold')
+        ).pack(anchor='w',padx=12,pady=(9,2))
+        tk.Label(
+            card,text=rec.get('reason') or '',bg='#EEF5FA',fg='#4E6375',
+            font=('Malgun Gothic',8),wraplength=720,justify='left'
+        ).pack(anchor='w',padx=12,pady=(0,9))
+
+        self.var=tk.StringVar(value=recommended)
+        tk.Label(
+            body,text='최종 선택',bg='white',fg=ui.MUTED,
+            font=('Malgun Gothic',8,'bold')
+        ).pack(anchor='w',pady=(1,5))
+
+        opts=tk.Frame(body,bg='white')
+        opts.pack(fill='x')
+        radio_codes=[]
+        for code in candidates:
+            if code not in radio_codes:
+                radio_codes.append(code)
+        if design_rule.NONE_CODE not in radio_codes:
+            radio_codes.append(design_rule.NONE_CODE)
+
+        for code in radio_codes:
+            label=design_rule.rule_label(code)
+            if code==recommended:
+                label += '  · 추천'
+            ttk.Radiobutton(
+                opts,text=label,variable=self.var,value=code,
+                style='Mode.TRadiobutton'
+            ).pack(anchor='w',pady=2)
+
+        manual=tk.Frame(body,bg='white')
+        manual.pack(fill='x',pady=(12,2))
+        tk.Label(
+            manual,text='다른 Little x 직접 선택',
+            bg='white',fg=ui.TEXT,font=('Malgun Gothic',9,'bold'),
+            width=20,anchor='w'
+        ).pack(side='left')
+        labels=[design_rule.rule_label(r['code']) for r in design_rule.RULES]
+        self._label_to_code={
+            design_rule.rule_label(r['code']):r['code']
+            for r in design_rule.RULES
+        }
+        self.combo=ttk.Combobox(manual,values=labels,state='readonly')
+        self.combo.pack(side='left',fill='x',expand=True)
+        self.combo.bind('<<ComboboxSelected>>',self._manual_select)
+
+        tk.Label(
+            body,
+            text='※ 해당 설계규칙이 아니면 “해당 없음 (N)”을 선택하세요. 한 건에는 최종 선택한 Little x 하나만 입력됩니다.',
+            bg='white',fg=ui.MUTED,font=('Malgun Gothic',8),
+            wraplength=760,justify='left'
+        ).pack(anchor='w',pady=(8,0))
+
+        foot=tk.Frame(self,bg='#F6F8FA',height=62)
+        foot.pack(fill='x')
+        foot.pack_propagate(False)
+        buttons=tk.Frame(foot,bg='#F6F8FA')
+        buttons.pack(side='right',padx=20,pady=12)
+        self._button(buttons,'취소',self.cancel,False).pack(side='left',padx=4)
+        self._button(buttons,'확인',self.ok,True).pack(side='left',padx=4)
+
+        self.protocol('WM_DELETE_WINDOW',self.cancel)
+        ui.center_window(self,parent,820,650)
+        self.deiconify()
+        self.grab_set()
+        self.focus_force()
+        parent.wait_window(self)
+
+    def _manual_select(self,_event=None):
+        code=self._label_to_code.get(self.combo.get())
+        if code:
+            self.var.set(code)
+
+    def _button(self,p,text,cmd,primary):
+        return tk.Button(
+            p,text=text,command=cmd,width=12,bd=0,
+            font=('Malgun Gothic',9,'bold'),
+            bg=ui.BLUE if primary else '#E5EBF0',
+            fg='white' if primary else ui.TEXT,
+            pady=7,cursor='hand2'
+        )
+
+    def ok(self):
+        self.result=self.var.get() or design_rule.NONE_CODE
+        self.destroy()
+
+    def cancel(self):
+        self.result=None
+        self.destroy()
 
 
 WEEKLY_SIGNAL_COLORS={
@@ -1121,6 +1278,28 @@ class EnterpriseApp(legacy.FinalApp, _RootBase):
                 self.status_var.set('WAITING  ·  이슈기인 확인 필요'); self.update_idletasks(); od=EnterpriseOriginDialog(self,origin_d)
                 if od.result is None: self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.'); return
                 g['_issue_origin_selected']=od.result
+            # Design-rule confirmation is always USER-driven for Issue DB.
+            # Automatic matching only recommends candidates; it never writes Excel
+            # until the user confirms one Little x or explicit N.
+            if do_excel:
+                violation_col,little_x_col=design_rule.find_rule_columns(ws)
+                if violation_col is None or little_x_col is None:
+                    self.status_var.set('READY  ·  설계규칙 열 확인이 필요합니다.')
+                    return ui.warning(
+                        self,
+                        '설계규칙 열 확인',
+                        'Issue DB에서 규칙 위반 여부 또는 Little x 열을 찾지 못했습니다.\n\n'
+                        '상단 헤더에 “규칙 위반 여부”와 “Little x” 항목이 있는지 확인해 주세요.'
+                    )
+                self.status_var.set('WAITING  ·  설계규칙 Little x 확인 필요')
+                self.update_idletasks()
+                rd=EnterpriseDesignRuleDialog(self,d)
+                if rd.result is None:
+                    self.status_var.set('READY  ·  사용자가 실행을 취소했습니다.')
+                    return
+                g['_design_rule_confirmed']=True
+                g['_design_rule_selected']=rd.result
+
             pd_result=None; db_status=None; weekly_status=None
             if do_excel:
                 summary=legacy.step7._db_summary(d); self.status_var.set('WAITING  ·  Issue DB 현상 입력 확인 필요'); self.update_idletasks(); pd=EnterpriseProblemDialog(self,summary)
