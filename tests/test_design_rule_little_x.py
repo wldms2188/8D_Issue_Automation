@@ -41,6 +41,29 @@ class DesignRuleLittleXTests(unittest.TestCase):
             with self.subTest(code=rule["code"], phrase=examples[0]):
                 self.assertIn(rule["code"], dr.classify_little_x(examples[0]))
 
+    def test_2d_yyx_cause_wording_reverse_maps_to_little_y(self):
+        cases = {
+            "볼트 풀림 발생": "3.3",
+            "접촉면 Air Gap 발생": "3.3",
+            "접지 누락 확인": "5.3",
+            "냉각수 O-ring 누수 발생": "3.1",
+            "Bolt loosening was detected.": "3.3",
+            "Grounding missing was found.": "5.3",
+            "Coolant leakage due to O-ring sealing failure.": "3.1",
+        }
+        for problem, ycode in cases.items():
+            with self.subTest(problem=problem):
+                ys = [x["code"] for x in dr.classify_little_y(problem)]
+                self.assertIn(ycode, ys)
+
+    def test_2d_yyx_wording_then_4d_cause_recommendation(self):
+        rec = dr.recommendation(
+            "볼트 풀림 발생",
+            "체결력 부족으로 버스바 연결부 풀림",
+        )
+        self.assertIn("3.3", rec["little_y"])
+        self.assertEqual(rec["recommended"], "3.3.1")
+
     def test_two_stage_korean_2d_to_little_y_then_cause_to_yyx(self):
         rec = dr.recommendation(
             "팩 부품 이탈 및 연결불량 발생",
