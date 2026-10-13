@@ -92,15 +92,15 @@ def write_row_step5(ws,r,d,g):
     cause_text=_cause_db_text(d)
     ws.cell(r,16).value=cause_text                 # 원인 numbered format
 
-    # Design-rule classification uses ONLY the 4D cause family. It does not
-    # inspect symptom/action text, so a symptom mentioning a rule keyword
-    # cannot accidentally mark a design-rule violation.
-    rule_source='\n'.join(
-        N(d.get(k))
-        for k in ('cause_4d','leak_cause','system_cause')
-        if N(d.get(k))
+    # Design-rule classification is USER-CONFIRMED in the enterprise UI.
+    # Never write an automatic multi-match result here. The UI stores exactly
+    # one selected Little x code (or explicit NONE) in g.
+    design_rule.write_confirmed_rule_classification(
+        ws,
+        r,
+        g.get('_design_rule_selected'),
+        confirmed=bool(g.get('_design_rule_confirmed')),
     )
-    design_rule.write_rule_classification(ws,r,rule_source)
     return result
 
 
