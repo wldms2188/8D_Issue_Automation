@@ -22,6 +22,51 @@ class DesignRuleLittleXTests(unittest.TestCase):
             with self.subTest(code=rule["code"], phrase=examples[0]):
                 self.assertIn(rule["code"], dr.classify_little_x(examples[0]))
 
+    def test_two_stage_korean_2d_to_little_y_then_cause_to_yyx(self):
+        rec = dr.recommendation(
+            "팩 부품 이탈 및 연결불량 발생",
+            "볼트 풀림으로 체결력 부족 발생",
+        )
+        self.assertEqual(rec["little_y"], ["3.3"])
+        self.assertEqual(rec["recommended"], "3.3.1")
+        self.assertEqual(rec["candidates"], ["3.3.1"])
+
+    def test_two_stage_contact_failure_selects_332(self):
+        rec = dr.recommendation(
+            "버스바 연결 불량 및 접촉 불량 발생",
+            "접촉면 Air Gap으로 접촉저항 증가",
+        )
+        self.assertIn("3.3", rec["little_y"])
+        self.assertEqual(rec["recommended"], "3.3.2")
+        self.assertEqual(rec["candidates"], ["3.3.2"])
+
+    def test_two_stage_english_symptom_and_cause(self):
+        rec = dr.recommendation(
+            "Component connection failure was detected at the busbar.",
+            "Bolt loosening caused insufficient fastening force.",
+        )
+        self.assertEqual(rec["little_y"], ["3.3"])
+        self.assertEqual(rec["recommended"], "3.3.1")
+
+    def test_two_stage_filters_out_cause_from_unrelated_little_y(self):
+        rec = dr.recommendation(
+            "팩 부품 이탈 발생",
+            "Ground continuity failure due to missing grounding connection.",
+        )
+        self.assertEqual(rec["little_y"], ["3.3"])
+        self.assertNotIn("5.3.1", rec["candidates"])
+        self.assertEqual(set(rec["candidates"]), {"3.3.1", "3.3.2"})
+        self.assertTrue(rec["ambiguous"])
+
+    def test_vague_2d_falls_back_to_cause_across_all_rules(self):
+        rec = dr.recommendation(
+            "이상 발생",
+            "Ground continuity failure due to missing grounding connection.",
+        )
+        self.assertEqual(rec["little_y"], [])
+        self.assertEqual(rec["recommended"], "5.3.1")
+        self.assertEqual(rec["candidates"], ["5.3.1"])
+
     def test_representative_english_8d_causes(self):
         cases = {
             "Bolt loosening caused insufficient fastening force at the busbar joint.": "3.3.1",
